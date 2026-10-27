@@ -1,0 +1,62 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { Observable, tap } from 'rxjs';
+import { SessionService, withClinic } from '../auth/session.service';
+
+export interface ClinicProfile {
+  id: number;
+  name: string;
+  ruc: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logoUrl: string | null;
+}
+
+export type ClinicProfileUpdate = Omit<ClinicProfile, 'id' | 'logoUrl'>;
+
+export interface SetupStatus {
+  profileComplete: boolean;
+  teamMembers: number;
+}
+
+/** Datos de la clínica. Al guardar, actualiza también el nombre y el logo que muestra el menú. */
+@Injectable({ providedIn: 'root' })
+export class ClinicService {
+  private readonly http = inject(HttpClient);
+  private readonly session = inject(SessionService);
+
+  get(): Observable<ClinicProfile> {
+    return this.http.get<ClinicProfile>('/api/clinic');
+  }
+
+  update(data: ClinicProfileUpdate): Observable<ClinicProfile> {
+    return this.http
+      .patch<ClinicProfile>('/api/clinic', data)
+      .pipe(tap((clinic) => this.syncSession(clinic)));
+  }
+
+  uploadLogo(file: File): Observable<ClinicProfile> {
+    const form = new FormData();
+    form.append('logo', file);
+    return this.http
+      .put<ClinicProfile>('/api/clinic/logo', form)
+      .pipe(tap((clinic) => this.syncSession(clinic)));
+  }
+
+  removeLogo(): Observable<ClinicProfile> {
+    return this.http
+      .delete<ClinicProfile>('/api/clinic/logo')
+      .pipe(tap((clinic) => this.syncSession(clinic)));
+  }
+
+  setupStatus(): Observable<SetupStatus> {
+    return this.http.get<SetupStatus>('/api/clinic/setup');
+  }
+
+  private syncSession(clinic: ClinicProfile): void {
+    const user = this.session.user();
+    if (user)
+      this.session.user.set(withClinic(user, { name: clinic.name, logoUrl: clinic.logoUrl }));
+  }
+}

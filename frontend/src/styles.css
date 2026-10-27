@@ -1,0 +1,100 @@
+/* Estilos globales de Uywa — Tailwind CSS v4 */
+@import '@fontsource-variable/figtree';
+@import '@fontsource-variable/sora';
+@import 'tailwindcss';
+
+/*
+ * Identidad visual
+ * Añil y maíz: los tintes de los tejidos andinos. El patrón escalonado (chakana)
+ * es el único elemento decorativo; todo lo demás se mantiene sobrio para trabajar rápido.
+ */
+@theme {
+  --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Sora Variable', 'Figtree Variable', ui-sans-serif, sans-serif;
+
+  /* Añil: color principal (acciones, estado activo, marca) */
+  --color-anil-50: #f0f1fe;
+  --color-anil-100: #e2e4fd;
+  --color-anil-200: #c9ccfb;
+  --color-anil-300: #a3a8fb;
+  --color-anil-400: #7c80f0;
+  --color-anil-500: #5a5ee0;
+  --color-anil-600: #4446c8;
+  --color-anil-700: #3637a3;
+  --color-anil-800: #2e2f82;
+  --color-anil-900: #24255f;
+  --color-anil-950: #17173d;
+
+  /* Maíz: acento cálido, solo para destacar */
+  --color-maiz-100: #fff1cc;
+  --color-maiz-300: #ffd266;
+  --color-maiz-400: #f7b81e;
+  --color-maiz-500: #e39e00;
+
+  /* Lienzo del área de trabajo */
+  --color-canvas: #f4f5fa;
+
+  --shadow-card: 0 1px 2px rgb(23 23 61 / 0.04), 0 4px 16px -4px rgb(23 23 61 / 0.06);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-canvas font-sans text-slate-700;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-anil-500;
+  }
+}
+
+/* Patrón escalonado inspirado en la chakana, para la banda de bienvenida y la marca */
+@utility bg-chakana {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M12 4h8v4h4v4h4v8h-4v4h-4v4h-8v-4h-4v-4H4v-8h4V8h4z' fill='none' stroke='%23f7b81e' stroke-opacity='.55' stroke-width='1.25'/%3E%3Cpath d='M14 14h4v4h-4z' fill='%23f7b81e' fill-opacity='.45'/%3E%3C/svg%3E");
+  background-size: 32px 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ── Componentes base (se usan con class="btn btn-primary", "field-input", etc.) ── */
+@utility btn {
+  @apply inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors
+    disabled:cursor-not-allowed disabled:opacity-60;
+}
+@utility btn-primary {
+  @apply bg-anil-600 text-white shadow-sm shadow-anil-600/25 hover:bg-anil-700 active:bg-anil-800;
+}
+@utility btn-secondary {
+  @apply bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 active:bg-slate-100;
+}
+@utility btn-danger {
+  @apply bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800;
+}
+@utility btn-ghost {
+  @apply text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+}
+@utility field-label {
+  @apply block text-sm font-medium text-slate-800;
+}
+@utility field-input {
+  @apply mt-1.5 h-11 w-full rounded-xl bg-white px-3.5 text-[15px] text-slate-900 ring-1 ring-slate-300 placeholder:text-slate-400
+    focus:outline-none focus:ring-2 focus:ring-anil-500 disabled:bg-slate-50 disabled:text-slate-500
+    aria-invalid:ring-rose-400;
+}
+@utility field-hint {
+  @apply mt-1.5 text-sm text-slate-500;
+}
+@utility field-error {
+  @apply mt-1.5 text-sm text-rose-700;
+}
+@utility card {
+  @apply rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70;
+}

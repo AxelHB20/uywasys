@@ -1,0 +1,370 @@
+<section class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Usuarios</h1>
+      <p class="mt-1 text-slate-600">
+        Quiénes ingresan al sistema y qué puede hacer cada uno.
+        @if (!loading() && !loadError()) {
+          <span class="text-slate-500"
+            >{{ activeCount() }} {{ activeCount() === 1 ? 'activo' : 'activos' }}</span
+          >
+        }
+      </p>
+    </div>
+    <button type="button" class="btn btn-primary self-start sm:self-auto" (click)="openCreate()">
+      <app-icon name="user-plus" class="size-4" /> Nuevo usuario
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="card divide-y divide-slate-100" aria-busy="true">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="flex items-center gap-4 p-5">
+          <div class="size-10 animate-pulse rounded-full bg-slate-100"></div>
+          <div class="h-4 w-48 animate-pulse rounded bg-slate-100"></div>
+        </div>
+      }
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    <!-- Escritorio: tabla -->
+    <div class="card hidden overflow-hidden md:block">
+      <table class="w-full text-left text-sm">
+        <thead
+          class="border-b border-slate-100 bg-slate-50/70 text-xs font-medium uppercase tracking-wide text-slate-500"
+        >
+          <tr>
+            <th scope="col" class="px-5 py-3">Nombre</th>
+            <th scope="col" class="px-5 py-3">Rol</th>
+            <th scope="col" class="px-5 py-3">Estado</th>
+            <th scope="col" class="px-5 py-3">Último ingreso</th>
+            <th scope="col" class="px-5 py-3"><span class="sr-only">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          @for (member of members(); track member.id) {
+            <tr [class.opacity-60]="!member.active" class="transition-colors hover:bg-slate-50/60">
+              <td class="px-5 py-4">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-full bg-anil-100 text-sm font-semibold text-anil-800"
+                    aria-hidden="true"
+                  >
+                    {{ initials(member.fullName) }}
+                  </span>
+                  <div class="min-w-0">
+                    <p class="truncate font-medium text-slate-900">
+                      {{ member.fullName }}
+                      @if (member.id === myId()) {
+                        <span class="ml-1 text-xs font-normal text-slate-500">(tú)</span>
+                      }
+                    </p>
+                    <p class="truncate text-slate-500">{{ member.email }}</p>
+                  </div>
+                </div>
+              </td>
+              <td class="px-5 py-4">
+                <p class="text-slate-800">{{ roleLabels[member.role] }}</p>
+                @if (member.licenseNumber) {
+                  <p class="text-xs text-slate-500">CMVP {{ member.licenseNumber }}</p>
+                }
+              </td>
+              <td class="px-5 py-4">
+                @let st = status(member);
+                <app-badge [tone]="st.tone">{{ st.label }}</app-badge>
+              </td>
+              <td class="px-5 py-4 text-slate-600 tabular-nums">
+                {{
+                  member.lastLoginAt
+                    ? (member.lastLoginAt | date: 'd MMM y, HH:mm' : '-0500')
+                    : 'Nunca'
+                }}
+              </td>
+              <td class="px-3 py-4">
+                <div class="flex justify-end gap-1">
+                  <ng-container *ngTemplateOutlet="actions; context: { $implicit: member }" />
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Móvil: tarjetas -->
+    <ul class="space-y-3 md:hidden">
+      @for (member of members(); track member.id) {
+        <li class="card p-4" [class.opacity-60]="!member.active">
+          <div class="flex items-start gap-3">
+            <span
+              class="grid size-11 shrink-0 place-items-center rounded-full bg-anil-100 text-sm font-semibold text-anil-800"
+              aria-hidden="true"
+            >
+              {{ initials(member.fullName) }}
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-medium text-slate-900">
+                {{ member.fullName }}
+                @if (member.id === myId()) {
+                  <span class="text-xs font-normal text-slate-500">(tú)</span>
+                }
+              </p>
+              <p class="truncate text-sm text-slate-500">{{ member.email }}</p>
+              <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                <span>{{ roleLabels[member.role] }}</span>
+                @let st = status(member);
+                <app-badge [tone]="st.tone">{{ st.label }}</app-badge>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">
+                Último ingreso:
+                {{
+                  member.lastLoginAt
+                    ? (member.lastLoginAt | date: 'd MMM y, HH:mm' : '-0500')
+                    : 'nunca'
+                }}
+              </p>
+            </div>
+          </div>
+          <div class="mt-3 flex justify-end gap-1 border-t border-slate-100 pt-2">
+            <ng-container *ngTemplateOutlet="actions; context: { $implicit: member }" />
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>
+
+<ng-template #actions let-member>
+  <button
+    type="button"
+    class="btn btn-ghost size-11 px-0 lg:size-10"
+    (click)="openEdit(member)"
+    [attr.aria-label]="'Editar a ' + member.fullName"
+    title="Editar"
+  >
+    <app-icon name="pencil" class="size-4" />
+  </button>
+  @if (member.id !== myId()) {
+    @if (member.active) {
+      <button
+        type="button"
+        class="btn btn-ghost size-11 px-0 lg:size-10"
+        (click)="ask('reset', member)"
+        [attr.aria-label]="'Restablecer la contraseña de ' + member.fullName"
+        title="Restablecer contraseña"
+      >
+        <app-icon name="key-round" class="size-4" />
+      </button>
+      <button
+        type="button"
+        class="btn btn-ghost h-11 px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 lg:h-10"
+        (click)="ask('deactivate', member)"
+      >
+        Desactivar
+      </button>
+    } @else {
+      <button
+        type="button"
+        class="btn btn-ghost h-11 px-3 text-anil-700 lg:h-10"
+        (click)="ask('activate', member)"
+      >
+        Activar
+      </button>
+    }
+  }
+</ng-template>
+
+<!-- Crear / editar -->
+<app-modal
+  [open]="formOpen()"
+  [title]="editing() ? 'Editar usuario' : 'Nuevo usuario'"
+  [description]="
+    editing() ? '' : 'Le daremos una contraseña temporal que deberá cambiar al ingresar.'
+  "
+  [dismissible]="false"
+  (closed)="formOpen.set(false)"
+>
+  <form id="user-form" [formGroup]="form" (ngSubmit)="submit()" novalidate class="space-y-5">
+    <div>
+      <label for="u-name" class="field-label">Nombre completo</label>
+      <input
+        id="u-name"
+        formControlName="fullName"
+        class="field-input"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid('fullName')"
+      />
+      @if (invalid('fullName')) {
+        <p class="field-error">Ingresa el nombre (mínimo 3 caracteres)</p>
+      }
+    </div>
+    <div>
+      <label for="u-email" class="field-label">Correo</label>
+      <input
+        id="u-email"
+        formControlName="email"
+        type="email"
+        class="field-input disabled:bg-slate-50 disabled:text-slate-500"
+        autocomplete="off"
+        aria-describedby="u-email-hint"
+        [attr.aria-invalid]="invalid('email')"
+      />
+      @if (invalid('email')) {
+        <p class="field-error">Ingresa un correo válido</p>
+      } @else {
+        <p id="u-email-hint" class="field-hint">
+          {{ editing() ? 'El correo no se puede cambiar' : 'Con este correo ingresará al sistema' }}
+        </p>
+      }
+    </div>
+    <div>
+      <label for="u-role" class="field-label">Rol</label>
+      <select id="u-role" formControlName="role" class="field-input" aria-describedby="u-role-hint">
+        @for (role of roles; track role) {
+          <option [value]="role">{{ roleLabels[role] }}</option>
+        }
+      </select>
+      <p id="u-role-hint" class="field-hint">{{ roleDescriptions[selectedRole()] }}</p>
+    </div>
+    @if (selectedRole() === 'VET' || form.controls.licenseNumber.value) {
+      <div>
+        <label for="u-license" class="field-label">
+          N.º de colegiatura (CMVP)
+          @if (selectedRole() === 'VET') {
+            <span class="text-rose-600" aria-hidden="true">*</span>
+          }
+        </label>
+        <input
+          id="u-license"
+          formControlName="licenseNumber"
+          class="field-input"
+          inputmode="numeric"
+          autocomplete="off"
+          aria-describedby="u-license-hint"
+          [attr.aria-invalid]="invalid('licenseNumber')"
+        />
+        <p id="u-license-hint" [class]="invalid('licenseNumber') ? 'field-error' : 'field-hint'">
+          {{
+            invalid('licenseNumber')
+              ? 'La colegiatura es obligatoria para veterinarios'
+              : 'Sale en recetas y certificados'
+          }}
+        </p>
+      </div>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="formOpen.set(false)">Cancelar</button>
+    <button type="submit" form="user-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" /> Guardando…
+      } @else {
+        {{ editing() ? 'Guardar cambios' : 'Crear usuario' }}
+      }
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Confirmación -->
+@let pending = confirmation();
+<app-modal
+  [open]="!!pending"
+  [title]="
+    pending?.kind === 'reset'
+      ? 'Restablecer contraseña'
+      : pending?.kind === 'activate'
+        ? 'Activar usuario'
+        : 'Desactivar usuario'
+  "
+  (closed)="closeConfirmation()"
+>
+  @if (pending) {
+    <p class="text-slate-700">
+      @switch (pending.kind) {
+        @case ('reset') {
+          Generaremos una contraseña temporal para
+          <strong class="font-semibold text-slate-900">{{ pending.member.fullName }}</strong
+          >. Su contraseña actual dejará de funcionar y, si estaba bloqueado, se desbloquea.
+        }
+        @case ('deactivate') {
+          <strong class="font-semibold text-slate-900">{{ pending.member.fullName }}</strong> ya no
+          podrá ingresar al sistema. Su historial (atenciones, cobros) se conserva y puedes
+          activarlo cuando quieras.
+        }
+        @case ('activate') {
+          <strong class="font-semibold text-slate-900">{{ pending.member.fullName }}</strong> podrá
+          volver a ingresar con su contraseña.
+        }
+      }
+    </p>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeConfirmation()">Cancelar</button>
+    <button
+      type="button"
+      [class]="pending?.kind === 'deactivate' ? 'btn btn-danger' : 'btn btn-primary'"
+      [disabled]="confirming()"
+      (click)="confirm()"
+    >
+      @if (confirming()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      {{
+        pending?.kind === 'reset'
+          ? 'Restablecer'
+          : pending?.kind === 'activate'
+            ? 'Activar'
+            : 'Desactivar'
+      }}
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Clave temporal (se muestra una sola vez) -->
+@let temp = temporary();
+<app-modal
+  [open]="!!temp"
+  title="Contraseña temporal"
+  [dismissible]="false"
+  (closed)="temporary.set(null)"
+>
+  @if (temp) {
+    <p class="text-slate-700">
+      Entrégale estos datos a <strong class="font-semibold text-slate-900">{{ temp.name }}</strong
+      >. Al ingresar, el sistema le pedirá crear su propia contraseña.
+    </p>
+    <dl class="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/70">
+      <div>
+        <dt class="text-xs font-medium text-slate-500">Correo</dt>
+        <dd class="break-all text-slate-900">{{ temp.email }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs font-medium text-slate-500">Contraseña temporal</dt>
+        <dd class="mt-1 flex items-center gap-2">
+          <code
+            class="flex-1 select-all rounded-lg bg-white px-3 py-2 font-mono text-lg tracking-wider text-anil-900 ring-1 ring-slate-200"
+            >{{ temp.password }}</code
+          >
+          <button type="button" class="btn btn-secondary h-11 shrink-0" (click)="copyPassword()">
+            <app-icon [name]="copied() ? 'check' : 'copy'" class="size-4" />
+            {{ copied() ? 'Copiada' : 'Copiar' }}
+          </button>
+        </dd>
+      </div>
+    </dl>
+    <p class="mt-4 flex gap-2 text-sm text-amber-900">
+      <app-icon name="info" class="mt-0.5 size-4 shrink-0" />
+      Solo se muestra esta vez. Si se pierde, restablécela de nuevo.
+    </p>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-primary" (click)="temporary.set(null)">
+      Listo, ya la entregué
+    </button>
+  </ng-container>
+</app-modal>

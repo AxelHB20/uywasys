@@ -1,0 +1,86 @@
+// Esquema de base de datos de UywaSys.
+// Regla multi-clínica: toda tabla de negocio lleva clinic_id.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  VET
+  RECEPTION
+  GROOMER
+  CASHIER
+}
+
+model Clinic {
+  id            Int       @id @default(autoincrement())
+  name          String    @db.VarChar(120)
+  ruc           String?   @db.Char(11)
+  address       String?   @db.VarChar(200)
+  phone         String?   @db.VarChar(20)
+  email         String?   @db.VarChar(120)
+  /// Logo guardado en la base (máx. 1 MB): entra en los respaldos y no depende del disco del servidor
+  logo          Bytes?    @db.ByteA
+  logoMime      String?   @map("logo_mime") @db.VarChar(20)
+  logoUpdatedAt DateTime? @map("logo_updated_at") @db.Timestamptz(3)
+  timezone      String    @default("America/Lima") @db.VarChar(40)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  users     User[]
+  auditLogs AuditLog[]
+
+  @@map("clinics")
+}
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  clinicId            Int       @map("clinic_id")
+  fullName            String    @map("full_name") @db.VarChar(120)
+  email               String    @unique @db.VarChar(120)
+  passwordHash        String    @map("password_hash") @db.VarChar(100)
+  role                Role
+  /// Número de colegiatura (CMVP) para veterinarios: se imprime en recetas
+  licenseNumber       String?   @map("license_number") @db.VarChar(20)
+  active              Boolean   @default(true)
+  /// true cuando el usuario entra con una clave temporal: debe cambiarla antes de usar el sistema
+  mustChangePassword  Boolean   @default(false) @map("must_change_password")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz(3)
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic    Clinic     @relation(fields: [clinicId], references: [id])
+  auditLogs AuditLog[]
+
+  @@index([clinicId])
+  @@map("users")
+}
+
+/// Bitácora: quién hizo qué, cuándo y sobre qué registro. Nunca se edita ni se borra.
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  clinicId  Int      @map("clinic_id")
+  userId    Int?     @map("user_id")
+  action    String   @db.VarChar(60)
+  entity    String   @db.VarChar(60)
+  entityId  String?  @map("entity_id") @db.VarChar(40)
+  data      Json?
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([clinicId, createdAt])
+  @@map("audit_logs")
+}

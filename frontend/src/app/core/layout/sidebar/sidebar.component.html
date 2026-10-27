@@ -1,0 +1,133 @@
+<!-- Fondo detrás del menú en móvil -->
+@if (layout.mobileOpen()) {
+  <div
+    class="fixed inset-0 z-40 bg-anil-950/40 backdrop-blur-[2px] lg:hidden"
+    (click)="layout.closeMobile()"
+    aria-hidden="true"
+  ></div>
+}
+
+<aside
+  id="app-sidebar"
+  class="fixed inset-y-0 left-0 z-50 w-72 p-3 transition-[transform,width] duration-200 ease-out lg:translate-x-0"
+  [class.-translate-x-full]="!layout.mobileOpen()"
+  [class.lg:w-24]="layout.collapsed()"
+  [class.lg:w-72]="!layout.collapsed()"
+  [attr.inert]="!layout.isDesktop() && !layout.mobileOpen() ? '' : null"
+  aria-label="Menú principal"
+>
+  <div class="flex h-full flex-col rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70">
+    <!-- Clínica -->
+    <div
+      class="flex h-[72px] shrink-0 items-center gap-3 px-4"
+      [class.lg:justify-center]="layout.collapsed()"
+      [class.lg:px-0]="layout.collapsed()"
+    >
+      @if (session.clinicLogo(); as logo) {
+        <img
+          [src]="logo"
+          alt=""
+          class="size-10 shrink-0 rounded-xl object-cover ring-1 ring-slate-200"
+        />
+      } @else {
+        <span
+          class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-600 font-display text-sm font-semibold text-white"
+          aria-hidden="true"
+        >
+          {{ session.clinicInitials() }}
+        </span>
+      }
+      <div class="min-w-0 leading-tight" [class.lg:hidden]="layout.collapsed()">
+        <p
+          class="truncate font-display text-[15px] font-semibold text-anil-950"
+          [attr.title]="session.clinicName()"
+        >
+          {{ session.clinicName() }}
+        </p>
+        <p class="truncate text-xs text-slate-500">Gestión veterinaria</p>
+      </div>
+      <button
+        type="button"
+        class="ml-auto grid size-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 lg:hidden"
+        (click)="layout.closeMobile()"
+        aria-label="Cerrar menú"
+      >
+        <app-icon name="x" class="size-5" />
+      </button>
+    </div>
+
+    <!-- Navegación -->
+    <nav class="flex-1 overflow-y-auto px-3 pb-3">
+      @for (group of groups(); track group.label; let first = $first) {
+        <div [class.mt-5]="!first">
+          <p
+            class="px-3 pb-1.5 text-xs font-semibold text-slate-500"
+            [class.lg:hidden]="layout.collapsed()"
+          >
+            {{ group.label }}
+          </p>
+          @if (!first) {
+            <hr class="mx-3 mb-3 hidden border-slate-100" [class.lg:block]="layout.collapsed()" />
+          }
+          <ul class="space-y-1">
+            @for (item of group.items; track item.label) {
+              <li>
+                <a
+                  [routerLink]="item.route"
+                  routerLinkActive="is-active bg-anil-600 text-white! shadow-sm shadow-anil-600/30 hover:bg-anil-600!"
+                  [routerLinkActiveOptions]="{ exact: !!item.exact }"
+                  #rla="routerLinkActive"
+                  [attr.aria-current]="rla.isActive ? 'page' : null"
+                  [attr.title]="layout.collapsed() ? item.label : null"
+                  (click)="layout.closeMobile()"
+                  class="group flex h-11 items-center gap-3 rounded-xl px-3 lg:h-10 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  [class.lg:justify-center]="layout.collapsed()"
+                >
+                  <app-icon [name]="item.icon" class="size-[18px]" />
+                  <span class="truncate" [class.lg:sr-only]="layout.collapsed()">{{
+                    item.label
+                  }}</span>
+                  @if (item.comingIn) {
+                    <span
+                      class="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 group-[.is-active]:bg-white/20 group-[.is-active]:text-white"
+                      [class.lg:hidden]="layout.collapsed()"
+                      >Pronto</span
+                    >
+                  }
+                </a>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    </nav>
+
+    <!-- Pie: marca del sistema y contraer -->
+    <div
+      class="flex items-center gap-2 border-t border-slate-100 p-3"
+      [class.lg:flex-col]="layout.collapsed()"
+    >
+      <div
+        class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-xs text-slate-500"
+        [class.lg:flex-none]="layout.collapsed()"
+        [attr.title]="layout.collapsed() ? 'Hecho con Uywa' : null"
+      >
+        <app-logo class="size-6" />
+        <span [class.lg:sr-only]="layout.collapsed()"
+          >con <span class="font-semibold text-anil-800">Uywa</span></span
+        >
+      </div>
+      <button
+        type="button"
+        class="hidden size-10 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 lg:grid"
+        (click)="layout.toggleCollapsed()"
+        [attr.aria-expanded]="!layout.collapsed()"
+        aria-controls="app-sidebar"
+        [attr.aria-label]="layout.collapsed() ? 'Expandir menú' : 'Contraer menú'"
+        [attr.title]="layout.collapsed() ? 'Expandir menú' : 'Contraer menú'"
+      >
+        <app-icon [name]="layout.collapsed() ? 'panel-open' : 'panel-close'" class="size-[18px]" />
+      </button>
+    </div>
+  </div>
+</aside>

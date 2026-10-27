@@ -1,0 +1,185 @@
+<section class="space-y-6">
+  <div>
+    <h1 class="font-display text-2xl font-semibold text-slate-900">Datos de la clínica</h1>
+    <p class="mt-1 text-slate-600">
+      Aparecen en el menú, en los tickets, en las recetas y en los carnets de vacunas.
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="card space-y-4 p-6" aria-busy="true">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="h-11 animate-pulse rounded-xl bg-slate-100"></div>
+      }
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    <div class="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <!-- Datos -->
+      <form class="card p-6 sm:p-8" [formGroup]="form" (ngSubmit)="save()" novalidate>
+        <div class="grid gap-5 sm:grid-cols-2">
+          <div class="sm:col-span-2">
+            <label for="name" class="field-label"
+              >Nombre de la clínica <span class="text-rose-600" aria-hidden="true">*</span></label
+            >
+            <input
+              id="name"
+              formControlName="name"
+              class="field-input"
+              autocomplete="organization"
+              [attr.aria-invalid]="invalid('name')"
+            />
+            @if (invalid('name')) {
+              <p class="field-error">Ingresa el nombre (entre 2 y 120 caracteres)</p>
+            }
+          </div>
+
+          <div>
+            <label for="ruc" class="field-label">RUC</label>
+            <input
+              id="ruc"
+              formControlName="ruc"
+              class="field-input tabular-nums"
+              inputmode="numeric"
+              maxlength="11"
+              placeholder="20123456789"
+              aria-describedby="ruc-hint"
+              [attr.aria-invalid]="invalid('ruc')"
+            />
+            <p id="ruc-hint" [class]="invalid('ruc') ? 'field-error' : 'field-hint'">
+              {{
+                invalid('ruc')
+                  ? 'El RUC no es válido: revisa los 11 dígitos'
+                  : 'Se imprime en boletas y facturas'
+              }}
+            </p>
+          </div>
+
+          <div>
+            <label for="phone" class="field-label">Teléfono</label>
+            <input
+              id="phone"
+              formControlName="phone"
+              class="field-input"
+              type="tel"
+              autocomplete="tel"
+              placeholder="987 654 321"
+              [attr.aria-invalid]="invalid('phone')"
+            />
+            @if (invalid('phone')) {
+              <p class="field-error">Ingresa un teléfono válido, por ejemplo 987 654 321</p>
+            }
+          </div>
+
+          <div class="sm:col-span-2">
+            <label for="address" class="field-label">Dirección</label>
+            <input
+              id="address"
+              formControlName="address"
+              class="field-input"
+              autocomplete="street-address"
+              placeholder="Av. Principal 123, Chosica"
+              [attr.aria-invalid]="invalid('address')"
+            />
+          </div>
+
+          <div class="sm:col-span-2">
+            <label for="email" class="field-label">Correo de la clínica</label>
+            <input
+              id="email"
+              formControlName="email"
+              class="field-input"
+              type="email"
+              autocomplete="email"
+              placeholder="contacto@tuclinica.pe"
+              [attr.aria-invalid]="invalid('email')"
+            />
+            @if (invalid('email')) {
+              <p class="field-error">Ingresa un correo válido</p>
+            }
+          </div>
+        </div>
+
+        <div
+          class="mt-8 flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-end"
+        >
+          @if (form.dirty) {
+            <p class="text-sm text-slate-500 sm:mr-auto">Tienes cambios sin guardar</p>
+          }
+          <button type="submit" class="btn btn-primary" [disabled]="saving() || form.pristine">
+            @if (saving()) {
+              <app-icon name="loader" class="size-4 animate-spin" /> Guardando…
+            } @else {
+              Guardar cambios
+            }
+          </button>
+        </div>
+      </form>
+
+      <!-- Logo -->
+      <div class="card self-start p-6">
+        <h2 class="text-sm font-semibold text-slate-900">Logo</h2>
+        <p class="mt-1 text-sm text-slate-600">
+          PNG, JPG o WebP de hasta 1 MB. Mejor si es cuadrado.
+        </p>
+
+        <div class="mt-5 flex items-center gap-4">
+          @if (profile()?.logoUrl; as logo) {
+            <img
+              [src]="logo"
+              alt="Logo actual de la clínica"
+              class="size-20 rounded-2xl object-cover ring-1 ring-slate-200"
+            />
+          } @else {
+            <span
+              class="grid size-20 place-items-center rounded-2xl bg-anil-600 font-display text-2xl font-semibold text-white"
+              aria-hidden="true"
+            >
+              {{ initials() }}
+            </span>
+          }
+          <div class="flex flex-col gap-2">
+            <button
+              type="button"
+              class="btn btn-secondary h-10"
+              (click)="chooseLogo()"
+              [disabled]="logoBusy()"
+            >
+              @if (logoBusy()) {
+                <app-icon name="loader" class="size-4 animate-spin" />
+              }
+              {{ profile()?.logoUrl ? 'Cambiar logo' : 'Subir logo' }}
+            </button>
+            @if (profile()?.logoUrl) {
+              <button
+                type="button"
+                class="btn btn-ghost h-10 text-rose-700 hover:text-rose-800"
+                (click)="removeLogo()"
+                [disabled]="logoBusy()"
+              >
+                Quitar
+              </button>
+            }
+          </div>
+        </div>
+        <input
+          #fileInput
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          class="sr-only"
+          tabindex="-1"
+          aria-hidden="true"
+          (change)="onLogoSelected($event)"
+        />
+        @if (logoError(); as error) {
+          <p class="field-error" role="alert">{{ error }}</p>
+        }
+      </div>
+    </div>
+  }
+</section>
