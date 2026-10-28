@@ -13,6 +13,7 @@ import { PetsModule } from './pets/pets.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { UsersModule } from './users/users.module.js';
+import { VisitsModule } from './visits/visits.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module.js';
     DashboardModule,
     InventoryModule,
     CareServicesModule,
+    VisitsModule,
     HealthModule,
   ],
 })

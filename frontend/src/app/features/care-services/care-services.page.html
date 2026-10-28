@@ -1,0 +1,340 @@
+<section class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Servicios y precios</h1>
+      <p class="mt-1 text-slate-600">
+        Lo que cobra la clínica y los insumos que cada servicio descuenta del inventario.
+      </p>
+    </div>
+    @if (isAdmin()) {
+      <button type="button" class="btn btn-primary self-start sm:self-auto" (click)="openNew()">
+        <app-icon name="plus" class="size-4" /> Nuevo servicio
+      </button>
+    }
+  </div>
+
+  @if (catalog.isLoading() && !all().length) {
+    <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando servicios">
+      @for (i of [1, 2, 3, 4]; track i) {
+        <div class="flex items-center gap-4 p-5">
+          <div class="h-4 w-56 animate-pulse rounded bg-slate-100"></div>
+          <div class="ml-auto h-4 w-20 animate-pulse rounded bg-slate-100"></div>
+        </div>
+      }
+    </div>
+  } @else if (catalog.error() && !all().length) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">No se pudo cargar el catálogo.</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="catalog.reload()">
+        Reintentar
+      </button>
+    </div>
+  } @else if (!all().length) {
+    <div class="card flex flex-col items-center px-6 py-14 text-center">
+      <span class="grid size-14 place-items-center rounded-2xl bg-anil-50 text-anil-700"
+        ><app-icon name="receipt" class="size-7"
+      /></span>
+      <p class="mt-4 font-medium text-slate-900">Aún no hay servicios</p>
+      <p class="mt-1 max-w-sm text-slate-600">
+        Registra tus consultas, vacunaciones y cirugías con su precio. Así la caja y la consulta los
+        cobran igual siempre.
+      </p>
+      @if (isAdmin()) {
+        <button type="button" class="btn btn-primary mt-5" (click)="openNew('CONSULTATION')">
+          <app-icon name="plus" class="size-4" /> Registrar el primero
+        </button>
+      }
+    </div>
+  } @else {
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div class="relative flex-1">
+        <app-icon
+          name="search"
+          class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+        />
+        <label for="svc-search" class="sr-only">Buscar servicio o insumo</label>
+        <input
+          id="svc-search"
+          type="search"
+          [formControl]="search"
+          placeholder="Buscar servicio o insumo"
+          autocomplete="off"
+          class="field-input mt-0 pl-10"
+        />
+      </div>
+      @if (inactiveCount()) {
+        <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            [formControl]="showInactive"
+            class="size-5 rounded accent-anil-600"
+          />
+          Mostrar inactivos ({{ inactiveCount() }})
+        </label>
+      }
+    </div>
+
+    @for (g of groups(); track g.category) {
+      <section [attr.aria-labelledby]="'cat-' + g.category">
+        <h2
+          [id]="'cat-' + g.category"
+          class="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+        >
+          {{ categoryLabels[g.category] }}
+          <span class="font-normal tabular-nums">· {{ g.items.length }}</span>
+        </h2>
+        <ul class="card divide-y divide-slate-100">
+          @for (s of g.items; track s.id) {
+            <li class="flex items-start gap-4 p-4 sm:items-center">
+              <div class="min-w-0 flex-1">
+                <p class="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                  {{ s.name }}
+                  @if (!s.active) {
+                    <app-badge tone="neutral">Inactivo</app-badge>
+                  }
+                </p>
+                <p class="mt-0.5 flex flex-wrap gap-x-3 text-sm text-slate-500">
+                  @if (durationText(s.durationMin); as d) {
+                    <span class="inline-flex items-center gap-1"
+                      ><app-icon name="clock" class="size-3.5" />{{ d }}</span
+                    >
+                  }
+                  @if (s.igv !== 'TAXED') {
+                    <span>{{ igvLabels[s.igv] }}</span>
+                  }
+                </p>
+                @if (s.supplies.length) {
+                  <ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Insumos">
+                    @for (x of s.supplies; track x.productId) {
+                      <li
+                        class="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                      >
+                        <app-icon name="package" class="size-3 text-slate-400" />{{ supplyLine(x) }}
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+              <p class="font-display text-lg font-semibold text-slate-900 tabular-nums">
+                {{ money(s.price) }}
+              </p>
+              @if (isAdmin()) {
+                <button
+                  type="button"
+                  class="btn btn-ghost size-11 shrink-0 px-0"
+                  [attr.aria-label]="'Editar ' + s.name"
+                  (click)="openEdit(s)"
+                >
+                  <app-icon name="pencil" class="size-4" />
+                </button>
+              }
+            </li>
+          }
+        </ul>
+      </section>
+    } @empty {
+      <div class="card px-6 py-10 text-center text-slate-600">
+        No hay servicios que coincidan con «{{ search.value }}».
+      </div>
+    }
+
+    @if (!isAdmin()) {
+      <p class="text-sm text-slate-500">Solo el administrador puede cambiar precios.</p>
+    }
+  }
+</section>
+
+<app-modal
+  [open]="open()"
+  [title]="editing() ? 'Editar servicio' : 'Nuevo servicio'"
+  description="El precio incluye IGV. Los insumos se descuentan del inventario al registrar el servicio."
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form id="svc-form" [formGroup]="form" (ngSubmit)="save()" novalidate class="space-y-5">
+    <div>
+      <label for="svc-name" class="field-label"
+        >Nombre <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="svc-name"
+        formControlName="name"
+        class="field-input"
+        placeholder="Ej.: Consulta general"
+        autocomplete="off"
+        maxlength="120"
+        [attr.aria-invalid]="invalid(form.controls.name)"
+      />
+      @if (invalid(form.controls.name)) {
+        <p class="field-error">Escribe el nombre (mínimo 2 letras)</p>
+      }
+    </div>
+
+    <fieldset>
+      <legend class="field-label">
+        Categoría <span class="text-rose-600" aria-hidden="true">*</span>
+      </legend>
+      <div class="mt-1.5 flex flex-wrap gap-2">
+        @for (c of categories; track c) {
+          <label
+            class="inline-flex h-10 cursor-pointer items-center rounded-xl px-3 text-sm font-medium text-slate-700 ring-1 ring-slate-300 select-none hover:bg-slate-50 has-checked:bg-anil-600 has-checked:text-white has-checked:ring-anil-600 has-focus-visible:ring-2 has-focus-visible:ring-anil-400 has-focus-visible:ring-offset-2"
+          >
+            <input type="radio" class="sr-only" formControlName="category" [value]="c" />
+            {{ categoryLabels[c] }}
+          </label>
+        }
+      </div>
+      @if (invalid(form.controls.category)) {
+        <p class="field-error">Elige la categoría</p>
+      }
+    </fieldset>
+
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div>
+        <label for="svc-price" class="field-label"
+          >Precio (S/) <span class="text-rose-600" aria-hidden="true">*</span></label
+        >
+        <input
+          id="svc-price"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          formControlName="price"
+          class="field-input tabular-nums"
+          [attr.aria-invalid]="invalid(form.controls.price)"
+        />
+        @if (invalid(form.controls.price)) {
+          <p class="field-error">Precio válido, hasta 2 decimales</p>
+        }
+      </div>
+      <div>
+        <label for="svc-igv" class="field-label">IGV</label>
+        <select id="svc-igv" formControlName="igv" class="field-input">
+          @for (t of igvTypes; track t) {
+            <option [value]="t">{{ igvLabels[t] }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="svc-duration" class="field-label">Duración (min)</label>
+        <input
+          id="svc-duration"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="1440"
+          formControlName="durationMin"
+          class="field-input tabular-nums"
+          placeholder="Opcional"
+          [attr.aria-invalid]="invalid(form.controls.durationMin)"
+        />
+        @if (invalid(form.controls.durationMin)) {
+          <p class="field-error">Entre 1 y 1440 minutos</p>
+        }
+      </div>
+    </div>
+
+    <fieldset>
+      <legend class="field-label">Insumos que usa</legend>
+      <p class="text-sm text-slate-500">
+        En la unidad mínima del producto (ej.: 2 ml de ketamina, 1 jeringa).
+      </p>
+
+      @if (supplies.length) {
+        <ul class="mt-3 space-y-2" formArrayName="supplies">
+          @for (g of supplies.controls; track g; let i = $index) {
+            <li
+              [formGroupName]="i"
+              class="flex items-center gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70"
+            >
+              <p class="min-w-0 flex-1 truncate font-medium text-slate-900">
+                {{ g.controls.name.value }}
+              </p>
+              <label [for]="'sup-qty-' + i" class="sr-only"
+                >Cantidad de {{ g.controls.name.value }}</label
+              >
+              <input
+                [id]="'sup-qty-' + i"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="any"
+                formControlName="quantity"
+                class="field-input mt-0 w-24 tabular-nums"
+                [attr.aria-invalid]="invalid(g.controls.quantity)"
+              />
+              <span class="w-16 text-sm text-slate-600">{{ unitFor(g) }}</span>
+              <button
+                type="button"
+                class="btn btn-ghost size-10 shrink-0 px-0 text-slate-500"
+                [attr.aria-label]="'Quitar ' + g.controls.name.value"
+                (click)="removeSupply(i)"
+              >
+                <app-icon name="trash" class="size-4" />
+              </button>
+            </li>
+            @if (invalid(g.controls.quantity)) {
+              <p class="field-error">Cantidad mayor a 0 (hasta 3 decimales)</p>
+            }
+          }
+        </ul>
+      }
+
+      <div class="mt-3">
+        <div class="relative">
+          <label for="sup-search" class="sr-only">Buscar producto para agregar como insumo</label>
+          <app-icon
+            name="plus"
+            class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            id="sup-search"
+            type="search"
+            [formControl]="supplySearch"
+            placeholder="Agregar insumo: busca un producto"
+            autocomplete="off"
+            class="field-input mt-0 pl-10"
+            role="combobox"
+            aria-controls="sup-results"
+            [attr.aria-expanded]="supplyResults().length > 0"
+          />
+        </div>
+        @if (supplyResults().length) {
+          <ul
+            id="sup-results"
+            role="listbox"
+            class="mt-1 max-h-60 overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200"
+          >
+            @for (p of supplyResults(); track p.id) {
+              <li role="option" aria-selected="false">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-anil-50 focus-visible:bg-anil-50 focus-visible:outline-none"
+                  (click)="addSupply(p)"
+                >
+                  <span class="truncate font-medium text-slate-900">{{ p.name }}</span>
+                  <span class="shrink-0 text-xs text-slate-500">{{ p.code ?? '' }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </fieldset>
+
+    @if (editing()) {
+      <label class="flex cursor-pointer items-center gap-3 text-sm text-slate-800">
+        <input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />
+        Activo (se puede cobrar)
+      </label>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="svc-form" class="btn btn-primary" [disabled]="saving()">
+      {{ editing() ? 'Guardar cambios' : 'Crear servicio' }}
+    </button>
+  </ng-container>
+</app-modal>

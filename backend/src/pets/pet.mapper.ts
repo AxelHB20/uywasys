@@ -10,6 +10,7 @@ const MAX_AGE_YEARS = 40;
 
 export const PET_SELECT = {
   id: true,
+  number: true,
   clientId: true,
   name: true,
   species: true,
@@ -33,6 +34,8 @@ type PetRow = Prisma.PetGetPayload<{ select: typeof PET_SELECT }>;
 
 export interface PetView {
   id: number;
+  /** Correlativo de la clínica: HC-00045 */
+  number: number;
   clientId: number;
   name: string;
   species: Species;

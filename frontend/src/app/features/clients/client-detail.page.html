@@ -28,7 +28,7 @@
         >
         <div class="min-w-0">
           <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            Cliente {{ clientCode(c.id) }} · desde {{ c.createdAt | date: 'MMM y' : '-0500' }}
+            Cliente {{ clientCode(c.number) }} · desde {{ c.createdAt | date: 'MMM y' : '-0500' }}
           </p>
           <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
             {{ c.name }}
@@ -238,7 +238,7 @@
                         {{ pet.name }}
                       </h3>
                       <span class="shrink-0 text-xs font-medium text-slate-500 tabular-nums">{{
-                        petCode(pet.id)
+                        petCode(pet.number)
                       }}</span>
                     </div>
                     <p class="text-sm text-slate-600">{{ petSummary(pet) }}</p>
@@ -341,7 +341,9 @@
                   <div class="min-w-0 flex-1">
                     <p class="font-medium text-slate-800">
                       {{ pet.name }}
-                      <span class="text-xs font-normal text-slate-500">{{ petCode(pet.id) }}</span>
+                      <span class="text-xs font-normal text-slate-500">{{
+                        petCode(pet.number)
+                      }}</span>
                     </p>
                     <p class="text-sm text-slate-500">
                       {{ speciesLabels[pet.species] }}

@@ -1,11 +1,14 @@
 import { Transform } from 'class-transformer';
 import {
   IsEmail,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
   Matches,
+  Max,
   MaxLength,
+  Min,
   ValidateIf,
 } from 'class-validator';
 import { IsRuc } from '../../common/validators/ruc.js';
@@ -45,4 +48,14 @@ export class UpdateClinicDto {
   @IsEmail({}, { message: 'Ingresa un correo válido' })
   @MaxLength(120, { message: 'El correo es demasiado largo' })
   email?: string | null;
+
+  /** Descuento máximo por línea (%) sin autorización del administrador. 0 = solo el administrador descuenta */
+  @IsOptional()
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'El tope de descuento admite hasta 2 decimales' },
+  )
+  @Min(0, { message: 'El tope de descuento no puede ser negativo' })
+  @Max(100, { message: 'El tope de descuento no puede pasar de 100 %' })
+  maxDiscountPercent?: number;
 }

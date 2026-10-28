@@ -150,7 +150,7 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
           }
         </div>
       }
-      <span class="sr-only">{{ petCode(it.pet.id) }}</span>
+      <span class="sr-only">{{ petCode(it.pet.number) }}</span>
     </article>
   `,
 })

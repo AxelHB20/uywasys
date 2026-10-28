@@ -1,4 +1,7 @@
-# Base de datos para desarrollo. Levantar con: docker compose up -d
+# Entorno de desarrollo completo. Se levanta con:  docker compose up -d
+#   App: http://localhost:4200   ·   API: http://localhost:3000/api   ·   Base de datos: localhost:5432
+# Ver lo que pasa:  docker compose logs -f api   (o web, o db)
+# Tras recibir un cambio con migración o dependencias nuevas:  docker compose restart api
 services:
   db:
     image: postgres:17-alpine
@@ -19,5 +22,82 @@ services:
       timeout: 3s
       retries: 10
 
+  # Backend NestJS: instala dependencias si cambiaron, aplica migraciones y arranca en modo watch
+  api:
+    build:
+      context: ./docker
+      dockerfile: dev.Dockerfile
+    container_name: uywasys-api
+    restart: unless-stopped
+    working_dir: /app
+    env_file: ./backend/.env
+    environment:
+      # Dentro de Docker la base de datos se llama "db", no "localhost"
+      DATABASE_URL: postgresql://uywasys:uywasys@db:5432/uywasys
+      # Docker en Windows no avisa los cambios de archivos: se revisan cada segundo
+      TSC_WATCHFILE: DynamicPriorityPolling
+      TSC_WATCHDIRECTORY: DynamicPriorityPolling
+      CHOKIDAR_USEPOLLING: "true"
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        lock=$$(sha1sum package-lock.json | cut -d' ' -f1)
+        if [ "$$(cat node_modules/.lock-hash 2>/dev/null)" != "$$lock" ]; then
+          echo "→ Instalando dependencias del backend (solo cuando cambian)..."
+          npm install --no-audit --no-fund
+          sha1sum package-lock.json | cut -d' ' -f1 > node_modules/.lock-hash
+        fi
+        echo "→ Aplicando migraciones pendientes..."
+        npx prisma migrate deploy
+        npx prisma generate
+        exec npm run start:dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      # node_modules de Linux, separado del de Windows
+      - api-node-modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Frontend Angular con recarga automática
+  web:
+    build:
+      context: ./docker
+      dockerfile: dev.Dockerfile
+    container_name: uywasys-web
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      # El proxy /api apunta al contenedor del backend
+      API_URL: http://api:3000
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        lock=$$(sha1sum package-lock.json | cut -d' ' -f1)
+        if [ "$$(cat node_modules/.lock-hash 2>/dev/null)" != "$$lock" ]; then
+          echo "→ Instalando dependencias del frontend (solo cuando cambian)..."
+          npm install --no-audit --no-fund
+          sha1sum package-lock.json | cut -d' ' -f1 > node_modules/.lock-hash
+        fi
+        exec npx ng serve --host 0.0.0.0 --port 4200 --poll 1000
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./frontend:/app
+      - web-node-modules:/app/node_modules
+      # Caché de compilación propia del contenedor
+      - web-angular-cache:/app/.angular
+    depends_on:
+      - api
+
 volumes:
   uywasys-db:
+  api-node-modules:
+  web-node-modules:
+  web-angular-cache:

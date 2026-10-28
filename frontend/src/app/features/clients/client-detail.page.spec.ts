@@ -9,6 +9,7 @@ import { ClientDetailPage } from './client-detail.page';
 
 const client: ClientDetail = {
   id: 7,
+  number: 12,
   docType: 'DNI',
   docNumber: '45678912',
   name: 'Rosa Quispe',
@@ -27,6 +28,7 @@ const client: ClientDetail = {
   pets: [
     {
       id: 3,
+      number: 45,
       clientId: 7,
       name: 'Toby',
       species: 'DOG',
@@ -82,6 +84,13 @@ describe('ClientDetailPage (ficha)', () => {
     expect(el.textContent).toContain('Bozal para uñas');
     expect(el.textContent).toContain('Alergias: Penicilina');
     expect(el.querySelector('a[href="https://wa.me/51987654321"]')).not.toBeNull();
+  });
+
+  it('muestra los códigos correlativos de la clínica, no el id interno', () => {
+    const el: HTMLElement = render('RECEPTION').nativeElement;
+    expect(el.textContent).toContain('C-00012');
+    expect(el.textContent).toContain('HC-00045');
+    expect(el.textContent).not.toContain('C-00007');
   });
 
   it('el groomer consulta pero no ve botones para editar ni poner en cola', () => {

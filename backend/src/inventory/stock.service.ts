@@ -101,6 +101,117 @@ export class StockService {
    * Si no alcanza, responde 409 con lo disponible y no descuenta nada.
    */
   async deduct(tx: Tx, req: DeductRequest): Promise<MovementLine[]> {
+    return (await this.take(tx, req, false)).lines;
+  }
+
+  /**
+   * Como `deduct`, pero nunca falla por falta de stock: descuenta lo que haya (FEFO, sin vencidos)
+   * y devuelve cuánto faltó. Lo usan los insumos de un servicio, que se cobra aunque el sistema
+   * no tenga registrado el frasco (decisión 5 del plan).
+   */
+  async deductAvailable(
+    tx: Tx,
+    req: Omit<DeductRequest, 'batchId' | 'includeExpired'>,
+  ): Promise<{ lines: MovementLine[]; missing: Decimal }> {
+    return this.take(tx, req, true);
+  }
+
+  /**
+   * Devuelve al mismo lote todo lo que salió con una referencia (por ejemplo, un cargo anulado).
+   * Calcula el neto por lote con los movimientos de esa referencia, así llamarlo dos veces no
+   * devuelve dos veces.
+   */
+  async restore(
+    tx: Tx,
+    req: {
+      clinicId: number;
+      refType: string;
+      refId: number;
+      userId: number;
+      reason: string;
+    },
+  ): Promise<MovementLine[]> {
+    const moves = await tx.stockMovement.findMany({
+      where: { clinicId: req.clinicId, refType: req.refType, refId: req.refId },
+      select: {
+        productId: true,
+        batchId: true,
+        quantity: true,
+        petId: true,
+        vetId: true,
+        prescriptionRef: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+    // Neto por producto y lote: lo que salió menos lo que ya volvió
+    const net = new Map<string, (typeof moves)[number] & { sum: Decimal }>();
+    for (const m of moves) {
+      const key = `${m.productId}:${m.batchId ?? ''}`;
+      const current = net.get(key);
+      const qty = new D(m.quantity.toString());
+      if (current) current.sum = current.sum.plus(qty);
+      else net.set(key, { ...m, sum: qty });
+    }
+    const byProduct = new Map<
+      number,
+      ((typeof moves)[number] & { sum: Decimal })[]
+    >();
+    for (const line of net.values()) {
+      if (line.sum.gte(0) || line.batchId === null) continue;
+      byProduct.set(line.productId, [
+        ...(byProduct.get(line.productId) ?? []),
+        line,
+      ]);
+    }
+
+    const result: MovementLine[] = [];
+    // Siempre en el mismo orden de productos, para no cruzar bloqueos con otra transacción
+    for (const productId of [...byProduct.keys()].sort((x, y) => x - y)) {
+      const product = await this.lockProduct(tx, req.clinicId, productId);
+      let balance = product.totalStock;
+      for (const line of byProduct.get(productId)!) {
+        const back = line.sum.neg();
+        await tx.productBatch.update({
+          where: { id: line.batchId! },
+          data: { quantity: { increment: back } },
+        });
+        balance = balance.plus(back);
+        await tx.stockMovement.create({
+          data: {
+            clinicId: req.clinicId,
+            productId,
+            batchId: line.batchId,
+            type: 'RETURN',
+            quantity: back,
+            balanceAfter: balance,
+            reason: req.reason,
+            userId: req.userId,
+            petId: line.petId,
+            vetId: line.vetId,
+            prescriptionRef: line.prescriptionRef,
+            refType: req.refType,
+            refId: req.refId,
+          },
+        });
+        result.push({
+          batchId: line.batchId,
+          quantity: back,
+          balanceAfter: balance,
+        });
+      }
+      await tx.product.update({
+        where: { id: productId },
+        data: { totalStock: balance },
+      });
+    }
+    return result;
+  }
+
+  private async take(
+    tx: Tx,
+    req: DeductRequest,
+    partial: boolean,
+  ): Promise<{ lines: MovementLine[]; missing: Decimal }> {
     if (req.quantity.lte(0))
       throw new BadRequestException('La cantidad debe ser mayor a 0');
     const product = await this.lockProduct(tx, req.clinicId, req.productId);
@@ -127,7 +238,7 @@ export class StockService {
       (sum, b) => sum.plus(b.quantity.toString()),
       new D(0),
     );
-    if (available.lt(req.quantity))
+    if (!partial && available.lt(req.quantity))
       throw new ConflictException({
         message: `Stock insuficiente de ${product.name}: hay ${available.toNumber()} disponibles`,
         available: available.toNumber(),
@@ -151,6 +262,7 @@ export class StockService {
         balanceAfter: balance,
       });
     }
+    if (!lines.length) return { lines, missing: pending };
 
     await tx.product.update({
       where: { id: req.productId },
@@ -173,7 +285,7 @@ export class StockService {
         refId: req.refId ?? null,
       })),
     });
-    return lines;
+    return { lines, missing: pending };
   }
 
   /** Ingreso de un lote nuevo (compra) con su movimiento de kardex. */
@@ -189,6 +301,8 @@ export class StockService {
       unitCost: Decimal | null;
       supplier: string | null;
       documentNumber: string | null;
+      /** Motivo del kardex; por defecto "Compra <comprobante> · <proveedor>" */
+      reason?: string;
     },
   ): Promise<{ batchId: number; balanceAfter: Decimal }> {
     const product = await this.lockProduct(tx, req.clinicId, req.productId);
@@ -220,9 +334,11 @@ export class StockService {
         type: 'PURCHASE',
         quantity: req.quantity,
         balanceAfter: balance,
-        reason: req.documentNumber
-          ? `Compra ${req.documentNumber}${req.supplier ? ` · ${req.supplier}` : ''}`
-          : (req.supplier ?? null),
+        reason:
+          req.reason ??
+          (req.documentNumber
+            ? `Compra ${req.documentNumber}${req.supplier ? ` · ${req.supplier}` : ''}`
+            : (req.supplier ?? null)),
         userId: req.userId,
       },
     });

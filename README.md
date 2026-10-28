@@ -14,27 +14,44 @@ Sistema de gestión para veterinarias en Perú: clientes y mascotas, módulo mé
 - Docker Desktop
 - Git
 
-## Primera vez
+## Primera vez (con Docker: recomendado)
+
+Docker levanta todo: base de datos, backend y frontend. No hace falta `npm start` ni correr migraciones a mano.
 
 ```bash
-# 1. Base de datos
-docker compose up -d
-
-# 2. Backend
 cd backend
 copy .env.example .env            # CMD · PowerShell: Copy-Item .env.example .env · Git Bash: cp .env.example .env
-npm install                       # también genera el cliente de Prisma
-npx prisma migrate dev            # crea las tablas
-npx prisma db seed                # crea la clínica y el administrador (datos SEED_* del .env)
-npm run start:dev                 # API en http://localhost:3000/api
-
-# 3. Frontend (en otra terminal)
-cd frontend
-npm install
-npm start                         # app en http://localhost:4200
+cd ..
+docker compose up -d --build      # la primera vez tarda unos minutos (instala dependencias)
+docker compose logs -f api        # espera "UywaSys API escuchando..." y sal con Ctrl+C
+docker compose exec api npx prisma db seed   # solo la primera vez: crea la clínica y el administrador
 ```
 
-Ingresa con `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` del `.env`. En el dashboard, el indicador **Sistema en línea** confirma que el frontend, el backend y la base de datos están conectados.
+Abre http://localhost:4200 e ingresa con `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` del `.env`. En el dashboard, el indicador **Sistema en línea** confirma que el frontend, el backend y la base de datos están conectados.
+
+Para que todo arranque solo al prender la PC: en Docker Desktop, **Settings → General → Start Docker Desktop when you sign in**. Los contenedores tienen `restart: unless-stopped`.
+
+**Día a día**
+
+| Situación | Comando |
+| --- | --- |
+| Ver qué pasa en el backend (errores, arranque) | `docker compose logs -f api` |
+| Ver el frontend | `docker compose logs -f web` |
+| Llegó un cambio con migración o dependencias nuevas | `docker compose restart api` (o `web` si cambió el frontend) |
+| Apagar todo | `docker compose stop` |
+| Volver a encender | `docker compose up -d` |
+
+El backend, al arrancar, instala dependencias si cambió `package-lock.json`, aplica las migraciones pendientes (`prisma migrate deploy`) y genera el cliente de Prisma. Los `node_modules` de los contenedores viven en volúmenes de Docker, separados de los de Windows.
+
+### Sin Docker (alternativa)
+
+Si prefieres correr el backend o el frontend directo en Windows, detén antes ese contenedor (`docker compose stop api web`) para que no choquen los puertos:
+
+```bash
+docker compose up -d db           # solo la base de datos
+cd backend && npm install && npx prisma migrate dev && npm run start:dev
+cd frontend && npm install && npm start      # en otra terminal
+```
 
 Antes de usarlo con una clínica real, cambia en `.env` el `JWT_SECRET` y la contraseña del administrador.
 
@@ -44,7 +61,9 @@ Antes de usarlo con una clínica real, cambia en `.env` el `JWT_SECRET` y la con
 
 | Dónde | Comando | Qué hace |
 | --- | --- | --- |
-| backend | `npm test` | Pruebas unitarias |
+| Docker | `docker compose exec api npm test` | Pruebas unitarias del backend |
+| Docker | `docker compose exec api npm run test:e2e` | Pruebas de la API contra la base de datos |
+| backend | `npm test` | Pruebas unitarias (sin Docker) |
 | backend | `npm run test:e2e` | Pruebas de la API contra la base de datos (requiere Docker arriba) |
 | backend | `npm run lint` | Revisión de código |
 | backend | `npx prisma migrate dev --name <cambio>` | Crea una migración después de editar `prisma/schema.prisma` |

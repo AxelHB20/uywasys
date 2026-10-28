@@ -8,6 +8,8 @@ import {
   OutflowInput,
   Presentation,
   PresentationInput,
+  ProductImportPreview,
+  ProductImportResult,
   ProductCategory,
   ProductDetail,
   ProductInput,
@@ -107,5 +109,22 @@ export class InventoryService {
     if (from) params = params.set('from', from);
     if (to) params = params.set('to', to);
     return this.http.get<ControlledMovement[]>('/api/inventory/controlled', { params });
+  }
+
+  // ── Importación desde Excel (solo administrador) ──
+  importTemplate(): Observable<Blob> {
+    return this.http.get('/api/inventory/import/template', { responseType: 'blob' });
+  }
+
+  previewImport(file: File): Observable<ProductImportPreview> {
+    const data = new FormData();
+    data.append('file', file);
+    return this.http.post<ProductImportPreview>('/api/inventory/import/preview', data);
+  }
+
+  import(file: File): Observable<ProductImportResult> {
+    const data = new FormData();
+    data.append('file', file);
+    return this.http.post<ProductImportResult>('/api/inventory/import', data);
   }
 }

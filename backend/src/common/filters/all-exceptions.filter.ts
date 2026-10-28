@@ -14,6 +14,8 @@ export interface ApiError {
   statusCode: number;
   message: string;
   errors?: string[];
+  /** Datos extra para la pantalla, por ejemplo { visitId } o { available } en un 409 */
+  details?: Record<string, unknown>;
   path: string;
   timestamp: string;
 }
@@ -31,12 +33,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
     const apiError = this.toApiError(exception);
-    const { statusCode, errors } = apiError;
+    const { statusCode, errors, details } = apiError;
     let { message } = apiError;
     // La importación de Excel admite archivos más grandes que el logo
     if (
       statusCode === HttpStatus.PAYLOAD_TOO_LARGE &&
-      (req.originalUrl ?? '').includes('/clients/import')
+      /\/(clients|inventory)\/import/.test(req.originalUrl ?? '')
     ) {
       message = 'El archivo pesa más de lo permitido (2 MB)';
     }
@@ -55,12 +57,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
     if (errors?.length) body.errors = errors;
+    if (details) body.details = details;
     res.status(statusCode).json(body);
   }
 
   private toApiError(
     exception: unknown,
-  ): Pick<ApiError, 'statusCode' | 'message' | 'errors'> {
+  ): Pick<ApiError, 'statusCode' | 'message' | 'errors' | 'details'> {
     if (exception instanceof HttpException) {
       const statusCode = exception.getStatus();
       const response = exception.getResponse();
@@ -90,7 +93,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ) {
         return { statusCode, message: 'Ruta no encontrada' };
       }
-      return { statusCode, message: exception.message };
+      return {
+        statusCode,
+        message: exception.message,
+        details: extraFields(response),
+      };
     }
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
@@ -118,4 +125,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: 'Error interno del servidor',
     };
   }
+}
+
+/** Campos propios de una excepción lanzada con objeto: new ConflictException({ message, visitId }). */
+function extraFields(response: unknown): Record<string, unknown> | undefined {
+  if (typeof response !== 'object' || response === null) return undefined;
+  const {
+    message: _message,
+    error: _error,
+    statusCode: _statusCode,
+    ...rest
+  } = response as Record<string, unknown>;
+  return Object.keys(rest).length ? rest : undefined;
 }

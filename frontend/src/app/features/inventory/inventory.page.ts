@@ -63,6 +63,7 @@ export class InventoryPage {
   protected readonly canManage = computed(() =>
     STOCK_ROLES.includes(this.session.role() ?? 'CASHIER'),
   );
+  protected readonly isAdmin = computed(() => this.session.role() === 'ADMIN');
 
   protected readonly search = new FormControl('', { nonNullable: true });
   protected readonly category = new FormControl<ProductCategory | ''>('', { nonNullable: true });

@@ -11,6 +11,7 @@ import {
   toPetView,
 } from './pet.mapper.js';
 import type { PetView } from './pet.mapper.js';
+import { reserveNumbers } from '../common/sequence/clinic-sequence.js';
 
 export interface PetDetail extends PetView {
   client: { id: number; name: string; phone: string };
@@ -49,14 +50,17 @@ export class PetsService {
     if (!client) throw new NotFoundException('El cliente no existe');
     const today = await clinicToday(this.prisma, actor.clinicId);
 
-    const pet = await this.prisma.pet.create({
-      data: {
-        ...petCreateData(dto, today),
-        clinicId: actor.clinicId,
-        clientId,
-      },
-      select: PET_SELECT,
-    });
+    const pet = await this.prisma.$transaction(async (tx) =>
+      tx.pet.create({
+        data: {
+          ...petCreateData(dto, today),
+          clinicId: actor.clinicId,
+          clientId,
+          number: await reserveNumbers(tx, actor.clinicId, 'pet'),
+        },
+        select: PET_SELECT,
+      }),
+    );
     await this.audit.log({
       clinicId: actor.clinicId,
       userId: actor.id,

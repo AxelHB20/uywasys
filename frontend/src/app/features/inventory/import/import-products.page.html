@@ -1,0 +1,368 @@
+<section class="mx-auto max-w-5xl space-y-6">
+  <div>
+    <a
+      routerLink="/inventario"
+      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+    >
+      <app-icon name="chevron-left" class="size-4" /> Inventario
+    </a>
+    <h1 class="font-display text-2xl font-semibold text-slate-900">
+      Importar productos desde Excel
+    </h1>
+    <p class="mt-1 text-slate-600">
+      Carga tu inventario inicial: productos, presentaciones, precios y stock con sus lotes.
+    </p>
+  </div>
+
+  <!-- Pasos -->
+  <ol class="grid grid-cols-4 gap-2" aria-label="Pasos de la importación">
+    @for (label of steps; track label; let i = $index) {
+      @let n = i + 1;
+      <li class="flex flex-col gap-2" [attr.aria-current]="step() === n ? 'step' : null">
+        <span
+          class="h-1.5 rounded-full"
+          [class]="step() >= n ? 'bg-anil-600' : 'bg-slate-200'"
+          aria-hidden="true"
+        ></span>
+        <span
+          class="text-xs font-medium sm:text-sm"
+          [class]="step() >= n ? 'text-slate-900' : 'text-slate-500'"
+        >
+          <span class="tabular-nums">{{ n }}.</span> {{ label }}
+        </span>
+      </li>
+    }
+  </ol>
+
+  @switch (step()) {
+    @case (1) {
+      <div class="card p-6 sm:p-8">
+        <div class="flex flex-col gap-6 md:flex-row md:items-start">
+          <span
+            class="grid size-14 shrink-0 place-items-center rounded-2xl bg-anil-50 text-anil-700"
+          >
+            <app-icon name="receipt" class="size-7" />
+          </span>
+          <div class="flex-1">
+            <h2 class="font-display text-lg font-semibold text-slate-900">
+              Descarga la plantilla y llénala
+            </h2>
+            <ul class="mt-3 space-y-2 text-sm text-slate-700">
+              <li class="flex gap-2">
+                <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />Una fila
+                por presentación: si se vende en caja y por tableta, son dos filas del mismo
+                producto.
+              </li>
+              <li class="flex gap-2">
+                <app-icon
+                  name="check"
+                  class="mt-0.5 size-4 shrink-0 text-emerald-600"
+                />Equivalencia = cuántas unidades mínimas trae (Caja x 100 = 100). Precio con IGV
+                incluido.
+              </li>
+              <li class="flex gap-2">
+                <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />El stock
+                inicial es opcional y va con lote y vencimiento (salvo accesorios).
+              </li>
+              <li class="flex gap-2">
+                <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />Antes de
+                guardar nada te mostramos qué filas tienen errores.
+              </li>
+            </ul>
+            <div class="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="downloading()"
+                (click)="downloadTemplate()"
+              >
+                @if (downloading()) {
+                  <app-icon name="loader" class="size-4 animate-spin" />
+                }
+                Descargar plantilla
+              </button>
+              <button type="button" class="btn btn-secondary" (click)="step.set(2)">
+                Ya tengo mi archivo
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+    @case (2) {
+      <div class="card space-y-5 p-6 sm:p-8">
+        <label
+          for="import-file"
+          class="flex cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+          [class]="
+            dragging()
+              ? 'border-anil-500 bg-anil-50'
+              : 'border-slate-300 hover:border-anil-400 hover:bg-slate-50'
+          "
+          (dragover)="$event.preventDefault(); dragging.set(true)"
+          (dragleave)="dragging.set(false)"
+          (drop)="onDrop($event)"
+        >
+          <span class="grid size-12 place-items-center rounded-2xl bg-anil-50 text-anil-700">
+            <app-icon name="plus" class="size-6" />
+          </span>
+          <span class="mt-3 font-medium text-slate-900"
+            >Arrastra tu archivo aquí o haz clic para elegirlo</span
+          >
+          <span class="mt-1 text-sm text-slate-500">Excel (.xlsx), hasta 2 MB y 2000 filas</span>
+          <input
+            id="import-file"
+            type="file"
+            class="sr-only"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            (change)="onFileInput($event)"
+          />
+        </label>
+
+        @if (file(); as f) {
+          <div
+            class="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70"
+          >
+            <app-icon name="receipt" class="size-5 shrink-0 text-anil-700" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-medium text-slate-900">{{ f.name }}</p>
+              <p class="text-sm text-slate-500 tabular-nums">{{ sizeLabel(f.size) }}</p>
+            </div>
+            <button
+              type="button"
+              class="btn btn-ghost size-10 px-0"
+              (click)="file.set(null)"
+              aria-label="Quitar el archivo"
+            >
+              <app-icon name="x" class="size-4" />
+            </button>
+          </div>
+        }
+        @if (fileError(); as error) {
+          <p
+            class="flex gap-2 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800 ring-1 ring-rose-200"
+            role="alert"
+          >
+            <app-icon name="alert" class="mt-0.5 size-4 shrink-0" />{{ error }}
+          </p>
+        }
+
+        <div class="flex flex-wrap justify-between gap-2">
+          <button type="button" class="btn btn-ghost" (click)="step.set(1)">
+            <app-icon name="chevron-left" class="size-4" /> Plantilla
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!file() || checking()"
+            (click)="check()"
+          >
+            @if (checking()) {
+              <app-icon name="loader" class="size-4 animate-spin" /> Revisando…
+            } @else {
+              Revisar archivo
+            }
+          </button>
+        </div>
+      </div>
+    }
+
+    @case (3) {
+      @if (preview(); as p) {
+        <ul class="grid gap-3 sm:grid-cols-3">
+          <li class="card p-4">
+            <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              Se importarán
+            </p>
+            <p class="mt-1 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+              {{ p.summary.products }}
+            </p>
+            <p class="text-sm text-slate-500">
+              productos · {{ p.summary.presentations }} presentaciones ·
+              {{ p.summary.batches }} lotes
+            </p>
+          </li>
+          <li class="card p-4">
+            <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              Ya registrados
+            </p>
+            <p class="mt-1 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+              {{ p.summary.exists }}
+            </p>
+            <p class="text-sm text-slate-500">filas que se saltan</p>
+          </li>
+          <li class="card p-4" [class]="p.summary.errors ? 'ring-rose-200' : ''">
+            <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Con errores</p>
+            <p
+              class="mt-1 font-display text-2xl font-semibold tabular-nums"
+              [class]="p.summary.errors ? 'text-rose-700' : 'text-slate-900'"
+            >
+              {{ p.summary.errors }}
+            </p>
+            <p class="text-sm text-slate-500">no se importan</p>
+          </li>
+        </ul>
+
+        <div class="card overflow-hidden">
+          <div
+            class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3"
+          >
+            <h2 class="font-display text-base font-semibold text-slate-900">Filas del archivo</h2>
+            <div class="flex rounded-lg bg-slate-100 p-0.5 text-sm font-medium" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                class="rounded-md px-3 py-1.5 text-slate-600 aria-selected:bg-white aria-selected:text-slate-900 aria-selected:shadow-sm"
+                [attr.aria-selected]="filter() === 'problems'"
+                (click)="filter.set('problems')"
+              >
+                Con observaciones ({{ p.summary.errors + p.summary.exists }})
+              </button>
+              <button
+                type="button"
+                role="tab"
+                class="rounded-md px-3 py-1.5 text-slate-600 aria-selected:bg-white aria-selected:text-slate-900 aria-selected:shadow-sm"
+                [attr.aria-selected]="filter() === 'all'"
+                (click)="filter.set('all')"
+              >
+                Todas ({{ p.summary.rows }})
+              </button>
+            </div>
+          </div>
+          @if (visibleRows().length) {
+            <div class="max-h-[28rem] overflow-auto">
+              <table class="w-full text-left text-sm">
+                <thead
+                  class="sticky top-0 bg-slate-50 text-xs font-medium tracking-wide text-slate-500 uppercase"
+                >
+                  <tr>
+                    <th scope="col" class="px-4 py-2.5">Fila</th>
+                    <th scope="col" class="px-4 py-2.5">Cliente</th>
+                    <th scope="col" class="px-4 py-2.5">Mascota</th>
+                    <th scope="col" class="px-4 py-2.5">Estado</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  @for (r of visibleRows(); track r.row) {
+                    <tr class="align-top">
+                      <td class="px-4 py-3 text-slate-500 tabular-nums">{{ r.row }}</td>
+                      <td class="px-4 py-3">
+                        <p class="font-medium text-slate-900">{{ r.product.name || '—' }}</p>
+                        <p class="text-xs text-slate-500">
+                          {{ categoryLabels[r.product.category] }}
+                          @if (r.product.code) {
+                            · {{ r.product.code }}
+                          }
+                          @if (r.product.controlled) {
+                            · Controlado
+                          }
+                        </p>
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">
+                        <p>{{ r.presentation.name || '—' }}</p>
+                        <p class="text-xs text-slate-500 tabular-nums">
+                          = {{ units(r, 1) }} · {{ money(r.presentation.price) }}
+                        </p>
+                      </td>
+                      <td class="px-4 py-3 text-slate-700">
+                        @if (r.stock; as st) {
+                          <p class="tabular-nums">{{ st.quantity }} × {{ r.presentation.name }}</p>
+                          <p class="text-xs text-slate-500">
+                            Lote {{ st.lotNumber ?? '—' }} · {{ st.expiresAt ?? 'no vence' }}
+                          </p>
+                        } @else {
+                          <span class="text-slate-400">—</span>
+                        }
+                      </td>
+                      <td class="px-4 py-3">
+                        <app-badge [tone]="status[r.status].tone">{{
+                          status[r.status].label
+                        }}</app-badge>
+                        @for (e of r.errors; track $index) {
+                          <p
+                            class="mt-1 text-xs"
+                            [class]="r.status === 'error' ? 'text-rose-700' : 'text-slate-500'"
+                          >
+                            {{ e }}
+                          </p>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            @if (hiddenRows()) {
+              <p class="border-t border-slate-100 px-5 py-3 text-sm text-slate-500">
+                Y {{ hiddenRows() }} filas más que no se muestran aquí.
+              </p>
+            }
+          } @else {
+            <p class="px-5 py-10 text-center text-sm text-slate-600">
+              <app-icon name="check" class="mr-1 inline size-4 text-emerald-600" /> Todas las filas
+              están correctas.
+            </p>
+          }
+        </div>
+
+        <div class="card space-y-4 p-5 sm:p-6">
+          @if (p.summary.errors) {
+            <p class="text-sm text-slate-700">
+              Los productos con errores no se importan. Corrígelos en el Excel y vuelve a subirlo:
+              los que ya se importaron se saltarán solos.
+            </p>
+          }
+          <div class="flex flex-wrap justify-between gap-2">
+            <button type="button" class="btn btn-ghost" (click)="restart()">
+              <app-icon name="chevron-left" class="size-4" /> Subir otro archivo
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="p.summary.products === 0 || importing()"
+              (click)="runImport()"
+            >
+              @if (importing()) {
+                <app-icon name="loader" class="size-4 animate-spin" /> Importando…
+              } @else {
+                Importar {{ p.summary.products }}
+                {{ p.summary.products === 1 ? 'producto' : 'productos' }}
+              }
+            </button>
+          </div>
+        </div>
+      }
+    }
+
+    @case (4) {
+      @if (result(); as r) {
+        <div class="card flex flex-col items-center px-6 py-12 text-center">
+          <span class="grid size-14 place-items-center rounded-full bg-emerald-600 text-white">
+            <app-icon name="check" class="size-7" />
+          </span>
+          <h2 class="mt-4 font-display text-xl font-semibold text-slate-900">
+            Importación terminada
+          </h2>
+          <p class="mt-2 text-slate-600 tabular-nums">
+            Se registraron <strong class="text-slate-900">{{ r.products }} productos</strong>,
+            {{ r.presentations }} presentaciones y {{ r.batches }} lotes con stock.
+          </p>
+          @if (r.skipped || r.errors) {
+            <p class="mt-1 text-sm text-slate-500 tabular-nums">
+              {{ r.skipped }}
+              {{ r.skipped === 1 ? 'fila ya existía' : 'filas ya existían' }} y {{ r.errors }}
+              {{ r.errors === 1 ? 'tenía errores' : 'tenían errores' }}.
+            </p>
+          }
+          <div class="mt-6 flex flex-wrap justify-center gap-2">
+            <a routerLink="/inventario" class="btn btn-primary">Ver inventario</a>
+            <button type="button" class="btn btn-secondary" (click)="restart()">
+              Importar otro archivo
+            </button>
+          </div>
+        </div>
+      }
+    }
+  }
+</section>

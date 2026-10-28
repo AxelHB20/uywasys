@@ -45,6 +45,8 @@ export const FRONT_DESK_ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION'];
 
 export interface PetBadge {
   id: number;
+  /** Correlativo de la clínica (HC-00045) */
+  number: number;
   name: string;
   species: Species;
   aggressive: boolean;
@@ -54,6 +56,8 @@ export interface PetBadge {
 
 export interface ClientSummary {
   id: number;
+  /** Correlativo de la clínica (C-00012) */
+  number: number;
   /** Última atención terminada (AAAA-MM-DD) */
   lastVisit: string | null;
   docType: DocumentType | null;
@@ -73,6 +77,8 @@ export interface ClientPage {
 
 export interface Pet {
   id: number;
+  /** Correlativo de la clínica (HC-00045) */
+  number: number;
   clientId: number;
   name: string;
   species: Species;
@@ -104,6 +110,8 @@ export interface AuthorizedPerson {
 
 export interface ClientDetail {
   id: number;
+  /** Correlativo de la clínica (C-00012) */
+  number: number;
   docType: DocumentType | null;
   docNumber: string | null;
   name: string;

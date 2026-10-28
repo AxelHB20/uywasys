@@ -131,6 +131,21 @@ export const routes: Routes = [
           import('./features/inventory/controlled.page').then((m) => m.ControlledPage),
       },
       {
+        path: 'inventario/importar',
+        title: 'Importar productos · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/inventory/import/import-products.page').then(
+            (m) => m.ImportProductsPage,
+          ),
+      },
+      {
+        path: 'servicios',
+        title: 'Servicios y precios · Uywa',
+        loadComponent: () =>
+          import('./features/care-services/care-services.page').then((m) => m.CareServicesPage),
+      },
+      {
         path: 'inventario/:id',
         title: 'Producto · Uywa',
         loadComponent: () =>

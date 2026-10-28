@@ -191,3 +191,80 @@ export interface OutflowInput {
 }
 
 export type StockFilter = 'all' | 'low' | 'expiring';
+
+export interface ProductImportRow {
+  row: number;
+  key: string;
+  product: {
+    code: string | null;
+    name: string;
+    category: ProductCategory;
+    baseUnit: BaseUnit;
+    controlled: boolean;
+  };
+  presentation: { name: string; factor: number; price: number | null };
+  stock: {
+    quantity: number;
+    lotNumber: string | null;
+    expiresAt: string | null;
+    cost: number | null;
+  } | null;
+  status: 'ok' | 'exists' | 'error';
+  errors: string[];
+}
+
+export interface ProductImportPreview {
+  rows: ProductImportRow[];
+  summary: {
+    rows: number;
+    ok: number;
+    exists: number;
+    errors: number;
+    products: number;
+    presentations: number;
+    batches: number;
+  };
+}
+
+export interface ProductImportResult {
+  products: number;
+  presentations: number;
+  batches: number;
+  skipped: number;
+  errors: number;
+}
+
+export type CareServiceCategory =
+  'CONSULTATION' | 'VACCINATION' | 'DEWORMING' | 'SURGERY' | 'LAB' | 'GROOMING' | 'OTHER';
+
+export const SERVICE_CATEGORY_LABELS: Record<CareServiceCategory, string> = {
+  CONSULTATION: 'Consultas',
+  VACCINATION: 'Vacunación',
+  DEWORMING: 'Desparasitación',
+  SURGERY: 'Cirugías y procedimientos',
+  LAB: 'Laboratorio',
+  GROOMING: 'Baño y grooming',
+  OTHER: 'Otros',
+};
+export const SERVICE_CATEGORIES = Object.keys(SERVICE_CATEGORY_LABELS) as CareServiceCategory[];
+
+export interface CareService {
+  id: number;
+  name: string;
+  category: CareServiceCategory;
+  price: number;
+  igv: IgvAffectation;
+  durationMin: number | null;
+  active: boolean;
+  supplies: { productId: number; name: string; baseUnit: BaseUnit; quantity: number }[];
+}
+
+export interface CareServiceInput {
+  name: string;
+  category: CareServiceCategory;
+  price: number;
+  igv: IgvAffectation;
+  durationMin: number | null;
+  active?: boolean;
+  supplies: { productId: number; quantity: number }[];
+}

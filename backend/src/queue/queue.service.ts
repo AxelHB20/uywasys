@@ -11,6 +11,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import type {
   QueueStatus,
   Species,
+  VisitStatus,
   VisitType,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -55,13 +56,16 @@ export interface QueueItem {
   finishedAt: Date | null;
   pet: {
     id: number;
+    number: number;
     name: string;
     species: Species;
     aggressive: boolean;
     allergies: string | null;
   };
-  client: { id: number; name: string; phone: string };
+  client: { id: number; number: number; name: string; phone: string };
   attendedBy: { id: number; fullName: string } | null;
+  /** Atención abierta o cerrada que salió de esta entrada */
+  visit: { id: number; status: VisitStatus } | null;
 }
 
 export const QUEUE_ITEM_SELECT = {
@@ -77,14 +81,22 @@ export const QUEUE_ITEM_SELECT = {
   pet: {
     select: {
       id: true,
+      number: true,
       name: true,
       species: true,
       aggressive: true,
       allergies: true,
-      client: { select: { id: true, name: true, phone: true } },
+      client: { select: { id: true, number: true, name: true, phone: true } },
     },
   },
   attendedBy: { select: { id: true, fullName: true } },
+  // La atención vigente de esta entrada (abierta o cerrada), para abrirla desde la cola
+  visits: {
+    where: { status: { not: 'CANCELLED' } },
+    select: { id: true, status: true },
+    orderBy: { id: 'desc' },
+    take: 1,
+  },
 } satisfies Prisma.QueueEntrySelect;
 
 type ItemRow = Prisma.QueueEntryGetPayload<{
@@ -167,7 +179,14 @@ export class QueueService {
   ): Promise<QueueItem> {
     const current = await this.prisma.queueEntry.findFirst({
       where: { id, clinicId: actor.clinicId },
-      select: { status: true },
+      select: {
+        status: true,
+        visits: {
+          where: { status: 'OPEN' },
+          select: { id: true },
+          take: 1,
+        },
+      },
     });
     if (!current) throw new NotFoundException('La atención no existe');
     if (TRANSITIONS[current.status].length === 0)
@@ -180,6 +199,13 @@ export class QueueService {
     if (dto.status && dto.status !== current.status) {
       if (!TRANSITIONS[current.status].includes(dto.status))
         throw new BadRequestException('No se puede pasar a ese estado');
+      // Con una atención abierta, la cola se mueve desde la atención (cerrarla o cancelarla)
+      if (current.visits.length)
+        throw new ConflictException({
+          message:
+            'Tiene una atención abierta: ciérrala o cancélala desde la atención',
+          visitId: current.visits[0].id,
+        });
       data.status = dto.status;
       const now = new Date();
       if (dto.status === 'IN_PROGRESS') {
@@ -204,11 +230,13 @@ export class QueueService {
 }
 
 export function toQueueItem(row: ItemRow): QueueItem {
+  const { visits, ...entry } = row;
   const { client, ...pet } = row.pet;
   return {
-    ...row,
+    ...entry,
     day: fromDbDate(row.day) as string,
     pet,
     client,
+    visit: visits[0] ?? null,
   };
 }

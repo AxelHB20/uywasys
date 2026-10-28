@@ -49,7 +49,13 @@ function setup() {
       update: vi.fn().mockResolvedValue(detail()),
     },
     queueEntry: { groupBy: vi.fn().mockResolvedValue([]) },
+    // Correlativo: el contador de la clínica devuelve 7
+    $queryRaw: vi.fn().mockResolvedValue([{ last_value: 7 }]),
+    $transaction: vi.fn(),
   };
+  prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => unknown) =>
+    fn(prisma),
+  );
   const audit = { log: vi.fn() };
   return {
     service: new ClientsService(
@@ -78,6 +84,7 @@ describe('ClientsService', () => {
     const data = prisma.client.create.mock.calls[0][0].data;
     expect(data).toMatchObject({
       clinicId: 10,
+      number: 7,
       consentVersion: CONSENT_VERSION,
       consentChannel: 'FORM',
       consentById: 5,

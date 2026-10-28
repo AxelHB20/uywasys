@@ -1,14 +1,14 @@
 import { IconName } from '../ui/icon/icons';
 import { Species } from '../../core/services/clients.models';
 
-/** Código de cliente para el expediente: C-00012 */
-export function clientCode(id: number): string {
-  return `C-${String(id).padStart(5, '0')}`;
+/** Código de cliente para el expediente (correlativo de la clínica): C-00012 */
+export function clientCode(number: number): string {
+  return `C-${String(number).padStart(5, '0')}`;
 }
 
 /** N.º de historia clínica de la mascota: HC-00045 */
-export function petCode(id: number): string {
-  return `HC-${String(id).padStart(5, '0')}`;
+export function petCode(number: number): string {
+  return `HC-${String(number).padStart(5, '0')}`;
 }
 
 export const SPECIES_ICONS: Record<Species, IconName> = {

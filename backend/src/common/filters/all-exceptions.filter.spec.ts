@@ -1,6 +1,7 @@
 import {
   ArgumentsHost,
   BadRequestException,
+  ConflictException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -50,6 +51,20 @@ describe('AllExceptionsFilter', () => {
     );
     expect(status).toBe(404);
     expect(body.message).toBe('Cliente no encontrado');
+  });
+
+  it('pasa los datos extra de un error en details, y nada si no hay', () => {
+    const { body } = run(
+      new ConflictException({
+        message: 'Ya tiene una atención abierta',
+        visitId: 7,
+      }),
+    );
+    expect(body.message).toBe('Ya tiene una atención abierta');
+    expect(body.details).toEqual({ visitId: 7 });
+    expect(
+      run(new NotFoundException('No existe')).body.details,
+    ).toBeUndefined();
   });
 
   it('convierte un registro duplicado de Prisma en 409', () => {

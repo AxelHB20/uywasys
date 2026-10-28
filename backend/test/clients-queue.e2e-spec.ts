@@ -65,6 +65,9 @@ describe('Clientes, mascotas y cola (e2e)', () => {
       await prisma.client.deleteMany({ where });
       await prisma.auditLog.deleteMany({ where });
       await prisma.user.deleteMany({ where });
+      await prisma.clinicSequence.deleteMany({
+        where: { clinicId: { in: clinicIds } },
+      });
       await prisma.clinic.deleteMany({ where: { id: { in: clinicIds } } });
     }
     await app?.close();
@@ -167,6 +170,58 @@ describe('Clientes, mascotas y cola (e2e)', () => {
     expect(res.body.docType).toBeNull();
   });
 
+  it('correlativos por clínica: empiezan en 1, sin huecos ni repetidos, y se buscan por código', async () => {
+    const rosa = await http()
+      .get(`/api/clients/${clientId}`)
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    // El 409 del DNI repetido no consumió número: Juan es el 2
+    expect(rosa.body.number).toBe(1);
+    expect(rosa.body.pets[0].number).toBe(1);
+
+    const other = await http()
+      .post('/api/clients')
+      .set('Cookie', cookies.other)
+      .send({ name: 'Cliente Otra Clínica', phone: '944444444', consent: true })
+      .expect(201);
+    expect(other.body.number).toBe(1);
+
+    const parallel = await Promise.all(
+      [1, 2, 3, 4, 5].map((i) =>
+        http()
+          .post('/api/clients')
+          .set('Cookie', cookies.reception)
+          .send({ name: `Paralelo ${i}`, phone: `95555555${i}`, consent: true })
+          .expect(201),
+      ),
+    );
+    const numbers = parallel.map((r) => r.body.number as number);
+    expect([...numbers].sort((a, b) => a - b)).toEqual([3, 4, 5, 6, 7]);
+
+    const byCode = await http()
+      .get('/api/clients?q=C-00002')
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    expect(byCode.body.items.map((c: { name: string }) => c.name)).toEqual([
+      'Juan Sin Documento',
+    ]);
+    const byPet = await http()
+      .get('/api/clients?q=hc1')
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    expect(byPet.body.items.map((c: { id: number }) => c.id)).toEqual([
+      clientId,
+    ]);
+    // El C-00001 de la otra clínica es su propio cliente, no Rosa
+    const otherByCode = await http()
+      .get('/api/clients?q=C-1')
+      .set('Cookie', cookies.other)
+      .expect(200);
+    expect(otherByCode.body.items.map((c: { id: number }) => c.id)).toEqual([
+      other.body.id,
+    ]);
+  });
+
   it('busca sin importar tildes: por apellido, DNI, celular o mascota', async () => {
     for (const q of ['pena', dni, '987654', 'TOBIAS']) {
       const res = await http()
@@ -206,7 +261,11 @@ describe('Clientes, mascotas y cola (e2e)', () => {
       .get('/api/clients')
       .set('Cookie', cookies.other)
       .expect(200);
-    expect(list.body.total).toBe(0);
+    // Solo ve su propio cliente
+    expect(list.body.items.map((c: { id: number }) => c.id)).not.toContain(
+      clientId,
+    );
+    expect(list.body.total).toBe(1);
   });
 
   it('agrega y quita personas autorizadas', async () => {
@@ -290,8 +349,8 @@ describe('Clientes, mascotas y cola (e2e)', () => {
       .expect(200);
     expect(dash.body.queue).toMatchObject({ done: 1, urgent: 1, arrived: 2 });
     expect(dash.body.queue.items[0].pet.name).toBe('Mishi');
-    expect(dash.body.clients).toMatchObject({ active: 2, newThisMonth: 2 });
-    expect(dash.body.recentClients).toHaveLength(2);
+    expect(dash.body.clients).toMatchObject({ active: 7, newThisMonth: 7 });
+    expect(dash.body.recentClients).toHaveLength(5);
 
     const list = await http()
       .get('/api/clients?q=tobias')

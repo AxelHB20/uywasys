@@ -25,6 +25,7 @@ function row(status: string) {
       client: { id: 2, name: 'Rosa Quispe', phone: '987654321' },
     },
     attendedBy: null,
+    visits: [],
   };
 }
 
@@ -55,7 +56,11 @@ function setup(opts: {
       findFirst: vi
         .fn()
         .mockResolvedValue(
-          opts.status ? { status: opts.status } : opts.open ? { id: 9 } : null,
+          opts.status
+            ? { status: opts.status, visits: [] }
+            : opts.open
+              ? { id: 9 }
+              : null,
         ),
       create: vi.fn().mockResolvedValue(row('ARRIVED')),
       update: vi

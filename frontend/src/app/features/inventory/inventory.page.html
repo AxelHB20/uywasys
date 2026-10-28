@@ -8,6 +8,9 @@
     </div>
     @if (canManage()) {
       <div class="flex flex-wrap gap-2 self-start sm:self-auto">
+        @if (isAdmin()) {
+          <a routerLink="/inventario/importar" class="btn btn-secondary">Importar Excel</a>
+        }
         <a routerLink="/inventario/controlados" class="btn btn-secondary">Controlados</a>
         <a routerLink="/inventario/nuevo" class="btn btn-primary">
           <app-icon name="plus" class="size-4" /> Nuevo producto

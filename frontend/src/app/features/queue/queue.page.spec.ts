@@ -18,8 +18,15 @@ function item(id: number, overrides: Partial<QueueItem> = {}): QueueItem {
     arrivedAt: `2026-10-27T14:0${id}:00Z`,
     startedAt: null,
     finishedAt: null,
-    pet: { id: id * 10, name: `Mascota ${id}`, species: 'DOG', aggressive: false, allergies: null },
-    client: { id: id * 100, name: `Cliente ${id}`, phone: '987654321' },
+    pet: {
+      id: id * 10,
+      number: id,
+      name: `Mascota ${id}`,
+      species: 'DOG',
+      aggressive: false,
+      allergies: null,
+    },
+    client: { id: id * 100, number: id, name: `Cliente ${id}`, phone: '987654321' },
     attendedBy: null,
     ...overrides,
   };
@@ -152,7 +159,14 @@ describe('QueuePage (cola de hoy)', () => {
     expect(req.request.body).toEqual({ petId: 33, urgent: false, reason: null });
     req.flush(
       item(4, {
-        pet: { id: 33, name: 'Luna', species: 'CAT', aggressive: false, allergies: null },
+        pet: {
+          id: 33,
+          number: 4,
+          name: 'Luna',
+          species: 'CAT',
+          aggressive: false,
+          allergies: null,
+        },
       }),
     );
     fixture.detectChanges();

@@ -24,6 +24,7 @@ describe('formulario de mascota', () => {
     const form = createPetForm();
     patchPetForm(form, {
       id: 1,
+      number: 1,
       clientId: 1,
       name: 'Luna',
       species: 'DOG',

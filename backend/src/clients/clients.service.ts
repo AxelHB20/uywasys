@@ -13,6 +13,10 @@ import { documentError, isValidDocument } from '../common/validators/peru.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { DocumentType, Species } from '../generated/prisma/enums.js';
 import { PET_SELECT, petCreateData, toPetView } from '../pets/pet.mapper.js';
+import {
+  parseRecordCode,
+  reserveNumbers,
+} from '../common/sequence/clinic-sequence.js';
 import type { PetView } from '../pets/pet.mapper.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CONSENT_VERSION } from './consent.js';
@@ -25,6 +29,7 @@ import type {
 
 export interface PetBadge {
   id: number;
+  number: number;
   name: string;
   species: Species;
   aggressive: boolean;
@@ -34,6 +39,8 @@ export interface PetBadge {
 
 export interface ClientSummary {
   id: number;
+  /** Correlativo de la clínica: C-00012 */
+  number: number;
   /** Última atención terminada (AAAA-MM-DD) de cualquiera de sus mascotas */
   lastVisit: string | null;
   docType: DocumentType | null;
@@ -61,6 +68,7 @@ export interface AuthorizedPersonView {
 
 export interface ClientDetail {
   id: number;
+  number: number;
   docType: DocumentType | null;
   docNumber: string | null;
   name: string;
@@ -81,6 +89,7 @@ export interface ClientDetail {
 
 const DETAIL_SELECT = {
   id: true,
+  number: true,
   docType: true,
   docNumber: true,
   name: true,
@@ -125,7 +134,15 @@ export class ClientsService {
 
     const where: Prisma.ClientWhereInput = { clinicId };
     if (status !== 'all') where.active = status === 'active';
-    if (term) {
+    const code = parseRecordCode(query.q ?? '');
+    if (code) {
+      // "C-12" o "HC-45": búsqueda exacta por código de cliente o de historia clínica
+      where.OR = [
+        code.kind === 'client'
+          ? { number: code.number }
+          : { pets: { some: { clinicId, number: code.number } } },
+      ];
+    } else if (term) {
       where.OR = [
         { searchText: { contains: term } },
         { pets: { some: { clinicId, nameSearch: { contains: term } } } },
@@ -140,6 +157,7 @@ export class ClientsService {
         take: pageSize,
         select: {
           id: true,
+          number: true,
           docType: true,
           docNumber: true,
           name: true,
@@ -148,6 +166,7 @@ export class ClientsService {
           pets: {
             select: {
               id: true,
+              number: true,
               name: true,
               species: true,
               aggressive: true,
@@ -217,35 +236,43 @@ export class ClientsService {
 
     let client: DetailRow;
     try {
-      client = await this.prisma.client.create({
-        data: {
-          clinicId: actor.clinicId,
-          docType,
-          docNumber,
-          name: dto.name,
-          phone: dto.phone,
-          email: dto.email ?? null,
-          address: dto.address ?? null,
-          district: dto.district ?? null,
-          notes: dto.notes ?? null,
-          consentAt: new Date(),
-          consentVersion: CONSENT_VERSION,
-          consentChannel: 'FORM',
-          consentById: actor.id,
-          marketingConsent: dto.marketingConsent ?? false,
-          searchText: clientSearchText(dto.name, docNumber, dto.phone),
-          pets: dto.pet
-            ? {
-                create: [
-                  {
-                    ...petCreateData(dto.pet, today),
-                    clinicId: actor.clinicId,
-                  },
-                ],
-              }
-            : undefined,
-        },
-        select: DETAIL_SELECT,
+      client = await this.prisma.$transaction(async (tx) => {
+        const number = await reserveNumbers(tx, actor.clinicId, 'client');
+        const petNumber = dto.pet
+          ? await reserveNumbers(tx, actor.clinicId, 'pet')
+          : 0;
+        return tx.client.create({
+          data: {
+            clinicId: actor.clinicId,
+            number,
+            docType,
+            docNumber,
+            name: dto.name,
+            phone: dto.phone,
+            email: dto.email ?? null,
+            address: dto.address ?? null,
+            district: dto.district ?? null,
+            notes: dto.notes ?? null,
+            consentAt: new Date(),
+            consentVersion: CONSENT_VERSION,
+            consentChannel: 'FORM',
+            consentById: actor.id,
+            marketingConsent: dto.marketingConsent ?? false,
+            searchText: clientSearchText(dto.name, docNumber, dto.phone),
+            pets: dto.pet
+              ? {
+                  create: [
+                    {
+                      ...petCreateData(dto.pet, today),
+                      clinicId: actor.clinicId,
+                      number: petNumber,
+                    },
+                  ],
+                }
+              : undefined,
+          },
+          select: DETAIL_SELECT,
+        });
       });
     } catch (error) {
       throw mapDuplicate(error);

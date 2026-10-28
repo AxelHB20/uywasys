@@ -59,6 +59,7 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     const client = await prisma.client.create({
       data: {
         clinicId,
+        number: 1,
         name: 'Rosa Quispe',
         phone: '987654321',
         consentAt: new Date(),
@@ -68,6 +69,7 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
         pets: {
           create: {
             clinicId,
+            number: 1,
             name: 'Toby',
             nameSearch: 'toby',
             species: 'DOG',
@@ -94,6 +96,7 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
       await prisma.client.deleteMany({ where });
       await prisma.auditLog.deleteMany({ where });
       await prisma.user.deleteMany({ where });
+      await prisma.clinicSequence.deleteMany({ where: { clinicId } });
       await prisma.clinic.delete({ where: { id: clinicId } });
     }
     await app?.close();

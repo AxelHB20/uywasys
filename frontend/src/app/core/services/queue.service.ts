@@ -17,12 +17,13 @@ export interface QueueItem {
   finishedAt: string | null;
   pet: {
     id: number;
+    number: number;
     name: string;
     species: Species;
     aggressive: boolean;
     allergies: string | null;
   };
-  client: { id: number; name: string; phone: string };
+  client: { id: number; number: number; name: string; phone: string };
   attendedBy: { id: number; fullName: string } | null;
 }
 

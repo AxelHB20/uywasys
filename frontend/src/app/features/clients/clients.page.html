@@ -30,7 +30,7 @@
         type="search"
         autocomplete="off"
         [formControl]="search"
-        placeholder="Nombre, DNI, celular o mascota"
+        placeholder="Nombre, DNI, celular, mascota o código"
         class="field-input mt-0 pr-3.5 pl-10"
       />
     </div>
@@ -133,7 +133,7 @@
                             >{{ client.name }}</a
                           >
                           <p class="text-xs text-slate-500 tabular-nums">
-                            {{ clientCode(client.id) }} ·
+                            {{ clientCode(client.number) }} ·
                             @if (client.docType) {
                               {{ docShort[client.docType] }} {{ client.docNumber }}
                             } @else {

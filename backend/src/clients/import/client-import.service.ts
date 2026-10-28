@@ -6,6 +6,7 @@ import { clinicToday } from '../../common/time/clinic-today.js';
 import { toDbDate } from '../../common/time/clinic-day.js';
 import type { DocumentType } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { reserveNumbers } from '../../common/sequence/clinic-sequence.js';
 import { CONSENT_VERSION } from '../consent.js';
 import { readWorkbook } from './excel.js';
 import { validateRows } from './import-rows.js';
@@ -79,16 +80,25 @@ export class ClientImportService {
     }
 
     const now = new Date();
-    let pets = 0;
+    const toCreate = [...groups.values()].map((group) => ({
+      client: group[0].client,
+      pets: dedupePets(group),
+    }));
+    const pets = toCreate.reduce((sum, g) => sum + g.pets.length, 0);
     await this.prisma.$transaction(
       async (tx) => {
-        for (const group of groups.values()) {
-          const { client } = group[0];
-          const uniquePets = dedupePets(group);
-          pets += uniquePets.length;
+        // Se reservan los correlativos de una vez, en el orden del Excel
+        let nextClient = toCreate.length
+          ? await reserveNumbers(tx, actor.clinicId, 'client', toCreate.length)
+          : 0;
+        let nextPet = pets
+          ? await reserveNumbers(tx, actor.clinicId, 'pet', pets)
+          : 0;
+        for (const { client, pets: uniquePets } of toCreate) {
           await tx.client.create({
             data: {
               clinicId: actor.clinicId,
+              number: nextClient++,
               ...client,
               consentAt: now,
               consentVersion: CONSENT_VERSION,
@@ -102,6 +112,7 @@ export class ClientImportService {
               pets: {
                 create: uniquePets.map((pet) => ({
                   clinicId: actor.clinicId,
+                  number: nextPet++,
                   name: pet.name,
                   nameSearch: normalizeSearch(pet.name).slice(0, 60),
                   species: pet.species,

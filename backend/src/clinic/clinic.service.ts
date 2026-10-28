@@ -6,6 +6,7 @@ import {
 import { clinicLogoUrl } from '../auth/session-user.js';
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { UpdateClinicDto } from './dto/update-clinic.dto.js';
 
@@ -19,6 +20,8 @@ export interface ClinicProfile {
   phone: string | null;
   email: string | null;
   logoUrl: string | null;
+  /** Descuento máximo por línea (%) sin autorización del administrador */
+  maxDiscountPercent: number;
 }
 
 export interface SetupStatus {
@@ -37,6 +40,7 @@ const PROFILE_SELECT = {
   email: true,
   logoMime: true,
   logoUpdatedAt: true,
+  maxDiscountPercent: true,
 } as const;
 
 @Injectable()
@@ -69,9 +73,15 @@ export class ClinicService {
       address: dto.address ?? null,
       phone: dto.phone ?? null,
       email: dto.email?.toLowerCase() ?? null,
+      // Si no se envía, se mantiene el tope actual
+      maxDiscountPercent:
+        dto.maxDiscountPercent ?? Number(before.maxDiscountPercent),
     };
     const changed = (Object.keys(data) as (keyof typeof data)[]).filter(
-      (key) => before[key] !== data[key],
+      (key) =>
+        key === 'maxDiscountPercent'
+          ? Number(before[key]) !== data[key]
+          : before[key] !== data[key],
     );
 
     const clinic = await this.prisma.clinic.update({
@@ -88,7 +98,16 @@ export class ClinicService {
         ip,
         action: 'clinic.update',
         data: Object.fromEntries(
-          changed.map((key) => [key, { antes: before[key], ahora: data[key] }]),
+          changed.map((key) => [
+            key,
+            {
+              antes:
+                key === 'maxDiscountPercent'
+                  ? Number(before[key])
+                  : before[key],
+              ahora: data[key],
+            },
+          ]),
         ),
       });
     }
@@ -182,9 +201,14 @@ function toProfile(clinic: {
   email: string | null;
   logoMime: string | null;
   logoUpdatedAt: Date | null;
+  maxDiscountPercent: Prisma.Decimal;
 }): ClinicProfile {
   const { logoMime: _mime, logoUpdatedAt: _updated, ...rest } = clinic;
-  return { ...rest, logoUrl: clinicLogoUrl(clinic) };
+  return {
+    ...rest,
+    logoUrl: clinicLogoUrl(clinic),
+    maxDiscountPercent: Number(clinic.maxDiscountPercent),
+  };
 }
 
 /** Identifica la imagen por sus primeros bytes, no por la extensión que manda el navegador. */

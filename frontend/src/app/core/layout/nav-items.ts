@@ -39,6 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Configuración',
     items: [
+      { label: 'Servicios y precios', icon: 'receipt', route: '/servicios' },
       { label: 'Clínica', icon: 'building', route: '/configuracion', roles: ['ADMIN'] },
       { label: 'Usuarios', icon: 'user-cog', route: '/usuarios', roles: ['ADMIN'] },
     ],

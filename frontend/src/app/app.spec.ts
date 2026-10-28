@@ -78,7 +78,7 @@ describe('App', () => {
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('aside')?.textContent).toContain('Veterinaria San Martín');
-    expect(el.textContent).toContain('Buenas');
+    expect(el.textContent).toMatch(/Buen(os|as) (días|tardes|noches)/);
     expect(el.textContent).toContain('Ana');
   });
 

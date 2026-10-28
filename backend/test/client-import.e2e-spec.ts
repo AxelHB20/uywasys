@@ -71,6 +71,7 @@ describe('Importación de clientes desde Excel (e2e)', () => {
       await prisma.client.deleteMany({ where: { clinicId } });
       await prisma.auditLog.deleteMany({ where: { clinicId } });
       await prisma.user.deleteMany({ where: { clinicId } });
+      await prisma.clinicSequence.deleteMany({ where: { clinicId } });
       await prisma.clinic.delete({ where: { id: clinicId } });
     }
     await app?.close();
