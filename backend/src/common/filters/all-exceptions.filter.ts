@@ -30,7 +30,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
-    const { statusCode, message, errors } = this.toApiError(exception);
+    const apiError = this.toApiError(exception);
+    const { statusCode, errors } = apiError;
+    let { message } = apiError;
+    // La importación de Excel admite archivos más grandes que el logo
+    if (
+      statusCode === HttpStatus.PAYLOAD_TOO_LARGE &&
+      (req.originalUrl ?? '').includes('/clients/import')
+    ) {
+      message = 'El archivo pesa más de lo permitido (2 MB)';
+    }
 
     if (statusCode >= 500) {
       this.logger.error(

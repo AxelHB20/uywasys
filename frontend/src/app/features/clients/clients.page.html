@@ -1,0 +1,259 @@
+<section class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Clientes</h1>
+      <p class="mt-1 text-slate-600">Dueños y sus mascotas.</p>
+    </div>
+    @if (canEdit()) {
+      <div class="flex gap-2 self-start sm:self-auto">
+        @if (isAdmin()) {
+          <a routerLink="/clientes/importar" class="btn btn-secondary">Importar Excel</a>
+        }
+        <a routerLink="/clientes/nuevo" class="btn btn-primary">
+          <app-icon name="user-plus" class="size-4" /> Nuevo cliente
+        </a>
+      </div>
+    }
+  </div>
+
+  <div class="flex flex-col gap-3 sm:flex-row" role="search">
+    <div class="relative flex-1">
+      <label for="clients-search" class="sr-only"
+        >Buscar por nombre, documento, celular o mascota</label
+      >
+      <app-icon
+        name="search"
+        class="pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-slate-400"
+      />
+      <input
+        id="clients-search"
+        type="search"
+        autocomplete="off"
+        [formControl]="search"
+        placeholder="Nombre, DNI, celular o mascota"
+        class="field-input mt-0 pr-3.5 pl-10"
+      />
+    </div>
+    <div class="sm:w-44">
+      <label for="clients-status" class="sr-only">Estado</label>
+      <select id="clients-status" [formControl]="status" class="field-input mt-0">
+        @for (option of statusOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </div>
+  </div>
+
+  @switch (state().kind) {
+    @case ('loading') {
+      <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando clientes">
+        @for (i of [1, 2, 3, 4]; track i) {
+          <div class="flex items-center gap-4 p-5">
+            <div class="h-4 w-48 animate-pulse rounded bg-slate-100"></div>
+            <div class="ml-auto h-4 w-24 animate-pulse rounded bg-slate-100"></div>
+          </div>
+        }
+      </div>
+    }
+    @case ('error') {
+      @let error = state();
+      <div class="card flex flex-col items-center px-6 py-12 text-center">
+        <app-icon name="alert" class="size-8 text-rose-600" />
+        <p class="mt-3 font-medium text-slate-900">
+          {{ error.kind === 'error' ? error.message : '' }}
+        </p>
+        <button type="button" class="btn btn-secondary mt-5" (click)="reload()">Reintentar</button>
+      </div>
+    }
+    @case ('ready') {
+      @let ready = state();
+      @if (ready.kind === 'ready') {
+        @if (ready.data.items.length === 0) {
+          <div class="card flex flex-col items-center px-6 py-14 text-center">
+            <span class="grid size-14 place-items-center rounded-2xl bg-anil-50 text-anil-700">
+              <app-icon [name]="searching() ? 'search' : 'clients'" class="size-7" />
+            </span>
+            @if (searching()) {
+              <p class="mt-4 font-medium text-slate-900">No encontramos «{{ search.value }}»</p>
+              <p class="mt-1 max-w-sm text-slate-600">
+                Prueba con el apellido, el DNI, el celular o el nombre de la mascota.
+              </p>
+              <div class="mt-5 flex flex-wrap justify-center gap-2">
+                <button type="button" class="btn btn-secondary" (click)="clearSearch()">
+                  Limpiar búsqueda
+                </button>
+                @if (canEdit()) {
+                  <a routerLink="/clientes/nuevo" class="btn btn-primary">Registrar cliente</a>
+                }
+              </div>
+            } @else {
+              <p class="mt-4 font-medium text-slate-900">Aún no hay clientes</p>
+              <p class="mt-1 max-w-sm text-slate-600">
+                Registra al dueño y su mascota en menos de un minuto.
+              </p>
+              @if (canEdit()) {
+                <a routerLink="/clientes/nuevo" class="btn btn-primary mt-5">
+                  <app-icon name="user-plus" class="size-4" /> Registrar el primero
+                </a>
+              }
+            }
+          </div>
+        } @else {
+          <!-- Escritorio: tabla -->
+          <div class="card hidden overflow-hidden md:block">
+            <table class="w-full text-left text-sm">
+              <thead
+                class="border-b border-slate-100 bg-slate-50/70 text-xs font-medium tracking-wide text-slate-500 uppercase"
+              >
+                <tr>
+                  <th scope="col" class="px-5 py-3">Cliente</th>
+                  <th scope="col" class="px-5 py-3">Celular</th>
+                  <th scope="col" class="px-5 py-3">Mascotas</th>
+                  <th scope="col" class="px-5 py-3 whitespace-nowrap">Última visita</th>
+                  <th scope="col" class="px-3 py-3"><span class="sr-only">Abrir</span></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (client of ready.data.items; track client.id) {
+                  <tr
+                    class="relative transition-colors hover:bg-slate-50/60"
+                    [class.opacity-60]="!client.active"
+                  >
+                    <td class="px-5 py-3">
+                      <div class="flex items-center gap-3">
+                        <span
+                          class="grid size-9 shrink-0 place-items-center rounded-full bg-anil-100 text-xs font-semibold text-anil-800"
+                          aria-hidden="true"
+                          >{{ initials(client.name) }}</span
+                        >
+                        <div class="min-w-0">
+                          <a
+                            [routerLink]="['/clientes', client.id]"
+                            class="font-medium text-slate-900 after:absolute after:inset-0 focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-anil-400 focus-visible:after:ring-inset"
+                            >{{ client.name }}</a
+                          >
+                          <p class="text-xs text-slate-500 tabular-nums">
+                            {{ clientCode(client.id) }} ·
+                            @if (client.docType) {
+                              {{ docShort[client.docType] }} {{ client.docNumber }}
+                            } @else {
+                              Sin documento
+                            }
+                            @if (!client.active) {
+                              · Inactivo
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-5 py-3 whitespace-nowrap text-slate-700 tabular-nums">
+                      {{ formatPhone(client.phone) }}
+                    </td>
+                    <td class="px-5 py-3">
+                      <ng-container *ngTemplateOutlet="pets; context: { $implicit: client.pets }" />
+                    </td>
+                    <td class="px-5 py-3 whitespace-nowrap text-slate-600">
+                      {{ relativeDay(client.lastVisit) }}
+                    </td>
+                    <td class="px-3 py-3 text-slate-400">
+                      <app-icon name="chevron-right" class="size-5" />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Móvil: tarjetas -->
+          <ul class="space-y-3 md:hidden">
+            @for (client of ready.data.items; track client.id) {
+              <li>
+                <a
+                  [routerLink]="['/clientes', client.id]"
+                  class="card block p-4 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-anil-400"
+                  [class.opacity-60]="!client.active"
+                >
+                  <div class="flex items-start gap-3">
+                    <span
+                      class="grid size-10 shrink-0 place-items-center rounded-full bg-anil-100 text-sm font-semibold text-anil-800"
+                      aria-hidden="true"
+                      >{{ initials(client.name) }}</span
+                    >
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate font-medium text-slate-900">{{ client.name }}</p>
+                      <p class="text-sm text-slate-500 tabular-nums">
+                        {{ formatPhone(client.phone) }}
+                        @if (client.lastVisit) {
+                          · Última visita: {{ relativeDay(client.lastVisit) }}
+                        }
+                      </p>
+                    </div>
+                    <app-icon name="chevron-right" class="mt-1 size-5 text-slate-400" />
+                  </div>
+                  @if (client.pets.length) {
+                    <div class="mt-3">
+                      <ng-container *ngTemplateOutlet="pets; context: { $implicit: client.pets }" />
+                    </div>
+                  }
+                </a>
+              </li>
+            }
+          </ul>
+
+          @if (range(); as r) {
+            <nav
+              class="flex flex-col items-center gap-3 sm:flex-row sm:justify-between"
+              aria-label="Paginación"
+            >
+              <p class="text-sm text-slate-600 tabular-nums">
+                {{ r.from }}–{{ r.to }} de {{ r.total }}
+              </p>
+              @if (ready.data.page > 1 || hasNext()) {
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    [disabled]="ready.data.page <= 1"
+                    (click)="goTo(ready.data.page - 1)"
+                  >
+                    <app-icon name="chevron-left" class="size-4" /> Anterior
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    [disabled]="!hasNext()"
+                    (click)="goTo(ready.data.page + 1)"
+                  >
+                    Siguiente <app-icon name="chevron-right" class="size-4" />
+                  </button>
+                </div>
+              }
+            </nav>
+          }
+        }
+      }
+    }
+  }
+</section>
+
+<ng-template #pets let-pets>
+  <ul class="flex flex-wrap gap-1.5">
+    @for (pet of pets; track pet.id) {
+      <li
+        class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
+        [class.line-through]="!pet.active"
+      >
+        {{ pet.name }}
+        <span class="font-normal text-slate-500">· {{ speciesLabel(pet.species) }}</span>
+        @if (pet.aggressive) {
+          <app-badge tone="danger"><app-icon name="alert" class="size-3" />Agresivo</app-badge>
+        }
+        @if (pet.hasAllergies) {
+          <app-badge tone="warning">Alergia</app-badge>
+        }
+      </li>
+    } @empty {
+      <li class="text-slate-500">Sin mascotas</li>
+    }
+  </ul>
+</ng-template>

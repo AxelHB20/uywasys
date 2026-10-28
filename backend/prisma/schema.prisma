@@ -35,8 +35,17 @@ model Clinic {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  users     User[]
-  auditLogs AuditLog[]
+  users            User[]
+  auditLogs        AuditLog[]
+  clients          Client[]
+  authorizedPeople AuthorizedPerson[]
+  pets             Pet[]
+  queueEntries     QueueEntry[]
+  products         Product[]
+  presentations    ProductPresentation[]
+  batches          ProductBatch[]
+  stockMovements   StockMovement[]
+  careServices     CareService[]
 
   @@map("clinics")
 }
@@ -59,8 +68,13 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic    Clinic     @relation(fields: [clinicId], references: [id])
-  auditLogs AuditLog[]
+  clinic          Clinic          @relation(fields: [clinicId], references: [id])
+  auditLogs       AuditLog[]
+  queueCreated    QueueEntry[]    @relation("QueueCreatedBy")
+  queueAttended   QueueEntry[]    @relation("QueueAttendedBy")
+  batchesReceived ProductBatch[]
+  stockMovements  StockMovement[] @relation("MovementUser")
+  movementsAsVet  StockMovement[] @relation("MovementVet")
 
   @@index([clinicId])
   @@map("users")
@@ -83,4 +97,364 @@ model AuditLog {
 
   @@index([clinicId, createdAt])
   @@map("audit_logs")
+}
+
+// ─── Fase 1: clientes, mascotas y cola del día ───────────────────────────────
+
+/// Catálogo 06 de SUNAT: DNI (1), carné de extranjería (4), RUC (6), pasaporte (7)
+enum DocumentType {
+  DNI
+  CE
+  RUC
+  PASSPORT
+}
+
+enum Species {
+  DOG
+  CAT
+  RABBIT
+  GUINEA_PIG
+  BIRD
+  REPTILE
+  OTHER
+}
+
+enum PetSex {
+  MALE
+  FEMALE
+}
+
+enum VisitType {
+  CONSULTATION
+  GROOMING
+}
+
+enum QueueStatus {
+  ARRIVED
+  WAITING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+/// Dueño de una o más mascotas. Sin documento se permite (docType y docNumber nulos).
+model Client {
+  id               Int           @id @default(autoincrement())
+  clinicId         Int           @map("clinic_id")
+  docType          DocumentType? @map("doc_type")
+  docNumber        String?       @map("doc_number") @db.VarChar(12)
+  /// Nombres y apellidos, o razón social si es RUC
+  name             String        @db.VarChar(150)
+  /// Celular peruano: 9 dígitos que empiezan con 9
+  phone            String        @db.Char(9)
+  email            String?       @db.VarChar(120)
+  address          String?       @db.VarChar(200)
+  district         String?       @db.VarChar(60)
+  notes            String?       @db.VarChar(500)
+  /// Ley 29733: consentimiento para tratar sus datos (obligatorio al registrar)
+  consentAt        DateTime      @map("consent_at") @db.Timestamptz(3)
+  consentVersion   String        @map("consent_version") @db.VarChar(20)
+  /// FORM = lo marcó recepción con el cliente presente · IMPORT = la clínica declaró tenerlo al importar
+  consentChannel   String        @map("consent_channel") @db.VarChar(10)
+  consentById      Int?          @map("consent_by_id")
+  /// Consentimiento aparte para promociones y recordatorios comerciales (opcional)
+  marketingConsent Boolean       @default(false) @map("marketing_consent")
+  /// Nombre, documento y celular normalizados (minúsculas, sin tildes) para buscar
+  searchText       String        @map("search_text") @db.VarChar(200)
+  active           Boolean       @default(true)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic     Clinic             @relation(fields: [clinicId], references: [id])
+  pets       Pet[]
+  authorized AuthorizedPerson[]
+
+  @@unique([clinicId, docType, docNumber])
+  @@index([clinicId, name])
+  @@map("clients")
+}
+
+/// Persona autorizada por el dueño para dejar o recoger a sus mascotas
+model AuthorizedPerson {
+  id        Int      @id @default(autoincrement())
+  clinicId  Int      @map("clinic_id")
+  clientId  Int      @map("client_id")
+  name      String   @db.VarChar(120)
+  dni       String?  @db.Char(8)
+  phone     String?  @db.Char(9)
+  relation  String?  @db.VarChar(40)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("authorized_people")
+}
+
+model Pet {
+  id                 Int       @id @default(autoincrement())
+  clinicId           Int       @map("clinic_id")
+  clientId           Int       @map("client_id")
+  name               String    @db.VarChar(60)
+  /// Nombre normalizado para buscar
+  nameSearch         String    @map("name_search") @db.VarChar(60)
+  species            Species
+  breed              String?   @db.VarChar(60)
+  sex                PetSex?
+  neutered           Boolean   @default(false)
+  birthDate          DateTime? @map("birth_date") @db.Date
+  /// true cuando la fecha se calculó desde una edad aproximada
+  birthDateEstimated Boolean   @default(false) @map("birth_date_estimated")
+  weightKg           Decimal?  @map("weight_kg") @db.Decimal(5, 2)
+  color              String?   @db.VarChar(40)
+  microchip          String?   @db.VarChar(20)
+  allergies          String?   @db.VarChar(300)
+  aggressive         Boolean   @default(false)
+  aggressiveNote     String?   @map("aggressive_note") @db.VarChar(200)
+  notes              String?   @db.VarChar(500)
+  deceasedAt         DateTime? @map("deceased_at") @db.Date
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic         Clinic          @relation(fields: [clinicId], references: [id])
+  client         Client          @relation(fields: [clientId], references: [id])
+  queueEntries   QueueEntry[]
+  stockMovements StockMovement[]
+
+  /// clientId: cargar las mascotas de un cliente (ficha y lista) · clinicId+clientId: búsqueda por nombre de mascota
+  @@index([clientId])
+  @@index([clinicId, clientId])
+  @@map("pets")
+}
+
+/// Cola del día: llegada → espera → atención → atendido
+model QueueEntry {
+  id           Int         @id @default(autoincrement())
+  clinicId     Int         @map("clinic_id")
+  petId        Int         @map("pet_id")
+  /// Día de la clínica (zona horaria de la clínica), para listar la cola de hoy
+  day          DateTime    @db.Date
+  type         VisitType   @default(CONSULTATION)
+  status       QueueStatus @default(ARRIVED)
+  urgent       Boolean     @default(false)
+  reason       String?     @db.VarChar(200)
+  arrivedAt    DateTime    @default(now()) @map("arrived_at") @db.Timestamptz(3)
+  startedAt    DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt   DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdById  Int         @map("created_by_id")
+  attendedById Int?        @map("attended_by_id")
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic     Clinic @relation(fields: [clinicId], references: [id])
+  pet        Pet    @relation(fields: [petId], references: [id])
+  createdBy  User   @relation("QueueCreatedBy", fields: [createdById], references: [id])
+  attendedBy User?  @relation("QueueAttendedBy", fields: [attendedById], references: [id])
+
+  @@index([clinicId, day])
+  @@index([petId])
+  @@map("queue_entries")
+}
+
+// ─── Fase 2: inventario farmacéutico y catálogo de servicios ─────────────────
+
+enum ProductCategory {
+  MEDICINE
+  VACCINE
+  ANTIPARASITIC
+  FOOD
+  ACCESSORY
+  HYGIENE
+  SUPPLY
+}
+
+/// Unidad mínima en la que se guarda el stock
+enum BaseUnit {
+  UNIT
+  TABLET
+  ML
+  G
+}
+
+/// Afectación del IGV (SUNAT): 10 gravado, 20 exonerado, 30 inafecto
+enum IgvAffectation {
+  TAXED
+  EXEMPT
+  UNAFFECTED
+}
+
+enum MovementType {
+  PURCHASE
+  WASTE
+  TREATMENT
+  COUNT_ADJUST
+  RETURN
+  SALE
+}
+
+enum CareServiceCategory {
+  CONSULTATION
+  VACCINATION
+  DEWORMING
+  SURGERY
+  LAB
+  GROOMING
+  OTHER
+}
+
+model Product {
+  id                   Int             @id @default(autoincrement())
+  clinicId             Int             @map("clinic_id")
+  /// Código interno opcional (SKU)
+  code                 String?         @db.VarChar(30)
+  barcode              String?         @db.VarChar(30)
+  name                 String          @db.VarChar(120)
+  nameSearch           String          @map("name_search") @db.VarChar(120)
+  category             ProductCategory
+  baseUnit             BaseUnit        @map("base_unit")
+  /// Alerta de stock bajo, en unidad mínima
+  minStock             Decimal         @default(0) @map("min_stock") @db.Decimal(12, 3)
+  requiresPrescription Boolean         @default(false) @map("requires_prescription")
+  /// Medicamento controlado (ketamina y similares): cada salida guarda paciente, veterinario, lote y receta
+  controlled           Boolean         @default(false)
+  /// Unidad SUNAT para la boleta (NIU, KGM, LTR…)
+  sunatUnit            String          @default("NIU") @map("sunat_unit") @db.VarChar(3)
+  igv                  IgvAffectation  @default(TAXED)
+  /// Suma de los lotes; se actualiza en la misma transacción que los lotes
+  totalStock           Decimal         @default(0) @map("total_stock") @db.Decimal(12, 3)
+  notes                String?         @db.VarChar(500)
+  active               Boolean         @default(true)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic        Clinic                @relation(fields: [clinicId], references: [id])
+  presentations ProductPresentation[]
+  batches       ProductBatch[]
+  movements     StockMovement[]
+  usedIn        CareServiceSupply[]
+
+  @@unique([clinicId, code])
+  @@index([clinicId, name])
+  @@map("products")
+}
+
+/// Presentación de venta o compra: "Caja x 100" = 100 unidades mínimas
+model ProductPresentation {
+  id        Int      @id @default(autoincrement())
+  clinicId  Int      @map("clinic_id")
+  productId Int      @map("product_id")
+  name      String   @db.VarChar(60)
+  factor    Decimal  @db.Decimal(12, 3)
+  /// Precio de venta con IGV incluido
+  price     Decimal? @db.Decimal(10, 2)
+  barcode   String?  @db.VarChar(30)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@map("product_presentations")
+}
+
+model ProductBatch {
+  id              Int       @id @default(autoincrement())
+  clinicId        Int       @map("clinic_id")
+  productId       Int       @map("product_id")
+  /// Nulo solo en accesorios
+  lotNumber       String?   @map("lot_number") @db.VarChar(40)
+  expiresAt       DateTime? @map("expires_at") @db.Date
+  quantity        Decimal   @db.Decimal(12, 3)
+  initialQuantity Decimal   @map("initial_quantity") @db.Decimal(12, 3)
+  /// Costo por unidad mínima, sin redondear a céntimos
+  unitCost        Decimal?  @map("unit_cost") @db.Decimal(12, 4)
+  supplier        String?   @db.VarChar(120)
+  /// N.º de factura o boleta de compra
+  documentNumber  String?   @map("document_number") @db.VarChar(30)
+  receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  createdById     Int       @map("created_by_id")
+
+  clinic    Clinic          @relation(fields: [clinicId], references: [id])
+  product   Product         @relation(fields: [productId], references: [id])
+  createdBy User            @relation(fields: [createdById], references: [id])
+  movements StockMovement[]
+
+  /// FEFO: lotes de un producto ordenados por vencimiento
+  @@index([productId, expiresAt])
+  @@index([clinicId, expiresAt])
+  @@map("product_batches")
+}
+
+/// Kardex: cada entrada o salida de stock, por lote. Nunca se edita ni se borra.
+model StockMovement {
+  id              BigInt       @id @default(autoincrement())
+  clinicId        Int          @map("clinic_id")
+  productId       Int          @map("product_id")
+  batchId         Int?         @map("batch_id")
+  type            MovementType
+  /// Positivo entra, negativo sale (unidad mínima)
+  quantity        Decimal      @db.Decimal(12, 3)
+  /// Stock total del producto después del movimiento
+  balanceAfter    Decimal      @map("balance_after") @db.Decimal(12, 3)
+  reason          String?      @db.VarChar(200)
+  userId          Int          @map("user_id")
+  /// Paciente al que se aplicó (obligatorio en controlados)
+  petId           Int?         @map("pet_id")
+  vetId           Int?         @map("vet_id")
+  prescriptionRef String?      @map("prescription_ref") @db.VarChar(60)
+  /// Origen: venta, consulta… (fases siguientes)
+  refType         String?      @map("ref_type") @db.VarChar(20)
+  refId           Int?         @map("ref_id")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clinic  Clinic        @relation(fields: [clinicId], references: [id])
+  product Product       @relation(fields: [productId], references: [id])
+  batch   ProductBatch? @relation(fields: [batchId], references: [id])
+  user    User          @relation("MovementUser", fields: [userId], references: [id])
+  pet     Pet?          @relation(fields: [petId], references: [id])
+  vet     User?         @relation("MovementVet", fields: [vetId], references: [id])
+
+  @@index([productId, createdAt])
+  @@index([clinicId, createdAt])
+  @@index([batchId])
+  @@index([petId])
+  @@map("stock_movements")
+}
+
+/// Catálogo de servicios (consulta, vacunación, baño…). El cobro llega en la Fase 4.
+model CareService {
+  id          Int                 @id @default(autoincrement())
+  clinicId    Int                 @map("clinic_id")
+  name        String              @db.VarChar(120)
+  category    CareServiceCategory
+  /// Precio con IGV incluido
+  price       Decimal             @db.Decimal(10, 2)
+  igv         IgvAffectation      @default(TAXED)
+  durationMin Int?                @map("duration_min")
+  active      Boolean             @default(true)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic   Clinic              @relation(fields: [clinicId], references: [id])
+  supplies CareServiceSupply[]
+
+  @@unique([clinicId, name])
+  @@map("care_services")
+}
+
+/// Insumo que consume un servicio (en unidad mínima del producto)
+model CareServiceSupply {
+  serviceId Int     @map("service_id")
+  productId Int     @map("product_id")
+  quantity  Decimal @db.Decimal(12, 3)
+
+  service CareService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id])
+
+  @@id([serviceId, productId])
+  @@index([productId])
+  @@map("care_service_supplies")
 }

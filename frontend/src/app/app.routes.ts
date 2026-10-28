@@ -35,16 +35,34 @@ export const routes: Routes = [
       },
       // Módulos pendientes: cada uno reemplaza su pantalla temporal cuando se construye.
       {
+        path: 'cola',
+        title: 'Cola de hoy · Uywa',
+        loadComponent: () => import('./features/queue/queue.page').then((m) => m.QueuePage),
+      },
+      {
+        path: 'clientes/importar',
+        title: 'Importar clientes · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/clients/import/import-clients.page').then((m) => m.ImportClientsPage),
+      },
+      {
         path: 'clientes',
         title: 'Clientes · Uywa',
-        loadComponent: comingSoon,
-        data: {
-          title: 'Clientes y mascotas',
-          icon: 'clients',
-          phase: 'Fase 1',
-          description:
-            'Registro de dueños con DNI o RUC, fichas de mascotas y la cola de atención del día.',
-        },
+        loadComponent: () => import('./features/clients/clients.page').then((m) => m.ClientsPage),
+      },
+      {
+        path: 'clientes/nuevo',
+        title: 'Nuevo cliente · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        loadComponent: () =>
+          import('./features/clients/new-client.page').then((m) => m.NewClientPage),
+      },
+      {
+        path: 'clientes/:id',
+        title: 'Ficha del cliente · Uywa',
+        loadComponent: () =>
+          import('./features/clients/client-detail.page').then((m) => m.ClientDetailPage),
       },
       {
         path: 'grooming',
@@ -95,13 +113,28 @@ export const routes: Routes = [
       {
         path: 'inventario',
         title: 'Inventario · Uywa',
-        loadComponent: comingSoon,
-        data: {
-          title: 'Inventario',
-          icon: 'package',
-          phase: 'Fase 2',
-          description: 'Productos, lotes con vencimiento, presentaciones de venta y kardex.',
-        },
+        loadComponent: () =>
+          import('./features/inventory/inventory.page').then((m) => m.InventoryPage),
+      },
+      {
+        path: 'inventario/nuevo',
+        title: 'Nuevo producto · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/inventory/new-product.page').then((m) => m.NewProductPage),
+      },
+      {
+        path: 'inventario/controlados',
+        title: 'Libro de controlados · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/inventory/controlled.page').then((m) => m.ControlledPage),
+      },
+      {
+        path: 'inventario/:id',
+        title: 'Producto · Uywa',
+        loadComponent: () =>
+          import('./features/inventory/product-detail.page').then((m) => m.ProductDetailPage),
       },
       {
         path: 'caja',

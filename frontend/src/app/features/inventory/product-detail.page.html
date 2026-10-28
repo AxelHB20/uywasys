@@ -1,0 +1,886 @@
+<section class="space-y-6">
+  <a
+    routerLink="/inventario"
+    class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+  >
+    <app-icon name="chevron-left" class="size-4" /> Inventario
+  </a>
+
+  @if (loading() && !product()) {
+    <div class="card space-y-3 p-6" aria-busy="true">
+      <div class="h-6 w-64 animate-pulse rounded bg-slate-100"></div>
+      <div class="h-4 w-40 animate-pulse rounded bg-slate-100"></div>
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (product(); as p) {
+    <!-- Encabezado -->
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex min-w-0 items-center gap-4">
+        <span
+          class="grid size-14 shrink-0 place-items-center rounded-2xl"
+          [class]="p.controlled ? 'bg-rose-50 text-rose-700' : 'bg-anil-50 text-anil-700'"
+          aria-hidden="true"
+        >
+          <app-icon name="package" class="size-7" />
+        </span>
+        <div class="min-w-0">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            {{ categoryLabels[p.category] }}
+            @if (p.code) {
+              · {{ p.code }}
+            }
+          </p>
+          <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
+            {{ p.name }}
+          </h1>
+          <div class="mt-1 flex flex-wrap gap-1.5">
+            @if (p.controlled) {
+              <app-badge tone="danger"
+                ><app-icon name="alert" class="size-3" />Controlado</app-badge
+              >
+            }
+            @if (p.requiresPrescription) {
+              <app-badge tone="info">Se vende con receta</app-badge>
+            }
+            @if (!p.active) {
+              <app-badge>Inactivo</app-badge>
+            }
+          </div>
+        </div>
+      </div>
+      @if (canManage()) {
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!p.active"
+            (click)="openPurchase()"
+          >
+            <app-icon name="plus" class="size-4" /> Registrar compra
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            [disabled]="p.totalStock <= 0"
+            (click)="openOutflow()"
+          >
+            Registrar salida
+          </button>
+          @if (isAdmin()) {
+            <button
+              type="button"
+              class="btn btn-secondary"
+              [disabled]="!p.batches.length"
+              (click)="openCount()"
+            >
+              Conteo físico
+            </button>
+          }
+          <button
+            type="button"
+            class="btn btn-ghost size-11 px-0"
+            (click)="openEdit()"
+            aria-label="Editar el producto"
+            title="Editar"
+          >
+            <app-icon name="pencil" class="size-4" />
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- Indicadores -->
+    <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <li class="card p-4 sm:col-span-2 xl:col-span-1">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Stock</p>
+        <p
+          class="mt-1 font-display text-lg font-semibold"
+          [class]="p.totalStock <= 0 ? 'text-rose-700' : 'text-slate-900'"
+        >
+          {{ stockText() }}
+        </p>
+        <p class="text-sm text-slate-500 tabular-nums">{{ units(p.totalStock) }} en total</p>
+      </li>
+      <li class="card p-4">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          Próximo vencimiento
+        </p>
+        @if (nextBatch(); as b) {
+          <div class="mt-2">
+            <app-badge [tone]="expiryBadge[b.expiry!.level].tone">{{
+              expiryText(b.expiry!.days)
+            }}</app-badge>
+          </div>
+          <p class="mt-1 text-sm text-slate-500 tabular-nums">
+            {{ b.expiresAt }} · Lote {{ b.lotNumber ?? '—' }}
+          </p>
+        } @else {
+          <p class="mt-1 text-slate-500">
+            {{ p.category === 'ACCESSORY' ? 'No vence' : 'Sin lotes con stock' }}
+          </p>
+        }
+      </li>
+      <li class="card p-4">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Stock mínimo</p>
+        <p class="mt-1 font-display text-lg font-semibold text-slate-900 tabular-nums">
+          {{ p.minStock ? units(p.minStock) : 'Sin alerta' }}
+        </p>
+        @if (p.lowStock) {
+          <p class="text-sm font-medium text-amber-800">Por debajo del mínimo: toca comprar</p>
+        }
+      </li>
+      <li class="card p-4">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Valor al costo</p>
+        <p class="mt-1 font-display text-lg font-semibold text-slate-900 tabular-nums">
+          {{ money(stockValue()) }}
+        </p>
+        <p class="text-sm text-slate-500">Según el costo de cada lote</p>
+      </li>
+    </ul>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+      <div class="space-y-6">
+        <!-- Lotes -->
+        <section class="card overflow-hidden" aria-labelledby="batches-title">
+          <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <h2 id="batches-title" class="font-display text-base font-semibold text-slate-900">
+              Lotes con stock
+            </h2>
+            <span class="text-sm text-slate-500">Se descuentan primero los que vencen antes</span>
+          </div>
+          @if (p.batches.length) {
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[40rem] text-left text-sm">
+                <thead
+                  class="bg-slate-50/70 text-xs font-medium tracking-wide text-slate-500 uppercase"
+                >
+                  <tr>
+                    <th scope="col" class="px-5 py-2.5">Lote</th>
+                    <th scope="col" class="px-5 py-2.5">Vencimiento</th>
+                    <th scope="col" class="px-5 py-2.5">Cantidad</th>
+                    <th scope="col" class="px-5 py-2.5">Compra</th>
+                    @if (canManage()) {
+                      <th scope="col" class="px-3 py-2.5"><span class="sr-only">Acciones</span></th>
+                    }
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  @for (b of p.batches; track b.id) {
+                    <tr class="align-top" [class.bg-rose-50/40]="b.expiry?.level === 'EXPIRED'">
+                      <td class="px-5 py-3 font-medium text-slate-900">
+                        {{ b.lotNumber ?? 'Sin lote' }}
+                      </td>
+                      <td class="px-5 py-3">
+                        @if (b.expiry) {
+                          <app-badge [tone]="expiryBadge[b.expiry.level].tone">{{
+                            expiryText(b.expiry.days)
+                          }}</app-badge>
+                          <p class="mt-1 text-xs text-slate-500 tabular-nums">{{ b.expiresAt }}</p>
+                        } @else {
+                          <span class="text-slate-500">No vence</span>
+                        }
+                      </td>
+                      <td class="px-5 py-3">
+                        <p class="text-slate-900">{{ batchQty(b) }}</p>
+                        <p class="text-xs text-slate-500 tabular-nums">
+                          de {{ units(b.initialQuantity) }} ingresadas
+                        </p>
+                      </td>
+                      <td class="px-5 py-3 text-slate-700">
+                        <p class="whitespace-nowrap tabular-nums">
+                          {{ b.receivedAt | date: 'd MMM y' : '-0500' }}
+                          @if (b.unitCost !== null) {
+                            · {{ money(b.unitCost) }} c/u
+                          }
+                        </p>
+                        <p class="text-xs text-slate-500">
+                          {{ b.supplier ?? 'Proveedor no indicado' }}
+                          @if (b.documentNumber) {
+                            · {{ b.documentNumber }}
+                          }
+                        </p>
+                      </td>
+                      @if (canManage()) {
+                        <td class="px-3 py-3 text-right">
+                          <button
+                            type="button"
+                            class="btn btn-ghost h-10 px-3 text-rose-700 hover:bg-rose-50"
+                            (click)="openOutflow('WASTE', b)"
+                          >
+                            Merma
+                          </button>
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="px-6 py-10 text-center">
+              <p class="font-medium text-slate-900">No hay lotes con stock</p>
+              @if (canManage() && p.active) {
+                <button type="button" class="btn btn-primary mt-4" (click)="openPurchase()">
+                  <app-icon name="plus" class="size-4" /> Registrar compra
+                </button>
+              }
+            </div>
+          }
+        </section>
+
+        <!-- Kardex -->
+        <section class="card overflow-hidden" aria-labelledby="kardex-title">
+          <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <h2 id="kardex-title" class="font-display text-base font-semibold text-slate-900">
+              Kardex
+            </h2>
+            <span class="text-sm text-slate-500 tabular-nums"
+              >{{ movementsTotal() }} movimientos</span
+            >
+          </div>
+          @if (movements().length) {
+            <ul class="divide-y divide-slate-100">
+              @for (m of movements(); track m.id) {
+                <li class="flex gap-4 px-5 py-3">
+                  <div class="w-20 shrink-0 text-xs text-slate-500 tabular-nums">
+                    {{ m.createdAt | date: 'dd/MM/yy' : '-0500' }}<br />{{
+                      m.createdAt | date: 'HH:mm' : '-0500'
+                    }}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <app-badge [tone]="movementTone[m.type]">{{
+                        movementLabels[m.type]
+                      }}</app-badge>
+                      @if (m.batch) {
+                        <span class="text-xs text-slate-500"
+                          >Lote {{ m.batch.lotNumber ?? '—' }}</span
+                        >
+                      }
+                    </div>
+                    <p class="mt-1 text-sm text-slate-700">
+                      {{ m.reason ?? '' }}
+                      @if (m.pet) {
+                        ·
+                        <a
+                          [routerLink]="['/clientes', m.pet.clientId]"
+                          class="font-medium text-anil-700 hover:text-anil-800"
+                          >{{ m.pet.name }}</a
+                        >
+                      }
+                      @if (m.prescriptionRef) {
+                        · Receta {{ m.prescriptionRef }}
+                      }
+                    </p>
+                    <p class="text-xs text-slate-500">
+                      {{ m.user.fullName }}
+                      @if (m.vet && m.vet.fullName !== m.user.fullName) {
+                        · indicó {{ m.vet.fullName }}
+                      }
+                    </p>
+                  </div>
+                  <div class="shrink-0 text-right tabular-nums">
+                    <p
+                      class="font-medium"
+                      [class]="m.quantity > 0 ? 'text-emerald-700' : 'text-slate-900'"
+                    >
+                      {{ movementQty(m) }}
+                    </p>
+                    <p class="text-xs text-slate-500">Saldo {{ units(m.balanceAfter) }}</p>
+                  </div>
+                </li>
+              }
+            </ul>
+            @if (movements().length < movementsTotal()) {
+              <div class="border-t border-slate-100 p-3 text-center">
+                <button
+                  type="button"
+                  class="btn btn-ghost"
+                  [disabled]="movementsLoading()"
+                  (click)="loadMovements(movementsPage() + 1)"
+                >
+                  Ver más
+                </button>
+              </div>
+            }
+          } @else {
+            <p class="px-5 py-8 text-center text-sm text-slate-500">
+              Sin movimientos todavía. La primera compra aparecerá aquí.
+            </p>
+          }
+        </section>
+      </div>
+
+      <aside class="space-y-6">
+        <!-- Presentaciones -->
+        <section class="card p-5" aria-labelledby="pres-title">
+          <div class="flex items-center justify-between gap-3">
+            <h2
+              id="pres-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Presentaciones y precios
+            </h2>
+            @if (canManage()) {
+              <button
+                type="button"
+                class="btn btn-ghost -mr-2 h-10 px-2.5 text-anil-700"
+                (click)="openPresentation(null)"
+              >
+                <app-icon name="plus" class="size-4" /> Agregar
+              </button>
+            }
+          </div>
+          <ul class="mt-2 divide-y divide-slate-100">
+            @for (pr of p.presentations; track pr.id) {
+              <li class="flex items-center gap-3 py-2.5" [class.opacity-50]="!pr.active">
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium text-slate-900">
+                    {{ pr.name }}
+                    @if (!pr.active) {
+                      <span class="text-xs font-normal">(inactiva)</span>
+                    }
+                  </p>
+                  <p class="text-xs text-slate-500 tabular-nums">= {{ units(pr.factor) }}</p>
+                </div>
+                <span class="font-medium text-slate-900 tabular-nums">{{ money(pr.price) }}</span>
+                @if (canManage()) {
+                  <button
+                    type="button"
+                    class="btn btn-ghost size-10 shrink-0 px-0"
+                    (click)="openPresentation(pr)"
+                    [attr.aria-label]="'Editar ' + pr.name"
+                    title="Editar"
+                  >
+                    <app-icon name="pencil" class="size-4" />
+                  </button>
+                }
+              </li>
+            }
+          </ul>
+          <p class="mt-2 text-xs text-slate-500">Precios con IGV incluido.</p>
+        </section>
+
+        @if (p.usedIn.length) {
+          <section class="card p-5" aria-labelledby="used-title">
+            <h2
+              id="used-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Se usa en estos servicios
+            </h2>
+            <ul class="mt-2 space-y-1.5 text-sm">
+              @for (s of p.usedIn; track s.id) {
+                <li class="flex justify-between gap-3">
+                  <span class="text-slate-800">{{ s.name }}</span
+                  ><span class="text-slate-500 tabular-nums">{{ units(s.quantity) }}</span>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+
+        @if (p.notes) {
+          <section class="card p-5">
+            <h2 class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Notas</h2>
+            <p class="mt-2 text-sm text-slate-700">{{ p.notes }}</p>
+          </section>
+        }
+      </aside>
+    </div>
+  }
+</section>
+
+<!-- Compra -->
+<app-modal
+  [open]="modal() === 'purchase'"
+  title="Registrar compra"
+  description="Se crea un lote nuevo con lo que llegó."
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form
+    id="purchase-form"
+    [formGroup]="purchaseForm"
+    (ngSubmit)="savePurchase()"
+    novalidate
+    class="space-y-4"
+  >
+    <div class="grid grid-cols-[1fr_8rem] gap-3">
+      <div>
+        <label for="pu-pres" class="field-label">Presentación comprada</label>
+        <select id="pu-pres" formControlName="presentationId" class="field-input">
+          @for (pr of activePresentations(); track pr.id) {
+            <option [ngValue]="pr.id">{{ pr.name }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="pu-qty" class="field-label">Cantidad</label>
+        <input
+          id="pu-qty"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          formControlName="quantity"
+          class="field-input tabular-nums"
+          [attr.aria-invalid]="invalid(purchaseForm.controls.quantity)"
+        />
+      </div>
+    </div>
+    @if (purchasePreview(); as preview) {
+      <p class="-mt-2 text-sm font-medium text-anil-700 tabular-nums">{{ preview }}</p>
+    } @else if (invalid(purchaseForm.controls.quantity)) {
+      <p class="field-error -mt-2">Ingresa una cantidad mayor a 0</p>
+    }
+    <div class="grid gap-3 sm:grid-cols-2">
+      <div>
+        <label for="pu-lot" class="field-label"
+          >Lote
+          @if (needsLot()) {
+            <span class="text-rose-600" aria-hidden="true">*</span>
+          }
+        </label>
+        <input id="pu-lot" formControlName="lotNumber" class="field-input" autocomplete="off" />
+      </div>
+      <div>
+        <label for="pu-exp" class="field-label"
+          >Vencimiento
+          @if (needsLot()) {
+            <span class="text-rose-600" aria-hidden="true">*</span>
+          }
+        </label>
+        <input
+          id="pu-exp"
+          type="date"
+          formControlName="expiresAt"
+          [min]="today"
+          class="field-input"
+        />
+      </div>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <div>
+        <label for="pu-cost" class="field-label">Costo de cada presentación</label>
+        <div class="relative">
+          <span
+            class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-500"
+            >S/</span
+          >
+          <input
+            id="pu-cost"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="0.01"
+            formControlName="costPerPresentation"
+            class="field-input pl-9 tabular-nums"
+          />
+        </div>
+      </div>
+      <div>
+        <label for="pu-doc" class="field-label">N.º de factura o boleta</label>
+        <input
+          id="pu-doc"
+          formControlName="documentNumber"
+          class="field-input"
+          autocomplete="off"
+          placeholder="F001-123"
+        />
+      </div>
+    </div>
+    <div>
+      <label for="pu-sup" class="field-label">Proveedor</label>
+      <input id="pu-sup" formControlName="supplier" class="field-input" autocomplete="off" />
+    </div>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="purchase-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Registrar compra
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Salida -->
+<app-modal
+  [open]="modal() === 'outflow'"
+  title="Registrar salida"
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form
+    id="outflow-form"
+    [formGroup]="outflowForm"
+    (ngSubmit)="saveOutflow()"
+    novalidate
+    class="space-y-4"
+  >
+    <fieldset>
+      <legend class="sr-only">Tipo de salida</legend>
+      <div class="grid grid-cols-2 gap-2">
+        <label
+          class="flex h-auto min-h-11 cursor-pointer flex-col justify-center rounded-xl px-3 py-2 text-sm ring-1 ring-slate-300 has-checked:bg-anil-50 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2"
+        >
+          <input type="radio" class="sr-only" formControlName="type" value="WASTE" />
+          <span class="font-medium text-slate-900">Merma</span>
+          <span class="text-xs text-slate-500">Vencido, roto o perdido</span>
+        </label>
+        <label
+          class="flex h-auto min-h-11 cursor-pointer flex-col justify-center rounded-xl px-3 py-2 text-sm ring-1 ring-slate-300 has-checked:bg-anil-50 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2"
+        >
+          <input type="radio" class="sr-only" formControlName="type" value="TREATMENT" />
+          <span class="font-medium text-slate-900">Uso interno</span>
+          <span class="text-xs text-slate-500">En consultorio o en un paciente</span>
+        </label>
+      </div>
+    </fieldset>
+    <div class="grid grid-cols-[8rem_1fr] gap-3">
+      <div>
+        <label for="ou-qty" class="field-label">Cantidad</label>
+        <input
+          id="ou-qty"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          formControlName="quantity"
+          class="field-input tabular-nums"
+          [attr.aria-invalid]="invalid(outflowForm.controls.quantity)"
+        />
+      </div>
+      <div>
+        <label for="ou-unit" class="field-label">Unidad</label>
+        <select id="ou-unit" formControlName="unit" class="field-input">
+          <option value="base">{{ unitName() }}</option>
+          @for (pr of activePresentations(); track pr.id) {
+            @if (pr.factor !== 1) {
+              <option [ngValue]="pr.id">{{ pr.name }}</option>
+            }
+          }
+        </select>
+      </div>
+    </div>
+    <div>
+      <label for="ou-batch" class="field-label">Lote</label>
+      <select id="ou-batch" formControlName="batchId" class="field-input">
+        <option value="auto">Automático (el que vence primero)</option>
+        @for (b of outflowBatches(); track b.id) {
+          <option [ngValue]="b.id">
+            Lote {{ b.lotNumber ?? '—' }} · {{ b.expiresAt ?? 'no vence' }} ·
+            {{ units(b.quantity) }}
+          </option>
+        }
+      </select>
+    </div>
+    @if (outflowType() === 'TREATMENT') {
+      <div>
+        <p class="field-label">
+          Paciente
+          @if (controlledUse()) {
+            <span class="text-rose-600" aria-hidden="true">*</span>
+          } @else {
+            <span class="font-normal text-slate-500">(opcional)</span>
+          }
+        </p>
+        <div class="mt-1.5">
+          <app-pet-picker
+            inputId="ou-pet"
+            [invalid]="controlledUse() && outflowTried() && !pickedPet()"
+            (picked)="pickedPet.set($event)"
+          />
+        </div>
+      </div>
+      @if (controlledUse()) {
+        <div>
+          <label for="ou-rx" class="field-label"
+            >N.º de receta <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="ou-rx"
+            formControlName="prescriptionRef"
+            class="field-input"
+            autocomplete="off"
+          />
+          <p class="field-hint">
+            Medicamento controlado: queda en el libro de controlados con tu colegiatura.
+          </p>
+        </div>
+      }
+    }
+    <div>
+      <label for="ou-reason" class="field-label"
+        >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="ou-reason"
+        formControlName="reason"
+        class="field-input"
+        autocomplete="off"
+        [placeholder]="
+          outflowType() === 'WASTE' ? 'Ej.: frasco roto' : 'Ej.: sedación para curación'
+        "
+        [attr.aria-invalid]="invalid(outflowForm.controls.reason)"
+      />
+      @if (invalid(outflowForm.controls.reason)) {
+        <p class="field-error">Escribe el motivo (mínimo 3 caracteres)</p>
+      }
+    </div>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="outflow-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Registrar salida
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Conteo físico -->
+<app-modal
+  [open]="modal() === 'count'"
+  title="Conteo físico"
+  description="Escribe lo que contaste en cada lote. Solo se ajustan los que no coinciden."
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form
+    id="count-form"
+    [formGroup]="countForm"
+    (ngSubmit)="saveCount()"
+    novalidate
+    class="space-y-4"
+  >
+    @if (modal() === 'count') {
+      <ul class="space-y-2" formArrayName="items">
+        @for (b of product()?.batches ?? []; track b.id; let i = $index) {
+          <li class="flex items-center gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70">
+            <div class="min-w-0 flex-1">
+              <p class="font-medium text-slate-900">Lote {{ b.lotNumber ?? '—' }}</p>
+              <p class="text-xs text-slate-500 tabular-nums">Sistema: {{ units(b.quantity) }}</p>
+            </div>
+            <label [for]="'cnt-' + i" class="sr-only">Contado en el lote {{ b.lotNumber }}</label>
+            <input
+              [id]="'cnt-' + i"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              [formControlName]="i"
+              class="field-input mt-0 w-28 tabular-nums"
+            />
+          </li>
+        }
+      </ul>
+    }
+    <div>
+      <label for="cnt-reason" class="field-label"
+        >Motivo del ajuste <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="cnt-reason"
+        formControlName="reason"
+        class="field-input"
+        placeholder="Ej.: conteo de fin de mes"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid(countForm.controls.reason)"
+      />
+      @if (invalid(countForm.controls.reason)) {
+        <p class="field-error">Escribe el motivo</p>
+      }
+    </div>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="count-form" class="btn btn-primary" [disabled]="saving()">
+      Guardar conteo
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Presentación -->
+<app-modal
+  [open]="modal() === 'presentation'"
+  [title]="editingPresentation() ? 'Editar presentación' : 'Nueva presentación'"
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form
+    id="pres-form"
+    [formGroup]="presentationForm"
+    (ngSubmit)="savePresentation()"
+    novalidate
+    class="space-y-4"
+  >
+    <div>
+      <label for="pf-name" class="field-label">Nombre</label>
+      <input
+        id="pf-name"
+        formControlName="name"
+        class="field-input"
+        placeholder="Ej.: Blíster x 10"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid(presentationForm.controls.name)"
+      />
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label for="pf-factor" class="field-label">Equivalencia ({{ unitName() }})</label>
+        <input
+          id="pf-factor"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          formControlName="factor"
+          class="field-input tabular-nums"
+          [attr.aria-invalid]="invalid(presentationForm.controls.factor)"
+        />
+      </div>
+      <div>
+        <label for="pf-price" class="field-label">Precio con IGV</label>
+        <div class="relative">
+          <span
+            class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-500"
+            >S/</span
+          >
+          <input
+            id="pf-price"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="0.01"
+            formControlName="price"
+            class="field-input pl-9 tabular-nums"
+          />
+        </div>
+      </div>
+    </div>
+    @if (editingPresentation()) {
+      <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800">
+        <input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />
+        Presentación activa
+      </label>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="pres-form" class="btn btn-primary" [disabled]="saving()">
+      Guardar
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Editar producto -->
+<app-modal
+  [open]="modal() === 'edit'"
+  title="Editar producto"
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form id="edit-form" [formGroup]="editForm" (ngSubmit)="saveEdit()" novalidate class="space-y-4">
+    <div>
+      <label for="ed-name" class="field-label">Nombre</label>
+      <input
+        id="ed-name"
+        formControlName="name"
+        class="field-input"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid(editForm.controls.name)"
+      />
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <div>
+        <label for="ed-cat" class="field-label">Categoría</label>
+        <select id="ed-cat" formControlName="category" class="field-input">
+          @for (c of categories; track c) {
+            <option [value]="c">{{ categoryLabels[c] }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="ed-min" class="field-label">Stock mínimo ({{ unitName() }})</label>
+        <input
+          id="ed-min"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          formControlName="minStock"
+          class="field-input tabular-nums"
+        />
+      </div>
+      <div>
+        <label for="ed-code" class="field-label">Código interno</label>
+        <input id="ed-code" formControlName="code" class="field-input" autocomplete="off" />
+      </div>
+      <div>
+        <label for="ed-bar" class="field-label">Código de barras</label>
+        <input id="ed-bar" formControlName="barcode" class="field-input" autocomplete="off" />
+      </div>
+      <div>
+        <label for="ed-igv" class="field-label">Afectación del IGV</label>
+        <select id="ed-igv" formControlName="igv" class="field-input">
+          @for (t of igvTypes; track t) {
+            <option [value]="t">{{ igvLabels[t] }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="ed-sunat" class="field-label">Unidad SUNAT</label>
+        <input
+          id="ed-sunat"
+          formControlName="sunatUnit"
+          class="field-input uppercase"
+          maxlength="3"
+        />
+      </div>
+    </div>
+    <div>
+      <label for="ed-notes" class="field-label">Notas</label>
+      <textarea
+        id="ed-notes"
+        formControlName="notes"
+        rows="2"
+        class="field-input h-auto py-2.5"
+      ></textarea>
+    </div>
+    <div class="space-y-1">
+      <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
+        ><input
+          type="checkbox"
+          formControlName="requiresPrescription"
+          class="size-5 rounded accent-anil-600"
+        />
+        Se vende con receta</label
+      >
+      <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
+        ><input
+          type="checkbox"
+          formControlName="controlled"
+          class="size-5 rounded accent-rose-600"
+        />
+        Medicamento controlado</label
+      >
+      <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
+        ><input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />
+        Producto activo</label
+      >
+    </div>
+    <p class="text-xs text-slate-500">
+      La unidad mínima no se cambia aquí: si cambió, crea un producto nuevo.
+    </p>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="edit-form" class="btn btn-primary" [disabled]="saving()">
+      Guardar cambios
+    </button>
+  </ng-container>
+</app-modal>

@@ -2,7 +2,7 @@
 
 > Copia del plan del 27 de octubre de 2026. La versión viva está en https://claude.ai/artifact/Uu4KC76mYuwsoZDqMnzMxt
 >
-> **Estado:** Fase 0 terminada (pasos 1, 2 y 3). Siguiente: Fase 1, clientes y mascotas.
+> **Estado:** Fase 0 y Fase 1 terminadas. Fase 2 en curso: paso 1 (backend de inventario, FEFO, kardex, controlados y catálogo de servicios) y paso 2 (pantallas de inventario) listos; sigue el paso 3 (importación de productos desde Excel y pantalla del catálogo de servicios).
 
 Construimos el sistema en 8 fases. Cada fase entrega un módulo que ya se puede usar en una clínica real, empezando por los cimientos y terminando en lo comercial. Grooming e inventario farmacéutico entran temprano porque son los de más valor de venta y no dependen del módulo médico.
 
@@ -125,14 +125,16 @@ El orden lo marcan las dependencias. Clientes va primero porque todo lo usa. Inv
 | --- | --- | --- |
 | **0. Cimientos** | Repo, Docker Compose, PostgreSQL, Prisma y GitHub Actions. Login con roles, usuarios, configuración de la clínica y bitácora | El login funciona y se despliega en un servidor de prueba |
 | **1. Clientes y mascotas** | Clientes con DNI/RUC, mascotas con raza, sexo y alergias. Ficha, cola del día con urgencias e importación desde Excel | Recepción registra cliente y mascota en menos de 1 minuto |
-| **2. Inventario farmacéutico** | Productos, lotes, presentaciones, kardex y conteo físico. FEFO, ingreso de compras, merma y semáforo de vencimientos | Pasan las pruebas FEFO, incluida la de dos ventas simultáneas |
+| **2. Inventario farmacéutico** | Productos, lotes, presentaciones, kardex y conteo físico. FEFO, ingreso de compras con proveedor, merma, semáforo de vencimientos, productos controlados, catálogo de servicios con insumos e importación desde Excel | Pasan las pruebas FEFO, incluida la de dos ventas simultáneas |
 | **3. Grooming** | Check-in con checklist, Kanban por estados y delivery. Botón de WhatsApp y reporte de comisiones por groomer | Un día completo del área de baño se maneja solo con el tablero |
-| **4. Caja y ventas** | Cuenta del paciente, boleta y factura electrónica (PSE/OSE). Efectivo y Yape, pagos parciales, caja chica y reporte en Excel | SUNAT acepta las boletas y el cierre de caja cuadra con ventas y egresos |
-| **5. Módulo médico** | Agenda de citas, consulta SOAP y recetas que descuentan stock. Vacunas con refuerzo, carnet, adjuntos y consentimientos | Una consulta completa, de la cita a la receta, sin salir del sistema |
+| **4. Caja y ventas** | Cuenta del paciente, presupuestos, boleta y factura electrónica (PSE/OSE). Efectivo y Yape, pagos parciales, caja chica y reporte en Excel | SUNAT acepta las boletas y el cierre de caja cuadra con ventas y egresos |
+| **5. Módulo médico** | Agenda de citas por veterinario, consulta SOAP y recetas que descuentan stock. Vacunas con refuerzo, carnet, adjuntos y consentimientos firmados en pantalla | Una consulta completa, de la cita a la receta, sin salir del sistema |
 | **6. Dashboard y alertas** | KPIs del día, citas de hoy, stock bajo y lotes por vencer. Recordatorios de vacunas con enlace de WhatsApp | Cada número del dashboard coincide con su módulo de origen |
-| **7. Comercialización** | Versión 2: hospitalización, compras, gastos y reservas en línea. Demo pública, página de venta y segunda clínica | Primera clínica usando el sistema (fase abierta: crece con los clientes) |
+| **7. Comercialización** | Versión 2: hospitalización básica primero, luego compras, gastos y reservas en línea hechas por el dueño. Demo pública, página de venta y segunda clínica | Primera clínica usando el sistema (fase abierta: crece con los clientes) |
 
 El código de cada fase se entrega en dos partes, backend y luego frontend, y no se pasa a la siguiente fase sin cumplir su condición.
+
+**Pendientes de la Fase 0** (no bloquean las siguientes fases, pero van antes de mostrarle el sistema a una clínica): desplegar en un servidor de prueba (Docker Compose + Caddy) y agregar los horarios de atención a la configuración de la clínica, que la agenda de la Fase 5 necesita.
 
 ### Lo que una clínica necesita desde el primer día
 
@@ -147,21 +149,25 @@ Sin estas funciones una clínica no puede empezar a usar el sistema, así que en
 | Cola del día: quién llegó, quién espera, quién está en consulta, con urgencias primero | 1 | La mayoría llega sin cita |
 | Persona autorizada para recoger a la mascota | 1 | A veces recoge alguien que no es el dueño |
 | Importar clientes, mascotas y productos desde Excel | 1 y 2 | Nadie va a escribir 500 clientes a mano |
-| Conteo físico y ajuste de inventario | 2 | Sin conteos, el stock del sistema deja de ser confiable en semanas |
+| Conteo físico y ajuste de inventario (el ajuste solo lo hace el administrador, con motivo) | 2 | Sin conteos, el stock del sistema deja de ser confiable en semanas |
+| Productos controlados (ketamina y similares): cada salida queda registrada por paciente, veterinario, lote y receta | 2 | DIGEMID tiene en consulta exigir receta retenida para la ketamina (octubre de 2026) |
+| Proveedor y N.º de comprobante en cada ingreso de compra | 2 | Sin ellos no se puede rastrear de dónde vino un lote ni reclamar al proveedor |
 | Servicios con insumos (la vacunación descuenta el frasco, el baño el champú) | 2 | Se cobra un servicio, pero el stock igual debe bajar |
 | Constancia de grooming imprimible | 3 | Respaldo de lo que se recibió y entregó |
 | Cuenta del paciente: consulta, grooming y medicamentos quedan como cargos pendientes para caja | 4 | Sin ella, los cobros se avisan de palabra y se pierden |
 | Boleta y factura electrónicas por PSE/OSE, notas de crédito y resumen diario | 4 | Obligación de SUNAT desde el primer día |
 | Pagos parciales y deuda del cliente | 4 | "Le dejo la mitad y el resto al recoger" es lo normal |
+| Presupuestos que se convierten en venta (cirugías, tratamientos largos) | 4 | El dueño pide el precio antes de aceptar una cirugía |
 | Egresos de caja chica | 4 | Sin ellos el cierre de caja nunca cuadra |
 | Reporte de ventas y caja en Excel | 4 | Lo pide el contador cada mes |
 | Receta y carnet de vacunas imprimibles, con la colegiatura del veterinario | 5 | El dueño los guarda y los muestra en otras clínicas |
 | Adjuntos en la historia clínica (fotos, análisis, radiografías) | 5 | Sin ellos la historia queda incompleta |
-| Consentimientos informados (cirugía, anestesia, eutanasia) para firmar | 5 | Respaldo legal de la clínica |
+| Consentimientos informados (cirugía, anestesia, eutanasia, internamiento) firmados en pantalla, con PDF en la historia | 5 | Respaldo legal de la clínica |
 
 ### Versión 2 y más adelante
 
-- **Versión 2:** hospitalización (solo si la clínica interna mascotas), proveedores y compras, gastos de la clínica para ver la ganancia real, agenda por veterinario, curva de peso y paquetes como el plan de vacunación anual.
+- **Versión 2:** hospitalización básica con hoja de medicación por horario (la primera prioridad: muchas clínicas pequeñas internan 2 o 3 mascotas), módulo completo de proveedores y compras, gastos de la clínica para ver la ganancia real, curva de peso y paquetes como el plan de vacunación anual.
+- **Diferenciadores para después:** carnet de vacunas digital por enlace, portal del dueño, comisiones de veterinarios, varias sedes e integración con laboratorios.
 - **Más adelante:** recordatorios automáticos por WhatsApp (la API oficial cobra por conversación; mientras tanto, enlaces `wa.me` gratis), reservas en línea, facturación electrónica y varias sedes.
 
 ## 6. Diseño de grooming e inventario
@@ -186,6 +192,13 @@ Ambos módulos siguen la especificación que enviaste, con los cambios de la sec
 - **Stock legible:** 347 pastillas se muestran como "3 cajas, 4 blister y 7 pastillas", calculado a partir de las presentaciones.
 - **Semáforo de vencimientos:** los días que faltan se calculan en el backend con fecha de Lima. Rojo: vencido o 30 días o menos. Amarillo: de 31 a 60 días. Verde: más de 60.
 - **Merma y consumo interno:** descuentan con la misma regla FEFO o de un lote específico (por ejemplo, un frasco roto), siempre con un motivo obligatorio.
+- **Permisos:** compras y mermas las registran el administrador y el veterinario; el ajuste por conteo físico, solo el administrador y con motivo. Recepción y caja solo consultan el stock.
+- **Vencimiento:** obligatorio en todas las categorías salvo accesorios (collares, juguetes, camas), que no llevan lote.
+- **Precios:** por presentación y con IGV incluido (el precio de la etiqueta); el IGV se separa al emitir la boleta. El costo va por lote, para calcular el margen real.
+- **Stock nunca negativo:** si no alcanza, se bloquea la operación y se informa lo disponible.
+- **Productos controlados:** el producto se marca como controlado y cada salida guarda paciente, veterinario, lote y receta.
+- **Proveedor en compras:** cada ingreso guarda proveedor y N.º de comprobante.
+- **Servicios con insumos:** catálogo de servicios con precio y los insumos que consume cada uno; el cobro llega en la Fase 4.
 
 ### Endpoints
 
@@ -241,7 +254,8 @@ El sistema ayuda a cumplir, pero la responsable legal es la clínica; tú respon
 | Datos personales (Ley 29733 y su reglamento, DS 016-2024-JUS) | Consentimiento previo y expreso; política de privacidad; documento de seguridad con control de accesos y revisión periódica de privilegios; oficial de datos personales; incidentes graves avisados a la autoridad en 48 horas; un servidor fuera del Perú es un flujo transfronterizo | Casilla de consentimiento al registrar al cliente, roles, bitácora, contraseñas cifradas, HTTPS, respaldos, y exportar o borrar los datos de un cliente | La clínica es titular; tú eres encargado, con contrato |
 | Libro de reclamaciones (INDECOPI) | Todo local abierto al público lo necesita, físico o virtual; respuesta en 15 días hábiles; multa de hasta 50 UIT | No es obligatorio dentro del sistema; si luego hay reservas en línea, el libro virtual va en la página principal | La clínica |
 | Receta y medicamentos veterinarios | La venta de productos veterinarios está regulada por SENASA (DS 015-98-AG); la receta la firma un médico veterinario | La receta imprime el nombre y el número de colegiatura del veterinario; el kardex dice qué lote se vendió y a quién | La clínica; confirmar requisitos con SENASA y el CMVP |
-| Consentimientos informados | Firma del dueño antes de cirugía, anestesia o eutanasia | Formato imprimible y copia escaneada adjunta a la historia | La clínica |
+| Consentimientos informados | Firma del dueño antes de cirugía, anestesia o eutanasia | Firma en pantalla con PDF adjunto a la historia (o formato imprimible y copia escaneada) | La clínica |
+| Medicamentos controlados (DIGEMID) | La ketamina está en consulta pública para pasar a fiscalización con receta retenida (octubre de 2026) | Registro de cada salida por paciente, veterinario, lote y receta | La clínica; confirmar el texto final de DIGEMID |
 | Tu negocio | Cobrar una mensualidad requiere RUC y emitir tu propio comprobante electrónico | Contrato de servicio: los datos son de la clínica, exportación al terminar, respaldos, disponibilidad y límite de responsabilidad | Tú |
 | Licencias de software | Proyecto nuevo, sin código de Petclinic; las librerías usadas son MIT, Apache u OFL y permiten uso comercial | Archivo de licencias en el repositorio | Tú |
 
@@ -304,4 +318,5 @@ El plan cubre los cinco módulos del alcance original más grooming e inventario
 - [El Peruano: SUNAT extiende el plazo del SIRE](https://www.elperuano.pe/noticia/299237-sunat-extiende-plazo-del-sire-para-empresas-con-ingresos-superiores-a-2300-uit)
 - [La Cámara: nuevo reglamento de protección de datos personales](https://lacamara.pe/nuevo-reglamento-refuerza-la-proteccion-de-datos-personales/)
 - [Gestión: Libro de Reclamaciones](https://gestion.pe/economia/libro-de-reclamaciones-todo-lo-que-deberia-saber-a-la-hora-de-solicitarlo-indecopi-consumidores-derecho-de-consumidores-reclamos-noticia/)
+- [Correo: Minsa propone mayor control de la ketamina con receta retenida](https://diariocorreo.pe/peru/minsa-propone-mayor-control-de-la-ketamina-y-venta-solo-con-receta-retenida-noticia/)
 - [DS 015-98-AG: productos de uso veterinario (AMPEID)](https://ampeid.org/documents/peru/regulations-for-registration-control-and-marketing-of-products-for-veterinary-use-and-animal-feed/)

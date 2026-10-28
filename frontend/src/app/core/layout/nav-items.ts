@@ -21,25 +21,21 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'General',
-    items: [{ label: 'Dashboard', icon: 'dashboard', route: '/dashboard', exact: true }],
+    items: [{ label: 'Inicio', icon: 'dashboard', route: '/dashboard', exact: true }],
   },
   {
     label: 'Atención',
     items: [
-      { label: 'Clientes', icon: 'clients', route: '/clientes', comingIn: 'Fase 1' },
-      { label: 'Grooming', icon: 'scissors', route: '/grooming', comingIn: 'Fase 3' },
-      { label: 'Citas', icon: 'calendar', route: '/citas', comingIn: 'Fase 5' },
-      { label: 'Consultas', icon: 'stethoscope', route: '/consultas', comingIn: 'Fase 5' },
-      { label: 'Vacunas', icon: 'syringe', route: '/vacunas', comingIn: 'Fase 5' },
+      { label: 'Cola de hoy', icon: 'clock', route: '/cola' },
+      { label: 'Clientes', icon: 'clients', route: '/clientes' },
     ],
   },
   {
-    label: 'Comercial',
-    items: [
-      { label: 'Inventario', icon: 'package', route: '/inventario', comingIn: 'Fase 2' },
-      { label: 'Caja y ventas', icon: 'receipt', route: '/caja', comingIn: 'Fase 4' },
-    ],
+    label: 'Farmacia',
+    items: [{ label: 'Inventario', icon: 'package', route: '/inventario' }],
   },
+  // Grooming, citas, consultas, vacunas y caja se agregan aquí cuando estén listos:
+  // el menú solo muestra módulos que funcionan.
   {
     label: 'Configuración',
     items: [

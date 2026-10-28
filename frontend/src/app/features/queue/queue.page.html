@@ -1,0 +1,324 @@
+<section class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <p class="text-sm font-medium text-slate-500">{{ todayLabel() }}</p>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Cola de hoy</h1>
+      <p class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600 tabular-nums">
+        <span>{{ openCount() }} en la clínica</span>
+        @if (urgentCount()) {
+          <span class="font-medium text-rose-700"
+            >{{ urgentCount() }} {{ urgentCount() === 1 ? 'urgencia' : 'urgencias' }}</span
+          >
+        }
+        <span>{{ doneCount() }} {{ doneCount() === 1 ? 'atendido' : 'atendidos' }}</span>
+      </p>
+    </div>
+    @if (canEdit()) {
+      <button type="button" class="btn btn-primary self-start sm:self-auto" (click)="openAdd()">
+        <app-icon name="plus" class="size-4" /> Agregar a la cola
+      </button>
+    }
+  </div>
+
+  @if (loading() && items().length === 0) {
+    <div class="grid gap-4 lg:grid-cols-3" aria-busy="true" aria-label="Cargando la cola">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="h-48 animate-pulse rounded-2xl bg-slate-100"></div>
+      }
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    <!-- Móvil: pestañas -->
+    <div
+      class="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 lg:hidden"
+      role="tablist"
+      aria-label="Estados de la cola"
+    >
+      @for (col of columns; track col.status) {
+        <button
+          type="button"
+          role="tab"
+          class="flex h-11 flex-col items-center justify-center rounded-lg text-xs font-medium text-slate-600 aria-selected:bg-white aria-selected:text-slate-900 aria-selected:shadow-sm"
+          [attr.aria-selected]="tab() === col.status"
+          (click)="tab.set(col.status)"
+        >
+          {{ col.short }}
+          <span class="text-[11px] tabular-nums text-slate-500">{{ count(col.status) }}</span>
+        </button>
+      }
+      <button
+        type="button"
+        role="tab"
+        class="flex h-11 flex-col items-center justify-center rounded-lg text-xs font-medium text-slate-600 aria-selected:bg-white aria-selected:text-slate-900 aria-selected:shadow-sm"
+        [attr.aria-selected]="tab() === 'CLOSED'"
+        (click)="tab.set('CLOSED')"
+      >
+        Listos
+        <span class="text-[11px] tabular-nums text-slate-500">{{ count('CLOSED') }}</span>
+      </button>
+    </div>
+
+    <!-- Columnas (en móvil se muestra solo la pestaña elegida) -->
+    <div class="grid gap-4 lg:grid-cols-3 lg:items-start">
+      @for (col of columns; track col.status) {
+        <section
+          class="rounded-2xl bg-slate-100/70 p-3 ring-1 ring-slate-200/60 lg:block"
+          [class.hidden]="tab() !== col.status"
+          [attr.aria-labelledby]="'col-' + col.status"
+        >
+          <header class="flex items-center gap-2 px-1 pb-3">
+            <span class="size-2.5 rounded-full" [class]="col.accent" aria-hidden="true"></span>
+            <h2
+              [id]="'col-' + col.status"
+              class="font-display text-sm font-semibold text-slate-900"
+            >
+              {{ col.label }}
+            </h2>
+            <span
+              class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200 tabular-nums"
+              >{{ count(col.status) }}</span
+            >
+            <span class="ml-auto hidden text-xs text-slate-500 xl:inline">{{ col.hint }}</span>
+          </header>
+          <ul class="space-y-3">
+            @for (item of byStatus()[col.status]; track item.id) {
+              <li>
+                <app-queue-card
+                  [item]="item"
+                  [now]="now()"
+                  [canEdit]="canEdit()"
+                  [busy]="busyId() === item.id"
+                  (move)="move(item, $event)"
+                  (toggleUrgent)="toggleUrgent(item)"
+                  (cancel)="cancelling.set(item)"
+                />
+              </li>
+            } @empty {
+              <li
+                class="rounded-xl border-2 border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500"
+              >
+                @switch (col.status) {
+                  @case ('ARRIVED') {
+                    Nadie esperando registro
+                  }
+                  @case ('WAITING') {
+                    Nadie en espera
+                  }
+                  @default {
+                    Nadie en atención
+                  }
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    </div>
+
+    <!-- Terminados de hoy -->
+    <section
+      class="card overflow-hidden lg:block"
+      [class.hidden]="tab() !== 'CLOSED'"
+      aria-labelledby="closed-title"
+    >
+      <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <h2 id="closed-title" class="font-display text-base font-semibold text-slate-900">
+          Terminados hoy
+        </h2>
+        <span class="text-sm text-slate-500 tabular-nums">{{ closed().length }}</span>
+      </div>
+      @if (closed().length) {
+        <ul class="divide-y divide-slate-100">
+          @for (item of closed(); track item.id) {
+            <li class="flex items-center gap-4 px-5 py-3">
+              <span class="w-12 shrink-0 text-sm text-slate-500 tabular-nums">{{
+                clockTime(item.finishedAt ?? item.arrivedAt)
+              }}</span>
+              <app-icon
+                [name]="speciesIcons[item.pet.species]"
+                class="size-5 shrink-0 text-slate-400"
+              />
+              <div class="min-w-0 flex-1">
+                <a
+                  [routerLink]="['/clientes', item.client.id]"
+                  class="font-medium text-slate-900 hover:text-anil-700"
+                  >{{ item.pet.name }}</a
+                >
+                <p class="truncate text-sm text-slate-500">
+                  {{ item.client.name }}
+                  @if (item.reason) {
+                    · {{ item.reason }}
+                  }
+                </p>
+              </div>
+              <app-badge [tone]="item.status === 'DONE' ? 'success' : 'neutral'" class="shrink-0">{{
+                closedSummary(item)
+              }}</app-badge>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="px-5 py-8 text-center text-sm text-slate-500">
+          Aún no se termina ninguna atención hoy.
+        </p>
+      }
+    </section>
+  }
+</section>
+
+<!-- Sacar de la cola -->
+<app-modal [open]="!!cancelling()" title="Sacar de la cola" (closed)="cancelling.set(null)">
+  <p class="text-slate-700">
+    <strong class="font-semibold text-slate-900">{{ cancelling()?.pet?.name }}</strong> saldrá de la
+    cola de hoy. Úsalo si el cliente se fue sin ser atendido.
+  </p>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="cancelling.set(null)">Volver</button>
+    <button type="button" class="btn btn-danger" [disabled]="!!busyId()" (click)="confirmCancel()">
+      @if (busyId()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Sacar de la cola
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Agregar a la cola -->
+<app-modal
+  [open]="addOpen()"
+  title="Agregar a la cola"
+  description="Busca al cliente y elige la mascota que llegó."
+  (closed)="addOpen.set(false)"
+>
+  @if (selected(); as sel) {
+    <div class="flex items-center gap-3 rounded-xl bg-anil-50 p-3 ring-1 ring-anil-200">
+      <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-anil-700">
+        <app-icon [name]="speciesIcons[sel.pet.species]" class="size-5" />
+      </span>
+      <div class="min-w-0 flex-1">
+        <p class="font-medium text-slate-900">{{ sel.pet.name }}</p>
+        <p class="truncate text-sm text-slate-600">{{ sel.client.name }}</p>
+      </div>
+      <button type="button" class="btn btn-ghost h-10 px-3" (click)="selected.set(null)">
+        Cambiar
+      </button>
+    </div>
+    <form
+      id="add-queue-form"
+      [formGroup]="addForm"
+      (ngSubmit)="addToQueue()"
+      novalidate
+      class="mt-5 space-y-4"
+    >
+      <div>
+        <label for="aq-reason" class="field-label">Motivo de la visita</label>
+        <input
+          id="aq-reason"
+          formControlName="reason"
+          class="field-input"
+          autocomplete="off"
+          placeholder="Ej.: vacuna, control, vómitos"
+        />
+      </div>
+      <label
+        class="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-slate-800"
+      >
+        <input type="checkbox" formControlName="urgent" class="size-5 rounded accent-rose-600" />
+        Es una urgencia (pasa primero)
+      </label>
+    </form>
+  } @else {
+    <div class="relative">
+      <label for="aq-search" class="sr-only">Buscar cliente o mascota</label>
+      <app-icon
+        name="search"
+        class="pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-slate-400"
+      />
+      <input
+        id="aq-search"
+        type="search"
+        [formControl]="search"
+        class="field-input mt-0 pl-10"
+        autocomplete="off"
+        placeholder="Nombre, DNI, celular o mascota"
+      />
+    </div>
+    <div class="mt-4 min-h-24" aria-live="polite">
+      @switch (results().kind) {
+        @case ('idle') {
+          <p class="py-6 text-center text-sm text-slate-500">
+            Escribe al menos 2 letras o números.
+          </p>
+        }
+        @case ('loading') {
+          <p class="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
+            <app-icon name="loader" class="size-4 animate-spin" /> Buscando…
+          </p>
+        }
+        @case ('error') {
+          <p class="py-6 text-center text-sm text-rose-700">
+            No se pudo buscar. Inténtalo de nuevo.
+          </p>
+        }
+        @case ('ready') {
+          @let found = results();
+          @if (found.kind === 'ready' && found.items.length) {
+            <ul class="space-y-3">
+              @for (client of found.items; track client.id) {
+                <li class="rounded-xl ring-1 ring-slate-200">
+                  <p class="px-3.5 pt-3 text-sm font-medium text-slate-900">{{ client.name }}</p>
+                  <div class="flex flex-wrap gap-2 p-3">
+                    @for (pet of activePets(client); track pet.id) {
+                      <button
+                        type="button"
+                        class="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ring-1 transition-colors disabled:cursor-not-allowed"
+                        [class]="
+                          inQueue(pet.id)
+                            ? 'bg-slate-50 text-slate-400 ring-slate-200'
+                            : 'text-slate-800 ring-slate-300 hover:bg-anil-50 hover:ring-anil-400'
+                        "
+                        [disabled]="inQueue(pet.id)"
+                        (click)="pick(client, pet)"
+                      >
+                        <app-icon [name]="speciesIcons[pet.species]" class="size-4" />
+                        {{ pet.name }}
+                        @if (inQueue(pet.id)) {
+                          <span class="text-xs font-normal">· ya en cola</span>
+                        }
+                      </button>
+                    } @empty {
+                      <p class="text-sm text-slate-500">Sin mascotas activas</p>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          } @else {
+            <div class="py-6 text-center">
+              <p class="text-sm text-slate-600">No encontramos a «{{ search.value }}».</p>
+              <a routerLink="/clientes/nuevo" class="btn btn-secondary mt-3">
+                <app-icon name="user-plus" class="size-4" /> Registrar cliente nuevo
+              </a>
+            </div>
+          }
+        }
+      }
+    </div>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="addOpen.set(false)">Cancelar</button>
+    @if (selected()) {
+      <button type="submit" form="add-queue-form" class="btn btn-primary" [disabled]="saving()">
+        @if (saving()) {
+          <app-icon name="loader" class="size-4 animate-spin" />
+        }
+        Poner en cola
+      </button>
+    }
+  </ng-container>
+</app-modal>

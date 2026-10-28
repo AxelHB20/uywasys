@@ -1,106 +1,352 @@
 <section class="space-y-6">
-  <!-- Bienvenida -->
+  <!-- Bienvenida + accesos rápidos -->
   <div
-    class="relative overflow-hidden rounded-3xl bg-anil-900 px-6 py-7 text-white sm:px-8 sm:py-8"
+    class="relative overflow-hidden rounded-3xl bg-anil-900 px-6 py-6 text-white sm:px-8 sm:py-7"
   >
     <div
-      class="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-chakana opacity-70 [mask-image:linear-gradient(to_left,black,transparent)] md:w-1/2"
+      class="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-chakana opacity-60 [mask-image:linear-gradient(to_left,black,transparent)]"
       aria-hidden="true"
     ></div>
-
-    <div class="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+    <div class="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
       <div>
-        <p class="text-sm font-medium text-anil-200">{{ today }}</p>
+        <p class="text-sm font-medium text-anil-200">{{ today() }}</p>
         <h1 class="mt-1 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-          {{ greeting }}, {{ session.firstName() }}
+          {{ greeting() }}, {{ session.firstName() }}
         </h1>
-        <p class="mt-2 text-anil-100/80">Así está {{ session.clinicName() }} hoy.</p>
+        <p class="mt-1.5 text-anil-100/80">Así está {{ session.clinicName() }} hoy.</p>
       </div>
-
-      <!-- Estado del sistema -->
-      <div
-        class="flex items-center gap-3 self-start rounded-full bg-white/10 py-1.5 pl-3 pr-1.5 ring-1 ring-white/15 backdrop-blur md:self-auto"
-        role="status"
-      >
-        @if (health.isLoading() && !health.hasValue()) {
-          <span class="size-2.5 rounded-full bg-white/50"></span>
-          <span class="text-sm">Comprobando conexión…</span>
-        } @else if (apiUp()) {
-          <span class="relative flex size-2.5">
-            <span
-              class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden"
-            ></span>
-            <span class="relative inline-flex size-2.5 rounded-full bg-emerald-400"></span>
-          </span>
-          <span class="text-sm" [attr.title]="'Última comprobación: ' + checkedAt()"
-            >Sistema en línea</span
+      <div class="flex flex-wrap gap-2">
+        @if (canRegister()) {
+          <a
+            routerLink="/clientes/nuevo"
+            class="btn bg-white text-anil-900 shadow-sm hover:bg-anil-50 active:bg-anil-100"
           >
-        } @else {
-          <span class="size-2.5 rounded-full bg-rose-400"></span>
-          <span class="text-sm">Sin conexión con el servidor</span>
+            <app-icon name="user-plus" class="size-4" /> Nuevo cliente
+          </a>
         }
-        <button
-          type="button"
-          (click)="health.reload()"
-          [disabled]="health.isLoading()"
-          class="grid size-8 place-items-center rounded-full text-anil-100 hover:bg-white/15 disabled:opacity-40"
-          aria-label="Volver a comprobar la conexión"
+        <a
+          routerLink="/clientes"
+          class="btn bg-white/10 text-white ring-1 ring-white/20 backdrop-blur hover:bg-white/15"
         >
-          <app-icon name="refresh" class="size-4" [class.animate-spin]="health.isLoading()" />
-        </button>
+          <app-icon name="search" class="size-4" /> Buscar cliente
+        </a>
       </div>
     </div>
   </div>
 
-  @if (!health.isLoading() && !apiUp()) {
+  @if (apiDown()) {
     <div
       class="flex gap-3 rounded-2xl bg-rose-50 px-5 py-4 text-sm ring-1 ring-rose-200"
       role="alert"
     >
-      <app-icon name="alert" class="mt-0.5 size-5 text-rose-600" />
-      <div>
+      <app-icon name="alert" class="mt-0.5 size-5 shrink-0 text-rose-600" />
+      <div class="flex-1">
         <p class="font-semibold text-rose-900">No hay conexión con el servidor</p>
-        <p class="mt-0.5 text-rose-800">
-          Verifica que el backend y la base de datos estén encendidos y vuelve a comprobar.
-        </p>
+        <p class="mt-0.5 text-rose-800">Revisa tu internet. Si sigue igual, avisa al soporte.</p>
       </div>
+      <button
+        type="button"
+        class="btn btn-secondary h-10 shrink-0"
+        (click)="health.reload(); summary.reload()"
+      >
+        Reintentar
+      </button>
     </div>
   }
 
-  <!-- Indicadores del día -->
-  <div>
-    <h2 class="mb-3 text-sm font-semibold text-slate-900">Indicadores del día</h2>
-    <ul class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-      @for (kpi of kpis; track kpi.label) {
-        <li class="rounded-2xl bg-white p-4 shadow-card ring-1 ring-slate-200/70 sm:p-5">
-          <div class="flex items-center gap-3">
-            <span
-              class="grid size-9 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-600"
-            >
-              <app-icon [name]="kpi.icon" class="size-[18px]" />
-            </span>
-            <p class="text-sm font-medium leading-snug text-slate-600">{{ kpi.label }}</p>
-          </div>
-          <p
-            class="mt-4 font-display text-2xl font-semibold text-slate-300"
-            aria-label="Sin datos todavía"
-          >
-            —
-          </p>
-          <p class="mt-1 text-xs text-slate-500">Se activa en la {{ kpi.comingIn }}</p>
-        </li>
+  <!-- Indicadores -->
+  <ul class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label="Indicadores de hoy">
+    @let d = data();
+    <li class="card p-4 sm:p-5">
+      <div class="flex items-start justify-between gap-2">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">En la clínica</p>
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700">
+          <app-icon name="clock" class="size-[18px]" />
+        </span>
+      </div>
+      @if (d) {
+        <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
+          {{ inClinic() }}
+        </p>
+        <p
+          class="mt-1 text-sm"
+          [class]="d.queue.urgent ? 'font-medium text-rose-700' : 'text-slate-500'"
+        >
+          @if (d.queue.urgent) {
+            {{ d.queue.urgent }} {{ d.queue.urgent === 1 ? 'urgencia' : 'urgencias' }}
+          } @else {
+            Sin urgencias
+          }
+        </p>
+      } @else {
+        <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
       }
-    </ul>
-  </div>
+    </li>
+    <li class="card p-4 sm:p-5">
+      <div class="flex items-start justify-between gap-2">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Atendidos hoy</p>
+        <span
+          class="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"
+        >
+          <app-icon name="check" class="size-[18px]" />
+        </span>
+      </div>
+      @if (d) {
+        <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
+          {{ d.queue.done }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">{{ d.queue.inProgress }} en atención ahora</p>
+      } @else {
+        <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
+      }
+    </li>
+    <li class="card p-4 sm:p-5">
+      <div class="flex items-start justify-between gap-2">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Clientes</p>
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700">
+          <app-icon name="clients" class="size-[18px]" />
+        </span>
+      </div>
+      @if (d) {
+        <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
+          {{ d.clients.active }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">
+          @if (d.clients.newThisMonth) {
+            <span class="font-medium text-emerald-700">+{{ d.clients.newThisMonth }}</span> este mes
+          } @else {
+            Ninguno nuevo este mes
+          }
+        </p>
+      } @else {
+        <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
+      }
+    </li>
+    <li class="card p-4 sm:p-5">
+      <div class="flex items-start justify-between gap-2">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Mascotas</p>
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-maiz-100 text-amber-800">
+          <app-icon name="paw" class="size-[18px]" />
+        </span>
+      </div>
+      @if (d) {
+        <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
+          {{ d.pets.active }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">Activas en la clínica</p>
+      } @else {
+        <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
+      }
+    </li>
+  </ul>
 
-  <!-- Primeros pasos (solo el administrador configura la clínica) -->
-  @if (session.isAdmin()) {
-    <div class="rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70">
+  <!-- Inventario: solo aparece si hay algo que atender -->
+  @if (data(); as dd) {
+    @if (dd.inventory.expiring || dd.inventory.lowStock) {
+      <section
+        class="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6 sm:px-6"
+        aria-label="Alertas de inventario"
+      >
+        <p class="flex items-center gap-2 font-medium text-slate-900">
+          <span class="grid size-9 place-items-center rounded-xl bg-maiz-100 text-amber-800"
+            ><app-icon name="package" class="size-[18px]"
+          /></span>
+          Inventario
+        </p>
+        <div class="flex flex-wrap gap-2">
+          @if (dd.inventory.expiring) {
+            <a
+              routerLink="/inventario"
+              [queryParams]="{ filtro: 'expiring' }"
+              class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-50 px-3 text-sm font-medium text-rose-800 ring-1 ring-rose-600/15 hover:bg-rose-100"
+            >
+              <app-icon name="alert" class="size-4" />
+              {{ dd.inventory.expiring }}
+              {{
+                dd.inventory.expiring === 1
+                  ? 'lote vencido o por vencer'
+                  : 'lotes vencidos o por vencer'
+              }}
+              (30 días)
+            </a>
+          }
+          @if (dd.inventory.lowStock) {
+            <a
+              routerLink="/inventario"
+              [queryParams]="{ filtro: 'low' }"
+              class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-anil-50 px-3 text-sm font-medium text-anil-800 ring-1 ring-anil-600/15 hover:bg-anil-100"
+            >
+              {{ dd.inventory.lowStock }}
+              {{
+                dd.inventory.lowStock === 1 ? 'producto con stock bajo' : 'productos con stock bajo'
+              }}
+            </a>
+          }
+        </div>
+      </section>
+    }
+  }
+
+  <div class="grid gap-6 xl:grid-cols-3">
+    <!-- Cola de hoy -->
+    <section class="card overflow-hidden xl:col-span-2" aria-labelledby="queue-title">
       <div
         class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"
       >
         <div>
-          <h2 class="text-sm font-semibold text-slate-900">Primeros pasos</h2>
+          <h2 id="queue-title" class="font-display text-base font-semibold text-slate-900">
+            Cola de hoy
+          </h2>
+          <p class="text-sm text-slate-500">Urgencias primero, luego por hora de llegada.</p>
+        </div>
+        <a
+          routerLink="/cola"
+          class="inline-flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-anil-700 hover:text-anil-800"
+        >
+          Abrir la cola <app-icon name="chevron-right" class="size-4" />
+        </a>
+      </div>
+      @if (summary.isLoading() && !d) {
+        <div class="space-y-3 p-5" aria-busy="true">
+          @for (i of [1, 2, 3]; track i) {
+            <div class="h-12 animate-pulse rounded-xl bg-slate-100"></div>
+          }
+        </div>
+      } @else if (d && d.queue.items.length) {
+        <ul class="divide-y divide-slate-100">
+          @for (item of d.queue.items; track item.id) {
+            <li>
+              <a
+                [routerLink]="['/clientes', item.client.id]"
+                class="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50 sm:px-6"
+              >
+                <span class="w-12 shrink-0 text-sm font-medium text-slate-500 tabular-nums">{{
+                  arrivalTime(item)
+                }}</span>
+                <span
+                  class="grid size-10 shrink-0 place-items-center rounded-xl"
+                  [class]="item.urgent ? 'bg-rose-50 text-rose-700' : 'bg-anil-50 text-anil-700'"
+                  aria-hidden="true"
+                >
+                  <app-icon [name]="speciesIcon(item.pet.species)" class="size-5" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium text-slate-900">
+                    {{ item.pet.name }}
+                    @if (item.urgent) {
+                      <app-badge tone="danger"
+                        ><app-icon name="alert" class="size-3" />Urgente</app-badge
+                      >
+                    }
+                    @if (item.pet.aggressive) {
+                      <app-badge tone="danger">Agresivo</app-badge>
+                    }
+                    @if (item.pet.allergies) {
+                      <app-badge tone="warning">Alergia</app-badge>
+                    }
+                  </p>
+                  <p class="truncate text-sm text-slate-500">
+                    {{ item.client.name }}
+                    @if (item.reason) {
+                      · {{ item.reason }}
+                    }
+                  </p>
+                </div>
+                <div class="hidden shrink-0 text-right sm:block">
+                  <app-badge [tone]="status[item.status].tone">{{
+                    status[item.status].label
+                  }}</app-badge>
+                  <p class="mt-1 text-xs text-slate-500 tabular-nums">{{ waitLabel(item) }}</p>
+                </div>
+              </a>
+            </li>
+          }
+        </ul>
+      } @else {
+        <div class="flex flex-col items-center px-6 py-12 text-center">
+          <span class="grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-500">
+            <app-icon name="clock" class="size-6" />
+          </span>
+          <p class="mt-3 font-medium text-slate-900">No hay pacientes esperando</p>
+          <p class="mt-1 max-w-xs text-sm text-slate-500">
+            Cuando un paciente llegue, agrégalo desde la cola o desde la ficha del cliente.
+          </p>
+        </div>
+      }
+    </section>
+
+    <!-- Clientes recientes -->
+    <section class="card overflow-hidden" aria-labelledby="recent-title">
+      <div
+        class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"
+      >
+        <h2 id="recent-title" class="font-display text-base font-semibold text-slate-900">
+          Clientes recientes
+        </h2>
+        <a
+          routerLink="/clientes"
+          class="inline-flex min-h-11 items-center text-sm font-medium text-anil-700 hover:text-anil-800"
+        >
+          Ver todos
+        </a>
+      </div>
+      @if (d && d.recentClients.length) {
+        <ul class="divide-y divide-slate-100">
+          @for (client of d.recentClients; track client.id) {
+            <li>
+              <a
+                [routerLink]="['/clientes', client.id]"
+                class="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-slate-50 sm:px-6"
+              >
+                <span
+                  class="grid size-10 shrink-0 place-items-center rounded-full bg-anil-100 text-sm font-semibold text-anil-800"
+                  aria-hidden="true"
+                  >{{ initials(client.name) }}</span
+                >
+                <div class="min-w-0 flex-1">
+                  <p class="truncate font-medium text-slate-900">{{ client.name }}</p>
+                  <p class="truncate text-sm text-slate-500">
+                    @for (pet of client.pets; track $index; let last = $last) {
+                      {{ pet.name }}{{ last ? '' : ', ' }}
+                    } @empty {
+                      Sin mascotas
+                    }
+                  </p>
+                </div>
+                <span class="shrink-0 text-xs text-slate-500">{{
+                  relativeDay(client.createdAt)
+                }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+      } @else if (d) {
+        <div class="px-6 py-12 text-center">
+          <p class="font-medium text-slate-900">Aún no hay clientes</p>
+          @if (canRegister()) {
+            <a routerLink="/clientes/nuevo" class="btn btn-primary mt-4">Registrar el primero</a>
+          }
+        </div>
+      } @else {
+        <div class="space-y-3 p-5" aria-busy="true">
+          @for (i of [1, 2, 3]; track i) {
+            <div class="h-10 animate-pulse rounded-xl bg-slate-100"></div>
+          }
+        </div>
+      }
+    </section>
+  </div>
+
+  <!-- Primeros pasos: solo mientras la clínica no esté lista -->
+  @if (showSetup()) {
+    <section class="card" aria-labelledby="setup-title">
+      <div
+        class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"
+      >
+        <div>
+          <h2 id="setup-title" class="font-display text-base font-semibold text-slate-900">
+            Primeros pasos
+          </h2>
           <p class="text-sm text-slate-500">Deja lista tu clínica para empezar a atender.</p>
         </div>
         <span
@@ -109,7 +355,7 @@
         >
       </div>
       <ol class="divide-y divide-slate-100">
-        @for (step of setupSteps; track step.title; let i = $index) {
+        @for (step of setupSteps; track step.key; let i = $index) {
           @let done = isDone(step);
           <li>
             <a
@@ -125,7 +371,7 @@
                 </span>
               } @else {
                 <span
-                  class="grid size-10 shrink-0 place-items-center rounded-full border-2 border-dashed border-slate-300 font-display text-sm font-semibold text-slate-500 group-hover:border-anil-300 group-hover:text-anil-600"
+                  class="grid size-10 shrink-0 place-items-center rounded-full border-2 border-dashed border-slate-300 font-display text-sm font-semibold text-slate-500"
                   >{{ i + 1 }}</span
                 >
               }
@@ -135,17 +381,6 @@
                 </p>
                 <p class="text-sm text-slate-500">{{ step.detail }}</p>
               </div>
-              @if (step.comingIn) {
-                <span
-                  class="hidden shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500 sm:inline"
-                  >{{ step.comingIn }}</span
-                >
-              } @else if (done) {
-                <span
-                  class="hidden shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 sm:inline"
-                  >Hecho</span
-                >
-              }
               <app-icon
                 name="chevron-right"
                 class="size-4 shrink-0 text-slate-300 group-hover:text-anil-500"
@@ -154,6 +389,6 @@
           </li>
         }
       </ol>
-    </div>
+    </section>
   }
 </section>

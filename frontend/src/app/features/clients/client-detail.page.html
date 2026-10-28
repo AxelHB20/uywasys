@@ -1,0 +1,698 @@
+<section class="space-y-6">
+  <a
+    routerLink="/clientes"
+    class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+  >
+    <app-icon name="chevron-left" class="size-4" /> Clientes
+  </a>
+
+  @if (loading() && !client()) {
+    <div class="card space-y-3 p-6" aria-busy="true" aria-label="Cargando ficha">
+      <div class="h-6 w-64 animate-pulse rounded bg-slate-100"></div>
+      <div class="h-4 w-40 animate-pulse rounded bg-slate-100"></div>
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (client(); as c) {
+    <!-- Encabezado del expediente -->
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex min-w-0 items-center gap-4">
+        <span
+          class="grid size-14 shrink-0 place-items-center rounded-2xl bg-anil-600 font-display text-lg font-semibold text-white"
+          aria-hidden="true"
+          >{{ initials(c.name) }}</span
+        >
+        <div class="min-w-0">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Cliente {{ clientCode(c.id) }} · desde {{ c.createdAt | date: 'MMM y' : '-0500' }}
+          </p>
+          <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
+            {{ c.name }}
+          </h1>
+          <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600 tabular-nums">
+            @if (c.docType) {
+              <span>{{ docLabels[c.docType] }} {{ c.docNumber }}</span>
+            } @else {
+              <span>Sin documento</span>
+            }
+            @if (!c.active) {
+              <app-badge>Inactivo</app-badge>
+            }
+          </div>
+        </div>
+      </div>
+      @if (canEdit()) {
+        <div class="flex shrink-0 gap-2">
+          <button type="button" class="btn btn-secondary" (click)="openClient()">
+            <app-icon name="pencil" class="size-4" /> Editar
+          </button>
+          <button type="button" class="btn btn-primary" (click)="openPet(null)">
+            <app-icon name="plus" class="size-4" /> Mascota
+          </button>
+        </div>
+      }
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start">
+      <!-- Columna del dueño -->
+      <aside class="space-y-6 lg:sticky lg:top-24">
+        <section class="card p-5" aria-labelledby="contact-title">
+          <h2
+            id="contact-title"
+            class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            Contacto
+          </h2>
+          <p class="mt-3 font-display text-xl font-semibold text-slate-900 tabular-nums">
+            {{ formatPhone(c.phone) }}
+          </p>
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <a [href]="'tel:+51' + c.phone" class="btn btn-secondary">
+              <app-icon name="phone" class="size-4" /> Llamar
+            </a>
+            <a
+              [href]="whatsappLink(c.phone)"
+              target="_blank"
+              rel="noopener"
+              class="btn btn-secondary"
+            >
+              <app-icon name="message-circle" class="size-4" /> WhatsApp
+            </a>
+          </div>
+          <dl class="mt-5 space-y-3 border-t border-slate-100 pt-4 text-sm">
+            <div class="flex gap-3">
+              <dt class="sr-only">Correo</dt>
+              <app-icon name="mail" class="mt-0.5 size-4 shrink-0 text-slate-400" />
+              <dd class="break-all" [class]="c.email ? 'text-slate-900' : 'text-slate-500'">
+                {{ c.email ?? 'Sin correo' }}
+              </dd>
+            </div>
+            <div class="flex gap-3">
+              <dt class="sr-only">Dirección</dt>
+              <app-icon name="map-pin" class="mt-0.5 size-4 shrink-0 text-slate-400" />
+              <dd [class]="c.address ? 'text-slate-900' : 'text-slate-500'">
+                {{ c.address ?? 'Sin dirección' }}
+                @if (c.district) {
+                  <span class="block text-slate-500">{{ c.district }}</span>
+                }
+              </dd>
+            </div>
+          </dl>
+          @if (c.notes) {
+            <p
+              class="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70"
+            >
+              {{ c.notes }}
+            </p>
+          }
+        </section>
+
+        <section class="card p-5" aria-labelledby="auth-title">
+          <div class="flex items-center justify-between gap-3">
+            <h2
+              id="auth-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Autorizados a recoger
+            </h2>
+            @if (canEdit()) {
+              <button
+                type="button"
+                class="btn btn-ghost -mr-2 h-10 px-2.5 text-anil-700"
+                (click)="openAuthorized()"
+              >
+                <app-icon name="plus" class="size-4" /> Agregar
+              </button>
+            }
+          </div>
+          @if (c.authorized.length) {
+            <ul class="mt-2 divide-y divide-slate-100">
+              @for (person of c.authorized; track person.id) {
+                <li class="flex items-center gap-3 py-2.5">
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-medium text-slate-900">
+                      {{ person.name }}
+                      @if (person.relation) {
+                        <span class="font-normal text-slate-500">· {{ person.relation }}</span>
+                      }
+                    </p>
+                    <p class="text-xs text-slate-500 tabular-nums">
+                      {{ person.dni ? 'DNI ' + person.dni : 'Sin DNI' }}
+                      @if (person.phone) {
+                        · {{ formatPhone(person.phone) }}
+                      }
+                    </p>
+                  </div>
+                  @if (canEdit()) {
+                    <button
+                      type="button"
+                      class="btn btn-ghost size-10 shrink-0 px-0 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                      (click)="askRemove(person)"
+                      [attr.aria-label]="'Quitar a ' + person.name"
+                      title="Quitar"
+                    >
+                      <app-icon name="trash" class="size-4" />
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="mt-2 text-sm text-slate-500">Solo el dueño puede recoger a sus mascotas.</p>
+          }
+        </section>
+
+        <section class="card p-5" aria-labelledby="privacy-title">
+          <h2
+            id="privacy-title"
+            class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            Protección de datos
+          </h2>
+          <ul class="mt-3 space-y-2 text-sm">
+            <li class="flex gap-2.5 text-slate-800">
+              <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />
+              Autorizó el uso de sus datos el {{ c.consentAt | date: 'd MMM y' : '-0500' }}
+            </li>
+            <li
+              class="flex gap-2.5"
+              [class]="c.marketingConsent ? 'text-slate-800' : 'text-slate-500'"
+            >
+              <app-icon
+                [name]="c.marketingConsent ? 'check' : 'x'"
+                class="mt-0.5 size-4 shrink-0"
+                [class]="c.marketingConsent ? 'text-emerald-600' : 'text-slate-400'"
+              />
+              {{ c.marketingConsent ? 'Acepta promociones' : 'No acepta promociones' }}
+            </li>
+          </ul>
+        </section>
+      </aside>
+
+      <!-- Mascotas -->
+      <div class="space-y-4">
+        <h2 class="font-display text-lg font-semibold text-slate-900">
+          Mascotas
+          <span class="font-sans text-base font-normal text-slate-500">{{
+            activePets().length
+          }}</span>
+        </h2>
+
+        @if (activePets().length === 0) {
+          <div class="card px-6 py-12 text-center">
+            <span
+              class="mx-auto grid size-12 place-items-center rounded-2xl bg-anil-50 text-anil-700"
+            >
+              <app-icon name="paw" class="size-6" />
+            </span>
+            <p class="mt-3 font-medium text-slate-900">
+              Este cliente aún no tiene mascotas activas
+            </p>
+            @if (canEdit()) {
+              <button type="button" class="btn btn-primary mt-4" (click)="openPet(null)">
+                <app-icon name="plus" class="size-4" /> Registrar mascota
+              </button>
+            }
+          </div>
+        } @else {
+          <ul class="grid gap-4 md:grid-cols-2">
+            @for (pet of activePets(); track pet.id) {
+              <li class="card flex flex-col p-5">
+                <div class="flex items-start gap-3">
+                  <span
+                    class="grid size-12 shrink-0 place-items-center rounded-2xl"
+                    [class]="
+                      pet.aggressive ? 'bg-rose-50 text-rose-700' : 'bg-anil-50 text-anil-700'
+                    "
+                    aria-hidden="true"
+                  >
+                    <app-icon [name]="speciesIcons[pet.species]" class="size-6" />
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-baseline justify-between gap-2">
+                      <h3 class="truncate font-display text-lg font-semibold text-slate-900">
+                        {{ pet.name }}
+                      </h3>
+                      <span class="shrink-0 text-xs font-medium text-slate-500 tabular-nums">{{
+                        petCode(pet.id)
+                      }}</span>
+                    </div>
+                    <p class="text-sm text-slate-600">{{ petSummary(pet) }}</p>
+                  </div>
+                </div>
+
+                <dl
+                  class="mt-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl bg-slate-50 py-2.5 text-center ring-1 ring-slate-200/60"
+                >
+                  <div class="px-2">
+                    <dt class="text-xs text-slate-500">Edad</dt>
+                    <dd class="mt-0.5 text-sm font-medium text-slate-900">
+                      @if (petAge(pet.birthDate); as age) {
+                        {{ pet.birthDateEstimated ? '≈ ' : '' }}{{ age }}
+                      } @else {
+                        —
+                      }
+                    </dd>
+                  </div>
+                  <div class="px-2">
+                    <dt class="text-xs text-slate-500">Peso</dt>
+                    <dd class="mt-0.5 text-sm font-medium text-slate-900 tabular-nums">
+                      {{ pet.weightKg != null ? pet.weightKg + ' kg' : '—' }}
+                    </dd>
+                  </div>
+                  <div class="px-2">
+                    <dt class="text-xs text-slate-500">Última visita</dt>
+                    <dd class="mt-0.5 text-sm font-medium text-slate-900">
+                      {{ relativeDay(pet.lastVisit ?? null) }}
+                    </dd>
+                  </div>
+                </dl>
+
+                @if (pet.aggressive || pet.allergies) {
+                  <div class="mt-3 space-y-2">
+                    @if (pet.aggressive) {
+                      <p
+                        class="flex gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-600/15"
+                      >
+                        <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-rose-600" />
+                        <span>
+                          <strong class="font-semibold">Agresivo.</strong>
+                          {{ pet.aggressiveNote ?? 'Puede morder o arañar.' }}
+                        </span>
+                      </p>
+                    }
+                    @if (pet.allergies) {
+                      <p
+                        class="flex gap-2 rounded-lg bg-maiz-100 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-600/20"
+                      >
+                        <app-icon name="info" class="mt-0.5 size-4 shrink-0" />
+                        <span
+                          ><strong class="font-semibold">Alergias:</strong>
+                          {{ pet.allergies }}</span
+                        >
+                      </p>
+                    }
+                  </div>
+                }
+
+                @if (canEdit()) {
+                  <div class="mt-auto flex gap-2 pt-4">
+                    <button type="button" class="btn btn-primary flex-1" (click)="openQueue(pet)">
+                      <app-icon name="clock" class="size-4" /> Poner en cola
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary size-11 shrink-0 px-0"
+                      (click)="openPet(pet)"
+                      [attr.aria-label]="'Editar a ' + pet.name"
+                      title="Editar"
+                    >
+                      <app-icon name="pencil" class="size-4" />
+                    </button>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+
+        @if (inactivePets().length) {
+          <details class="group card px-5">
+            <summary
+              class="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-700"
+            >
+              <app-icon
+                name="chevron-right"
+                class="size-4 transition-transform group-open:rotate-90"
+              />
+              Inactivas o fallecidas ({{ inactivePets().length }})
+            </summary>
+            <ul class="divide-y divide-slate-100 pb-2">
+              @for (pet of inactivePets(); track pet.id) {
+                <li class="flex items-center gap-3 py-3">
+                  <app-icon
+                    [name]="speciesIcons[pet.species]"
+                    class="size-5 shrink-0 text-slate-400"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="font-medium text-slate-800">
+                      {{ pet.name }}
+                      <span class="text-xs font-normal text-slate-500">{{ petCode(pet.id) }}</span>
+                    </p>
+                    <p class="text-sm text-slate-500">
+                      {{ speciesLabels[pet.species] }}
+                      @if (pet.deceasedAt) {
+                        · Falleció el {{ pet.deceasedAt | date: 'd MMM y' : 'UTC' }}
+                      } @else {
+                        · Inactiva
+                      }
+                    </p>
+                  </div>
+                  @if (canEdit()) {
+                    <button type="button" class="btn btn-ghost h-11 px-3" (click)="openPet(pet)">
+                      Editar
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+          </details>
+        }
+      </div>
+    </div>
+  }
+</section>
+
+<!-- Editar cliente -->
+<app-modal
+  [open]="modal() === 'client'"
+  title="Editar datos del cliente"
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form
+    id="client-form"
+    [formGroup]="clientForm"
+    (ngSubmit)="saveClient()"
+    novalidate
+    class="space-y-5"
+  >
+    <fieldset>
+      <legend class="field-label">Documento</legend>
+      <div class="mt-1.5 flex flex-wrap gap-2">
+        @for (choice of docChoices; track choice) {
+          <label
+            class="inline-flex h-11 cursor-pointer items-center rounded-xl px-3 text-sm font-medium text-slate-700 ring-1 ring-slate-300 select-none hover:bg-slate-50 has-checked:bg-anil-50 has-checked:text-anil-800 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+          >
+            <input type="radio" class="sr-only" formControlName="docType" [value]="choice" />
+            {{ docChoiceLabels[choice] }}
+          </label>
+        }
+      </div>
+    </fieldset>
+    @let choice = editDocChoice();
+    @if (choice !== 'NONE') {
+      <div>
+        <label for="e-doc" class="field-label">N.º de {{ docLabels[choice] }}</label>
+        <input
+          id="e-doc"
+          formControlName="docNumber"
+          class="field-input tabular-nums"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid(clientForm, 'docNumber')"
+        />
+        @if (invalid(clientForm, 'docNumber')) {
+          <p class="field-error">{{ docErrors[choice] }}</p>
+        }
+      </div>
+    }
+    <div>
+      <label for="e-name" class="field-label">{{
+        choice === 'RUC' ? 'Razón social' : 'Nombres y apellidos'
+      }}</label>
+      <input
+        id="e-name"
+        formControlName="name"
+        class="field-input"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid(clientForm, 'name')"
+      />
+      @if (invalid(clientForm, 'name')) {
+        <p class="field-error">Ingresa el nombre (mínimo 3 caracteres)</p>
+      }
+    </div>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div>
+        <label for="e-phone" class="field-label">Celular</label>
+        <input
+          id="e-phone"
+          type="tel"
+          inputmode="numeric"
+          formControlName="phone"
+          class="field-input tabular-nums"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid(clientForm, 'phone')"
+        />
+        @if (invalid(clientForm, 'phone')) {
+          <p class="field-error">9 dígitos que empiezan con 9</p>
+        }
+      </div>
+      <div>
+        <label for="e-email" class="field-label">Correo</label>
+        <input
+          id="e-email"
+          type="email"
+          formControlName="email"
+          class="field-input"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid(clientForm, 'email')"
+        />
+        @if (invalid(clientForm, 'email')) {
+          <p class="field-error">Ingresa un correo válido</p>
+        }
+      </div>
+    </div>
+    <div class="grid gap-5 sm:grid-cols-[2fr_1fr]">
+      <div>
+        <label for="e-address" class="field-label">Dirección</label>
+        <input id="e-address" formControlName="address" class="field-input" autocomplete="off" />
+      </div>
+      <div>
+        <label for="e-district" class="field-label">Distrito</label>
+        <input id="e-district" formControlName="district" class="field-input" autocomplete="off" />
+      </div>
+    </div>
+    <div>
+      <label for="e-notes" class="field-label">Notas</label>
+      <textarea
+        id="e-notes"
+        formControlName="notes"
+        rows="2"
+        class="field-input h-auto py-2.5"
+      ></textarea>
+    </div>
+    <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800">
+      <input
+        type="checkbox"
+        formControlName="marketingConsent"
+        class="size-5 rounded accent-anil-600"
+      />
+      Acepta promociones y recordatorios comerciales
+    </label>
+    <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800">
+      <input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />
+      Cliente activo
+    </label>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="client-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Guardar cambios
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Mascota -->
+<app-modal
+  [open]="modal() === 'pet'"
+  [title]="editingPet() ? 'Editar a ' + editingPet()!.name : 'Nueva mascota'"
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form id="pet-form" (ngSubmit)="savePet()" novalidate>
+    <app-pet-fields [group]="petForm" idPrefix="modal-pet" />
+    @if (editingPet()) {
+      <div [formGroup]="petStatus" class="mt-5 space-y-3 border-t border-slate-100 pt-5">
+        <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            formControlName="deceased"
+            class="size-5 rounded accent-slate-700"
+          />
+          Registrar fallecimiento
+        </label>
+        @if (deceased()) {
+          <div>
+            <label for="pet-deceased" class="field-label">Fecha de fallecimiento</label>
+            <input
+              id="pet-deceased"
+              type="date"
+              formControlName="deceasedAt"
+              class="field-input"
+              [max]="today"
+            />
+            <p class="field-hint">La mascota pasa a inactiva y su historial se conserva.</p>
+          </div>
+        } @else {
+          <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              formControlName="active"
+              class="size-5 rounded accent-anil-600"
+            />
+            Mascota activa
+          </label>
+        }
+      </div>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="pet-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      {{ editingPet() ? 'Guardar cambios' : 'Registrar mascota' }}
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Poner en cola -->
+<app-modal
+  [open]="modal() === 'queue'"
+  [title]="'Poner a ' + (queuePet()?.name ?? '') + ' en la cola'"
+  description="Se agrega a la cola de atención de hoy."
+  (closed)="close()"
+>
+  <form
+    id="queue-form"
+    [formGroup]="queueForm"
+    (ngSubmit)="addToQueue()"
+    novalidate
+    class="space-y-4"
+  >
+    <div>
+      <label for="q-reason" class="field-label">Motivo de la visita</label>
+      <input
+        id="q-reason"
+        formControlName="reason"
+        class="field-input"
+        autocomplete="off"
+        placeholder="Ej.: vacuna, control, vómitos"
+      />
+    </div>
+    <label
+      class="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-slate-800"
+    >
+      <input type="checkbox" formControlName="urgent" class="size-5 rounded accent-rose-600" />
+      Es una urgencia (pasa primero)
+    </label>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="queue-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Poner en cola
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Persona autorizada -->
+<app-modal
+  [open]="modal() === 'authorized'"
+  title="Persona autorizada"
+  description="Podrá dejar y recoger a las mascotas de este cliente."
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form
+    id="auth-form"
+    [formGroup]="authorizedForm"
+    (ngSubmit)="saveAuthorized()"
+    novalidate
+    class="space-y-5"
+  >
+    <div>
+      <label for="a-name" class="field-label"
+        >Nombres y apellidos <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="a-name"
+        formControlName="name"
+        class="field-input"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid(authorizedForm, 'name')"
+      />
+      @if (invalid(authorizedForm, 'name')) {
+        <p class="field-error">Ingresa el nombre (mínimo 3 caracteres)</p>
+      }
+    </div>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div>
+        <label for="a-dni" class="field-label">DNI</label>
+        <input
+          id="a-dni"
+          inputmode="numeric"
+          maxlength="8"
+          formControlName="dni"
+          class="field-input tabular-nums"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid(authorizedForm, 'dni')"
+        />
+        @if (invalid(authorizedForm, 'dni')) {
+          <p class="field-error">El DNI debe tener 8 dígitos</p>
+        }
+      </div>
+      <div>
+        <label for="a-phone" class="field-label">Celular</label>
+        <input
+          id="a-phone"
+          type="tel"
+          inputmode="numeric"
+          formControlName="phone"
+          class="field-input tabular-nums"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid(authorizedForm, 'phone')"
+        />
+        @if (invalid(authorizedForm, 'phone')) {
+          <p class="field-error">9 dígitos que empiezan con 9</p>
+        }
+      </div>
+    </div>
+    <div>
+      <label for="a-relation" class="field-label">Parentesco o relación</label>
+      <input
+        id="a-relation"
+        formControlName="relation"
+        class="field-input"
+        autocomplete="off"
+        placeholder="Ej.: hija, vecino, paseador"
+      />
+    </div>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="submit" form="auth-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Agregar
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Confirmar quitar autorizado -->
+<app-modal [open]="modal() === 'remove-authorized'" title="Quitar autorización" (closed)="close()">
+  <p class="text-slate-700">
+    <strong class="font-semibold text-slate-900">{{ removing()?.name }}</strong> ya no podrá recoger
+    a las mascotas de este cliente.
+  </p>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="button" class="btn btn-danger" [disabled]="saving()" (click)="removeAuthorized()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Quitar
+    </button>
+  </ng-container>
+</app-modal>

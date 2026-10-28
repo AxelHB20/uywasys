@@ -1,0 +1,282 @@
+<section class="space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Inventario</h1>
+      <p class="mt-1 text-slate-600">
+        Medicamentos, vacunas y productos, con sus lotes y vencimientos.
+      </p>
+    </div>
+    @if (canManage()) {
+      <div class="flex flex-wrap gap-2 self-start sm:self-auto">
+        <a routerLink="/inventario/controlados" class="btn btn-secondary">Controlados</a>
+        <a routerLink="/inventario/nuevo" class="btn btn-primary">
+          <app-icon name="plus" class="size-4" /> Nuevo producto
+        </a>
+      </div>
+    }
+  </div>
+
+  <!-- Alertas: cada una filtra la lista -->
+  <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Alertas de inventario">
+    @for (card of alertCards(); track card.label) {
+      <li>
+        <button
+          type="button"
+          class="card flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-slate-50"
+          [class.ring-2]="filter() === card.filter"
+          [class.ring-anil-300]="filter() === card.filter"
+          [attr.aria-pressed]="filter() === card.filter"
+          (click)="setFilter(filter() === card.filter ? 'all' : card.filter)"
+        >
+          <span class="grid size-10 shrink-0 place-items-center rounded-xl" [class]="card.tint">
+            <app-icon [name]="card.icon" class="size-5" />
+          </span>
+          <span>
+            <span class="block font-display text-2xl font-semibold text-slate-900 tabular-nums">{{
+              card.value ?? '—'
+            }}</span>
+            <span class="text-sm leading-tight text-slate-600">{{ card.label }}</span>
+          </span>
+        </button>
+      </li>
+    }
+  </ul>
+
+  <div class="flex flex-col gap-3 sm:flex-row" role="search">
+    <div class="relative flex-1">
+      <label for="inv-search" class="sr-only">Buscar por nombre, código o código de barras</label>
+      <app-icon
+        name="search"
+        class="pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-slate-400"
+      />
+      <input
+        id="inv-search"
+        type="search"
+        autocomplete="off"
+        [formControl]="search"
+        placeholder="Nombre, código o código de barras"
+        class="field-input mt-0 pl-10"
+      />
+    </div>
+    <div class="sm:w-52">
+      <label for="inv-category" class="sr-only">Categoría</label>
+      <select id="inv-category" [formControl]="category" class="field-input mt-0">
+        <option value="">Todas las categorías</option>
+        @for (c of categories; track c) {
+          <option [value]="c">{{ categoryLabels[c] }}</option>
+        }
+      </select>
+    </div>
+  </div>
+
+  @if (filter() !== 'all') {
+    <p class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+      Mostrando:
+      <app-badge [tone]="filter() === 'low' ? 'info' : 'danger'">{{
+        filter() === 'low' ? 'Stock bajo' : 'Por vencer (60 días) o vencidos'
+      }}</app-badge>
+      <button
+        type="button"
+        class="font-medium text-anil-700 hover:text-anil-800"
+        (click)="setFilter('all')"
+      >
+        Quitar filtro
+      </button>
+    </p>
+  }
+
+  @switch (state().kind) {
+    @case ('loading') {
+      <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando productos">
+        @for (i of [1, 2, 3, 4]; track i) {
+          <div class="flex items-center gap-4 p-5">
+            <div class="h-4 w-56 animate-pulse rounded bg-slate-100"></div>
+            <div class="ml-auto h-4 w-24 animate-pulse rounded bg-slate-100"></div>
+          </div>
+        }
+      </div>
+    }
+    @case ('error') {
+      @let e = state();
+      <div class="card flex flex-col items-center px-6 py-12 text-center">
+        <app-icon name="alert" class="size-8 text-rose-600" />
+        <p class="mt-3 font-medium text-slate-900">{{ e.kind === 'error' ? e.message : '' }}</p>
+        <button type="button" class="btn btn-secondary mt-5" (click)="reload()">Reintentar</button>
+      </div>
+    }
+    @case ('ready') {
+      @let r = state();
+      @if (r.kind === 'ready') {
+        @if (r.data.items.length === 0) {
+          <div class="card flex flex-col items-center px-6 py-14 text-center">
+            <span class="grid size-14 place-items-center rounded-2xl bg-anil-50 text-anil-700"
+              ><app-icon name="package" class="size-7"
+            /></span>
+            @if (filtering()) {
+              <p class="mt-4 font-medium text-slate-900">No hay productos con ese filtro</p>
+              <button type="button" class="btn btn-secondary mt-5" (click)="clear()">
+                Ver todo el inventario
+              </button>
+            } @else {
+              <p class="mt-4 font-medium text-slate-900">Aún no hay productos</p>
+              <p class="mt-1 max-w-sm text-slate-600">
+                Registra tus medicamentos y productos con sus presentaciones y precios.
+              </p>
+              @if (canManage()) {
+                <a routerLink="/inventario/nuevo" class="btn btn-primary mt-5"
+                  ><app-icon name="plus" class="size-4" /> Registrar el primero</a
+                >
+              }
+            }
+          </div>
+        } @else {
+          <!-- Escritorio -->
+          <div class="card hidden overflow-hidden md:block">
+            <table class="w-full text-left text-sm">
+              <thead
+                class="border-b border-slate-100 bg-slate-50/70 text-xs font-medium tracking-wide text-slate-500 uppercase"
+              >
+                <tr>
+                  <th scope="col" class="px-5 py-3">Producto</th>
+                  <th scope="col" class="px-5 py-3">Stock</th>
+                  <th scope="col" class="px-5 py-3">Próximo vencimiento</th>
+                  <th scope="col" class="px-5 py-3">Precio</th>
+                  <th scope="col" class="px-3 py-3"><span class="sr-only">Abrir</span></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (p of r.data.items; track p.id) {
+                  <tr
+                    class="relative align-top transition-colors hover:bg-slate-50/60"
+                    [class.opacity-60]="!p.active"
+                  >
+                    <td class="px-5 py-3.5">
+                      <a
+                        [routerLink]="['/inventario', p.id]"
+                        class="font-medium text-slate-900 after:absolute after:inset-0 focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-anil-400 focus-visible:after:ring-inset"
+                        >{{ p.name }}</a
+                      >
+                      <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                        {{ categoryLabels[p.category] }}
+                        @if (p.code) {
+                          · {{ p.code }}
+                        }
+                        @if (p.controlled) {
+                          <app-badge tone="danger">Controlado</app-badge>
+                        } @else if (p.requiresPrescription) {
+                          <app-badge tone="info">Con receta</app-badge>
+                        }
+                        @if (!p.active) {
+                          <app-badge>Inactivo</app-badge>
+                        }
+                      </p>
+                    </td>
+                    <td class="px-5 py-3.5">
+                      <p
+                        [class]="p.totalStock <= 0 ? 'font-medium text-rose-700' : 'text-slate-900'"
+                      >
+                        {{ stock(p) }}
+                      </p>
+                      @if (p.lowStock && p.totalStock > 0) {
+                        <p class="mt-0.5 text-xs font-medium text-amber-800">Stock bajo</p>
+                      }
+                    </td>
+                    <td class="px-5 py-3.5">
+                      @if (p.nextExpiry; as e) {
+                        <app-badge [tone]="expiryBadge[e.level].tone">{{
+                          expiryText(e.days)
+                        }}</app-badge>
+                        <p class="mt-1 text-xs text-slate-500 tabular-nums">
+                          {{ e.date }}
+                          @if (e.lotNumber) {
+                            · Lote {{ e.lotNumber }}
+                          }
+                        </p>
+                      } @else {
+                        <span class="text-slate-500">—</span>
+                      }
+                    </td>
+                    <td class="px-5 py-3.5 text-slate-700 tabular-nums">{{ price(p) }}</td>
+                    <td class="px-3 py-3.5 text-slate-400">
+                      <app-icon name="chevron-right" class="size-5" />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Móvil -->
+          <ul class="space-y-3 md:hidden">
+            @for (p of r.data.items; track p.id) {
+              <li>
+                <a
+                  [routerLink]="['/inventario', p.id]"
+                  class="card block p-4 hover:bg-slate-50"
+                  [class.opacity-60]="!p.active"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900">{{ p.name }}</p>
+                      <p class="text-xs text-slate-500">{{ categoryLabels[p.category] }}</p>
+                    </div>
+                    @if (p.controlled) {
+                      <app-badge tone="danger">Controlado</app-badge>
+                    }
+                  </div>
+                  <p
+                    class="mt-2 text-sm"
+                    [class]="p.totalStock <= 0 ? 'font-medium text-rose-700' : 'text-slate-800'"
+                  >
+                    {{ stock(p) }}
+                    @if (p.lowStock && p.totalStock > 0) {
+                      <span class="text-xs font-medium text-amber-800">· Stock bajo</span>
+                    }
+                  </p>
+                  @if (p.nextExpiry; as e) {
+                    <div class="mt-2">
+                      <app-badge [tone]="expiryBadge[e.level].tone">{{
+                        expiryText(e.days)
+                      }}</app-badge>
+                    </div>
+                  }
+                </a>
+              </li>
+            }
+          </ul>
+
+          @if (range(); as rg) {
+            <nav
+              class="flex flex-col items-center gap-3 sm:flex-row sm:justify-between"
+              aria-label="Paginación"
+            >
+              <p class="text-sm text-slate-600 tabular-nums">
+                {{ rg.from }}–{{ rg.to }} de {{ rg.total }}
+              </p>
+              @if (r.data.page > 1 || hasNext()) {
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    [disabled]="r.data.page <= 1"
+                    (click)="goTo(r.data.page - 1)"
+                  >
+                    <app-icon name="chevron-left" class="size-4" /> Anterior
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    [disabled]="!hasNext()"
+                    (click)="goTo(r.data.page + 1)"
+                  >
+                    Siguiente <app-icon name="chevron-right" class="size-4" />
+                  </button>
+                </div>
+              }
+            </nav>
+          }
+        }
+      }
+    }
+  }
+</section>

@@ -1,0 +1,127 @@
+<section class="space-y-6">
+  <div class="print:hidden">
+    <a
+      routerLink="/inventario"
+      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+    >
+      <app-icon name="chevron-left" class="size-4" /> Inventario
+    </a>
+  </div>
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Libro de controlados</h1>
+      <p class="mt-1 text-slate-600">
+        Cada entrada y salida de medicamentos controlados, con paciente, veterinario, lote y receta.
+      </p>
+    </div>
+    <button type="button" class="btn btn-secondary self-start print:hidden" (click)="print()">
+      Imprimir
+    </button>
+  </div>
+
+  <form
+    [formGroup]="range"
+    (ngSubmit)="load()"
+    class="card flex flex-col gap-3 p-4 sm:flex-row sm:items-end print:hidden"
+  >
+    <div>
+      <label for="c-from" class="field-label">Desde</label>
+      <input id="c-from" type="date" formControlName="from" class="field-input" />
+    </div>
+    <div>
+      <label for="c-to" class="field-label">Hasta</label>
+      <input id="c-to" type="date" formControlName="to" class="field-input" />
+    </div>
+    <button type="submit" class="btn btn-primary">Ver</button>
+  </form>
+
+  @if (loading()) {
+    <div class="h-40 animate-pulse rounded-2xl bg-slate-100" aria-busy="true"></div>
+  } @else if (error(); as e) {
+    <div class="card px-6 py-10 text-center">
+      <p class="font-medium text-slate-900">{{ e }}</p>
+      <button type="button" class="btn btn-secondary mt-4" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (rows().length === 0) {
+    <div class="card px-6 py-12 text-center">
+      <p class="font-medium text-slate-900">No hay movimientos de controlados en esas fechas</p>
+      <p class="mt-1 text-sm text-slate-600">
+        Marca un producto como «controlado» para que sus usos aparezcan aquí.
+      </p>
+    </div>
+  } @else {
+    <div class="card overflow-x-auto">
+      <table class="w-full min-w-[56rem] text-left text-sm">
+        <thead
+          class="border-b border-slate-100 bg-slate-50/70 text-xs font-medium tracking-wide text-slate-500 uppercase"
+        >
+          <tr>
+            <th scope="col" class="px-4 py-3">Fecha</th>
+            <th scope="col" class="px-4 py-3">Producto · lote</th>
+            <th scope="col" class="px-4 py-3">Movimiento</th>
+            <th scope="col" class="px-4 py-3">Paciente</th>
+            <th scope="col" class="px-4 py-3">Veterinario · receta</th>
+            <th scope="col" class="px-4 py-3">Registró</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          @for (m of rows(); track m.id) {
+            <tr class="align-top">
+              <td class="px-4 py-3 whitespace-nowrap text-slate-700 tabular-nums">
+                {{ m.createdAt | date: 'dd/MM/yy HH:mm' : '-0500' }}
+              </td>
+              <td class="px-4 py-3">
+                <a
+                  [routerLink]="['/inventario', m.product.id]"
+                  class="font-medium text-slate-900 hover:text-anil-700"
+                  >{{ m.product.name }}</a
+                >
+                <p class="text-xs text-slate-500">Lote {{ m.batch?.lotNumber ?? '—' }}</p>
+              </td>
+              <td class="px-4 py-3">
+                <p
+                  class="font-medium tabular-nums"
+                  [class]="m.quantity > 0 ? 'text-emerald-700' : 'text-slate-900'"
+                >
+                  {{ qty(m) }}
+                </p>
+                <p class="text-xs text-slate-500">
+                  {{ labels[m.type] }}
+                  @if (m.reason) {
+                    · {{ m.reason }}
+                  }
+                </p>
+              </td>
+              <td class="px-4 py-3">
+                @if (m.pet) {
+                  <a
+                    [routerLink]="['/clientes', m.pet.client.id]"
+                    class="font-medium text-slate-900 hover:text-anil-700"
+                    >{{ m.pet.name }}</a
+                  >
+                  <p class="text-xs text-slate-500">{{ m.pet.client.name }}</p>
+                } @else {
+                  <span class="text-slate-500">—</span>
+                }
+              </td>
+              <td class="px-4 py-3">
+                @if (m.vet) {
+                  <p class="text-slate-900">{{ m.vet.fullName }}</p>
+                  <p class="text-xs text-slate-500">
+                    CMVP {{ m.vet.licenseNumber ?? '—' }}
+                    @if (m.prescriptionRef) {
+                      · Receta {{ m.prescriptionRef }}
+                    }
+                  </p>
+                } @else {
+                  <span class="text-slate-500">—</span>
+                }
+              </td>
+              <td class="px-4 py-3 text-slate-700">{{ m.user.fullName }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

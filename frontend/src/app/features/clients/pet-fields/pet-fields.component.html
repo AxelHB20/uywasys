@@ -1,0 +1,239 @@
+<div [formGroup]="group()" class="space-y-5">
+  <div class="grid gap-5 sm:grid-cols-2">
+    <div class="sm:col-span-2">
+      <label [for]="id('name')" class="field-label">
+        Nombre de la mascota <span class="text-rose-600" aria-hidden="true">*</span>
+      </label>
+      <input
+        [id]="id('name')"
+        formControlName="name"
+        class="field-input"
+        autocomplete="off"
+        [attr.aria-invalid]="invalid('name')"
+      />
+      @if (invalid('name')) {
+        <p class="field-error">Ingresa el nombre de la mascota</p>
+      }
+    </div>
+  </div>
+
+  <fieldset>
+    <legend class="field-label">
+      Especie <span class="text-rose-600" aria-hidden="true">*</span>
+    </legend>
+    <div class="mt-1.5 flex flex-wrap gap-2" role="radiogroup">
+      @for (s of species; track s) {
+        <label
+          class="inline-flex h-11 cursor-pointer items-center rounded-xl px-4 text-sm font-medium text-slate-700 ring-1 ring-slate-300 transition-colors select-none hover:bg-slate-50 has-checked:bg-anil-600 has-checked:text-white has-checked:ring-anil-600 has-focus-visible:ring-2 has-focus-visible:ring-anil-400 has-focus-visible:ring-offset-2"
+        >
+          <input type="radio" class="sr-only" formControlName="species" [value]="s" />
+          {{ speciesLabels[s] }}
+        </label>
+      }
+    </div>
+    @if (invalid('species')) {
+      <p class="field-error">Elige la especie</p>
+    }
+  </fieldset>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+    <div>
+      <label [for]="id('breed')" class="field-label">Raza</label>
+      <input
+        [id]="id('breed')"
+        formControlName="breed"
+        class="field-input"
+        autocomplete="off"
+        placeholder="Ej.: mestizo, shih tzu"
+      />
+    </div>
+    <fieldset>
+      <legend class="field-label">Sexo</legend>
+      <div class="mt-1.5 grid grid-cols-2 gap-2">
+        @for (sex of ['MALE', 'FEMALE']; track sex) {
+          <label
+            class="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl text-sm font-medium text-slate-700 ring-1 ring-slate-300 transition-colors select-none hover:bg-slate-50 has-checked:bg-anil-50 has-checked:text-anil-800 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+          >
+            <input type="radio" class="sr-only" formControlName="sex" [value]="sex" />
+            {{ sex === 'MALE' ? sexLabels.MALE : sexLabels.FEMALE }}
+          </label>
+        }
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+    <fieldset>
+      <div class="flex items-center justify-between gap-2">
+        <legend class="field-label">Edad</legend>
+        <div class="flex rounded-lg bg-slate-100 p-0.5 text-xs font-medium">
+          <label
+            class="cursor-pointer rounded-md px-2.5 py-1.5 text-slate-600 has-checked:bg-white has-checked:text-slate-900 has-checked:shadow-sm has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+          >
+            <input type="radio" class="sr-only" formControlName="ageMode" value="age" />
+            Aproximada
+          </label>
+          <label
+            class="cursor-pointer rounded-md px-2.5 py-1.5 text-slate-600 has-checked:bg-white has-checked:text-slate-900 has-checked:shadow-sm has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+          >
+            <input type="radio" class="sr-only" formControlName="ageMode" value="date" />
+            Fecha exacta
+          </label>
+        </div>
+      </div>
+      @if (ageMode() === 'date') {
+        <label [for]="id('birth')" class="sr-only">Fecha de nacimiento</label>
+        <input
+          [id]="id('birth')"
+          type="date"
+          formControlName="birthDate"
+          class="field-input"
+          [max]="today"
+        />
+      } @else {
+        <div class="mt-1.5 grid grid-cols-2 gap-2">
+          <div class="relative">
+            <label [for]="id('years')" class="sr-only">Años</label>
+            <input
+              [id]="id('years')"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              max="40"
+              formControlName="years"
+              class="field-input mt-0 pr-14"
+              [attr.aria-invalid]="invalid('years')"
+            />
+            <span
+              class="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-sm text-slate-500"
+              >años</span
+            >
+          </div>
+          <div class="relative">
+            <label [for]="id('months')" class="sr-only">Meses</label>
+            <input
+              [id]="id('months')"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              max="11"
+              formControlName="months"
+              class="field-input mt-0 pr-16"
+              [attr.aria-invalid]="invalid('months')"
+            />
+            <span
+              class="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-sm text-slate-500"
+              >meses</span
+            >
+          </div>
+        </div>
+        @if (invalid('years') || invalid('months')) {
+          <p class="field-error">Revisa la edad: hasta 40 años y de 0 a 11 meses</p>
+        }
+      }
+    </fieldset>
+    <div>
+      <label [for]="id('weight')" class="field-label">Peso</label>
+      <div class="relative">
+        <input
+          [id]="id('weight')"
+          type="number"
+          inputmode="decimal"
+          step="0.01"
+          min="0"
+          formControlName="weightKg"
+          class="field-input pr-12"
+          [attr.aria-invalid]="invalid('weightKg')"
+        />
+        <span
+          class="pointer-events-none absolute top-[calc(50%+3px)] right-3.5 -translate-y-1/2 text-sm text-slate-500"
+          >kg</span
+        >
+      </div>
+      @if (invalid('weightKg')) {
+        <p class="field-error">El peso debe ser mayor a 0 y menor a 1000 kg</p>
+      }
+    </div>
+  </div>
+
+  <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800">
+    <input type="checkbox" formControlName="neutered" class="size-5 rounded accent-anil-600" />
+    Esterilizado(a)
+  </label>
+
+  <!-- Alertas: lo que todo el equipo debe ver antes de tocar a la mascota -->
+  <div class="space-y-4 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/70">
+    <div>
+      <label [for]="id('allergies')" class="field-label">Alergias</label>
+      <input
+        [id]="id('allergies')"
+        formControlName="allergies"
+        class="field-input"
+        autocomplete="off"
+        placeholder="Ej.: penicilina, pollo"
+        [attr.aria-describedby]="id('allergies-hint')"
+      />
+      <p [id]="id('allergies-hint')" class="field-hint">
+        Se muestra como alerta en la cola y la ficha
+      </p>
+    </div>
+    <label
+      class="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-slate-800"
+    >
+      <input type="checkbox" formControlName="aggressive" class="size-5 rounded accent-rose-600" />
+      <app-icon name="alert" class="size-4 text-rose-600" />
+      Puede morder o arañar
+    </label>
+    @if (aggressive()) {
+      <div>
+        <label [for]="id('aggressive-note')" class="field-label"
+          >¿Qué hay que tener en cuenta?</label
+        >
+        <input
+          [id]="id('aggressive-note')"
+          formControlName="aggressiveNote"
+          class="field-input"
+          autocomplete="off"
+          placeholder="Ej.: usar bozal al cortar uñas"
+        />
+      </div>
+    }
+  </div>
+
+  <details class="group">
+    <summary
+      class="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-medium text-anil-700 hover:text-anil-800"
+    >
+      <app-icon name="chevron-right" class="size-4 transition-transform group-open:rotate-90" />
+      Más datos (color, microchip, notas)
+    </summary>
+    <div class="mt-3 grid gap-5 sm:grid-cols-2">
+      <div>
+        <label [for]="id('color')" class="field-label">Color</label>
+        <input [id]="id('color')" formControlName="color" class="field-input" autocomplete="off" />
+      </div>
+      <div>
+        <label [for]="id('chip')" class="field-label">Microchip</label>
+        <input
+          [id]="id('chip')"
+          formControlName="microchip"
+          class="field-input"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid('microchip')"
+        />
+        @if (invalid('microchip')) {
+          <p class="field-error">Entre 9 y 15 letras o números</p>
+        }
+      </div>
+      <div class="sm:col-span-2">
+        <label [for]="id('notes')" class="field-label">Notas</label>
+        <textarea
+          [id]="id('notes')"
+          formControlName="notes"
+          rows="2"
+          class="field-input h-auto py-2.5"
+        ></textarea>
+      </div>
+    </div>
+  </details>
+</div>

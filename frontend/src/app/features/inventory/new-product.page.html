@@ -1,0 +1,273 @@
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate class="mx-auto max-w-4xl space-y-6 pb-4">
+  <div>
+    <a
+      routerLink="/inventario"
+      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+    >
+      <app-icon name="chevron-left" class="size-4" /> Inventario
+    </a>
+    <h1 class="font-display text-2xl font-semibold text-slate-900">Nuevo producto</h1>
+    <p class="mt-1 text-slate-600">
+      Primero el producto y sus presentaciones; el stock entra con la primera compra.
+    </p>
+  </div>
+
+  <section class="card space-y-5 p-5 sm:p-6" aria-labelledby="p-general">
+    <h2 id="p-general" class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+      Datos del producto
+    </h2>
+    <div>
+      <label for="p-name" class="field-label"
+        >Nombre <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="p-name"
+        formControlName="name"
+        class="field-input"
+        autocomplete="off"
+        placeholder="Ej.: Meloxicam 1 mg"
+        [attr.aria-invalid]="invalid(form.controls.name)"
+      />
+      @if (invalid(form.controls.name)) {
+        <p class="field-error">Ingresa el nombre (mínimo 2 caracteres)</p>
+      }
+    </div>
+
+    <fieldset>
+      <legend class="field-label">
+        Categoría <span class="text-rose-600" aria-hidden="true">*</span>
+      </legend>
+      <div class="mt-1.5 flex flex-wrap gap-2">
+        @for (c of categories; track c) {
+          <label
+            class="inline-flex h-11 cursor-pointer items-center rounded-xl px-3.5 text-sm font-medium text-slate-700 ring-1 ring-slate-300 select-none hover:bg-slate-50 has-checked:bg-anil-600 has-checked:text-white has-checked:ring-anil-600 has-focus-visible:ring-2 has-focus-visible:ring-anil-400 has-focus-visible:ring-offset-2"
+          >
+            <input type="radio" class="sr-only" formControlName="category" [value]="c" />
+            {{ categoryLabels[c] }}
+          </label>
+        }
+      </div>
+      @if (invalid(form.controls.category)) {
+        <p class="field-error">Elige la categoría</p>
+      } @else if (category() === 'ACCESSORY') {
+        <p class="field-hint">Los accesorios no llevan lote ni vencimiento.</p>
+      }
+    </fieldset>
+
+    <div class="grid gap-5 sm:grid-cols-2">
+      <fieldset>
+        <legend class="field-label">Unidad mínima (en la que se cuenta el stock)</legend>
+        <div class="mt-1.5 grid grid-cols-4 gap-2">
+          @for (u of units; track u) {
+            <label
+              class="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl text-sm font-medium text-slate-700 ring-1 ring-slate-300 select-none hover:bg-slate-50 has-checked:bg-anil-50 has-checked:text-anil-800 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+            >
+              <input type="radio" class="sr-only" formControlName="baseUnit" [value]="u" />
+              {{ unitLabels[u][0] }}
+            </label>
+          }
+        </div>
+      </fieldset>
+      <div>
+        <label for="p-min" class="field-label">Avisar con stock bajo cuando queden</label>
+        <div class="relative">
+          <input
+            id="p-min"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            formControlName="minStock"
+            class="field-input pr-24"
+          />
+          <span
+            class="pointer-events-none absolute top-[calc(50%+3px)] right-3.5 -translate-y-1/2 text-sm text-slate-500"
+            >{{ unitPlural() }}</span
+          >
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label
+        class="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-1 text-sm text-slate-800"
+      >
+        <input
+          type="checkbox"
+          formControlName="requiresPrescription"
+          class="size-5 rounded accent-anil-600"
+        />
+        Se vende con receta
+      </label>
+      <label
+        class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 text-sm text-slate-800"
+      >
+        <input
+          type="checkbox"
+          formControlName="controlled"
+          class="mt-0.5 size-5 shrink-0 rounded accent-rose-600"
+        />
+        <span>
+          <span class="font-medium">Medicamento controlado</span>
+          <span class="block text-slate-500"
+            >Ketamina y similares: cada uso pide paciente, receta y veterinario colegiado.</span
+          >
+        </span>
+      </label>
+    </div>
+  </section>
+
+  <section class="card space-y-4 p-5 sm:p-6" aria-labelledby="p-presentations">
+    <div>
+      <h2 id="p-presentations" class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+        Presentaciones y precios
+      </h2>
+      <p class="mt-1 text-sm text-slate-600">
+        Cómo lo compras y lo vendes. La equivalencia es cuántas {{ unitPlural() }} trae cada una.
+        Precio con IGV incluido.
+      </p>
+    </div>
+    <div
+      class="hidden grid-cols-[1fr_9rem_9rem_2.75rem] gap-3 text-xs font-medium text-slate-500 sm:grid"
+    >
+      <span>Presentación</span><span>Equivalencia</span><span>Precio de venta</span><span></span>
+    </div>
+    <ul class="space-y-3" formArrayName="presentations">
+      @for (row of rows; track row; let i = $index) {
+        <li
+          class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70 sm:grid-cols-[1fr_9rem_9rem_2.75rem] sm:bg-transparent sm:p-0 sm:ring-0"
+          [formGroupName]="i"
+        >
+          <div class="col-span-2 sm:col-span-1">
+            <label [for]="'pr-name-' + i" class="field-label sm:sr-only">Presentación</label>
+            <input
+              [id]="'pr-name-' + i"
+              formControlName="name"
+              class="field-input sm:mt-0"
+              placeholder="Ej.: Caja x 100"
+              autocomplete="off"
+              [attr.aria-invalid]="invalid(row.controls.name)"
+            />
+          </div>
+          <div>
+            <label [for]="'pr-factor-' + i" class="field-label sm:sr-only">Equivalencia</label>
+            <input
+              [id]="'pr-factor-' + i"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              formControlName="factor"
+              class="field-input tabular-nums sm:mt-0"
+              [attr.aria-invalid]="invalid(row.controls.factor)"
+            />
+          </div>
+          <div>
+            <label [for]="'pr-price-' + i" class="field-label sm:sr-only">Precio (S/)</label>
+            <div class="relative">
+              <span
+                class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-500 sm:top-1/2"
+                >S/</span
+              >
+              <input
+                [id]="'pr-price-' + i"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                formControlName="price"
+                class="field-input pl-9 tabular-nums sm:mt-0"
+              />
+            </div>
+          </div>
+          <div class="col-span-2 flex justify-end sm:col-span-1">
+            <button
+              type="button"
+              class="btn btn-ghost size-11 px-0 disabled:opacity-30"
+              [disabled]="rows.length === 1"
+              (click)="removeRow(i)"
+              [attr.aria-label]="'Quitar la presentación ' + (i + 1)"
+            >
+              <app-icon name="trash" class="size-4" />
+            </button>
+          </div>
+          @if (invalid(row.controls.name) || invalid(row.controls.factor)) {
+            <p class="field-error col-span-2 -mt-1 sm:col-span-4">
+              Completa el nombre y una equivalencia mayor a 0
+            </p>
+          }
+        </li>
+      }
+    </ul>
+    <button type="button" class="btn btn-secondary" (click)="addRow()">
+      <app-icon name="plus" class="size-4" /> Agregar presentación
+    </button>
+  </section>
+
+  <details class="group card px-5 sm:px-6">
+    <summary
+      class="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-anil-700"
+    >
+      <app-icon name="chevron-right" class="size-4 transition-transform group-open:rotate-90" /> Más
+      datos (código, código de barras, SUNAT, notas)
+    </summary>
+    <div class="grid gap-5 pb-5 sm:grid-cols-2">
+      <div>
+        <label for="p-code" class="field-label">Código interno</label>
+        <input
+          id="p-code"
+          formControlName="code"
+          class="field-input"
+          autocomplete="off"
+          [attr.aria-invalid]="invalid(form.controls.code)"
+        />
+        @if (invalid(form.controls.code)) {
+          <p class="field-error">Solo letras, números, punto y guion</p>
+        }
+      </div>
+      <div>
+        <label for="p-barcode" class="field-label">Código de barras</label>
+        <input id="p-barcode" formControlName="barcode" class="field-input" autocomplete="off" />
+      </div>
+      <div>
+        <label for="p-igv" class="field-label">Afectación del IGV</label>
+        <select id="p-igv" formControlName="igv" class="field-input">
+          @for (t of igvTypes; track t) {
+            <option [value]="t">{{ igvLabels[t] }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="p-sunat" class="field-label">Unidad SUNAT</label>
+        <input
+          id="p-sunat"
+          formControlName="sunatUnit"
+          class="field-input uppercase"
+          maxlength="3"
+          autocomplete="off"
+        />
+        <p class="field-hint">NIU = unidad (lo más común)</p>
+      </div>
+      <div class="sm:col-span-2">
+        <label for="p-notes" class="field-label">Notas</label>
+        <textarea
+          id="p-notes"
+          formControlName="notes"
+          rows="2"
+          class="field-input h-auto py-2.5"
+        ></textarea>
+      </div>
+    </div>
+  </details>
+
+  <div
+    class="sticky bottom-0 z-20 -mx-4 flex gap-2 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:justify-end sm:px-6 lg:-mx-8 lg:px-8"
+  >
+    <a routerLink="/inventario" class="btn btn-ghost hidden sm:inline-flex">Cancelar</a>
+    <button type="submit" class="btn btn-primary flex-1 sm:flex-none" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" /> Guardando…
+      } @else {
+        Guardar producto
+      }
+    </button>
+  </div>
+</form>
