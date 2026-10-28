@@ -6,6 +6,7 @@ import {
 } from '../common/time/clinic-day.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { Species } from '../generated/prisma/enums.js';
+import { CashService } from '../cash/cash.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   OPEN_STATUSES,
@@ -29,6 +30,8 @@ export interface DashboardSummary {
   pets: { active: number };
   /** Lotes vencidos o que vencen en 30 días, y productos con stock bajo */
   inventory: { expiring: number; lowStock: number };
+  /** Lo cobrado hoy (menos devoluciones) y cuántos cobros */
+  sales: { total: number; receipts: number };
   recentClients: {
     id: number;
     name: string;
@@ -40,7 +43,10 @@ export interface DashboardSummary {
 /** Resumen del día para la pantalla de inicio. Solo cifras reales de módulos ya construidos. */
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cash: CashService,
+  ) {}
 
   async summary(clinicId: number): Promise<DashboardSummary> {
     const { timezone } = await this.prisma.clinic.findUniqueOrThrow({
@@ -73,13 +79,15 @@ export class DashboardService {
         select: QUEUE_ITEM_SELECT,
         orderBy: [{ urgent: 'desc' }, { arrivedAt: 'asc' }],
       }),
-      this.prisma.client.count({ where: { clinicId, active: true } }),
       this.prisma.client.count({
-        where: { clinicId, createdAt: { gte: monthStart } },
+        where: { clinicId, active: true, walkIn: false },
+      }),
+      this.prisma.client.count({
+        where: { clinicId, walkIn: false, createdAt: { gte: monthStart } },
       }),
       this.prisma.pet.count({ where: { clinicId, active: true } }),
       this.prisma.client.findMany({
-        where: { clinicId },
+        where: { clinicId, walkIn: false },
         orderBy: { createdAt: 'desc' },
         take: 5,
         select: {
@@ -96,7 +104,7 @@ export class DashboardService {
     ]);
 
     const in30 = new Date(toDbDate(day).getTime() + 30 * 86_400_000);
-    const [expiring, lowRows] = await Promise.all([
+    const [expiring, lowRows, sales] = await Promise.all([
       this.prisma.productBatch.count({
         where: {
           clinicId,
@@ -108,6 +116,7 @@ export class DashboardService {
       this.prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`
         SELECT count(*) AS n FROM products
         WHERE clinic_id = ${clinicId} AND active AND min_stock > 0 AND total_stock <= min_stock`),
+      this.cash.today(clinicId, timezone),
     ]);
 
     const count = (status: string) =>
@@ -134,6 +143,7 @@ export class DashboardService {
       clients: { active: activeClients, newThisMonth: newClients },
       pets: { active: activePets },
       inventory: { expiring, lowStock: Number(lowRows[0]?.n ?? 0) },
+      sales,
       recentClients: recent,
     };
   }

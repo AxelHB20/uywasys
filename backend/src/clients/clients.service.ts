@@ -132,7 +132,8 @@ export class ClientsService {
     const status = query.status ?? 'active';
     const term = normalizeSearch(query.q ?? '');
 
-    const where: Prisma.ClientWhereInput = { clinicId };
+    // "Cliente varios" es interno de la caja: no aparece en la lista
+    const where: Prisma.ClientWhereInput = { clinicId, walkIn: false };
     if (status !== 'all') where.active = status === 'active';
     const code = parseRecordCode(query.q ?? '');
     if (code) {
@@ -302,9 +303,17 @@ export class ClientsService {
   ): Promise<ClientDetail> {
     const current = await this.prisma.client.findFirst({
       where: { id, clinicId: actor.clinicId },
-      select: { docType: true, docNumber: true, name: true, phone: true },
+      select: {
+        docType: true,
+        docNumber: true,
+        name: true,
+        phone: true,
+        walkIn: true,
+      },
     });
     if (!current) throw new NotFoundException('El cliente no existe');
+    if (current.walkIn)
+      throw new BadRequestException('"Cliente varios" no se edita');
 
     const docType = dto.docType === undefined ? current.docType : dto.docType;
     const docNumber = docType

@@ -33,6 +33,7 @@ export const CHARGE_SELECT = {
   taxableAmount: true,
   igvAmount: true,
   total: true,
+  paidAmount: true,
   prescriptionRef: true,
   status: true,
   createdAt: true,
@@ -68,6 +69,10 @@ export interface ChargeView {
   taxableAmount: number;
   igvAmount: number;
   total: number;
+  /** Lo cobrado de este cargo (pagos parciales) */
+  paidAmount: number;
+  /** Lo que falta cobrar (0 si está pagado o anulado) */
+  balance: number;
   prescriptionRef: string | null;
   status: ChargeStatus;
   createdAt: Date;
@@ -101,6 +106,9 @@ export function toChargeView(row: ChargeRow): ChargeView {
     taxableAmount: Number(row.taxableAmount),
     igvAmount: Number(row.igvAmount),
     total: Number(row.total),
+    paidAmount: Number(row.paidAmount),
+    balance:
+      row.status === 'PENDING' ? Number(row.total.minus(row.paidAmount)) : 0,
     prescriptionRef: row.prescriptionRef,
     status: row.status,
     createdAt: row.createdAt,

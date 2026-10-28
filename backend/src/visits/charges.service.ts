@@ -35,6 +35,13 @@ export interface CreatedCharges {
   shortages: { product: string; baseUnit: BaseUnit; quantity: number }[];
 }
 
+export interface ChargePrep {
+  /** AAAA-MM-DD de la clínica */
+  today: string;
+  maxDiscountPercent: Prisma.Decimal;
+  licenseNumber: string | null;
+}
+
 export interface ClientAccount {
   client: {
     id: number;
@@ -44,9 +51,18 @@ export interface ClientAccount {
     docType: DocumentType | null;
     docNumber: string | null;
   };
-  /** Cargos por cobrar, del más antiguo al más nuevo */
+  /** Cargos por cobrar, del más antiguo al más nuevo (con lo abonado y su saldo) */
   pending: ChargeView[];
+  /** Lo que el cliente debe hoy */
   pendingTotal: number;
+  /** Últimos cobros del cliente */
+  receipts: {
+    id: number;
+    number: number;
+    total: number;
+    status: 'ACTIVE' | 'VOID';
+    createdAt: Date;
+  }[];
 }
 
 export interface ShortageView {
@@ -81,172 +97,196 @@ export class ChargesService {
     dto: CreateChargesDto,
     ip?: string,
   ): Promise<CreatedCharges> {
+    const prep = await this.prepare(actor);
+    const result = await this.prisma.$transaction(
+      (tx) => this.createInTx(tx, actor, dto, prep),
+      { timeout: 20_000 },
+    );
+    await this.logCreated(actor, dto.visitId ?? null, result, ip);
+    return result;
+  }
+
+  /** Lo que se lee antes de la transacción: fecha de la clínica, tope de descuento y colegiatura. */
+  async prepare(actor: AuthUser): Promise<ChargePrep> {
     const today = await clinicToday(this.prisma, actor.clinicId);
     const { maxDiscountPercent } = await this.prisma.clinic.findUniqueOrThrow({
       where: { id: actor.clinicId },
       select: { maxDiscountPercent: true },
     });
-    const me = await this.prisma.user.findUniqueOrThrow({
+    const { licenseNumber } = await this.prisma.user.findUniqueOrThrow({
       where: { id: actor.id },
       select: { licenseNumber: true },
     });
+    return { today, maxDiscountPercent, licenseNumber };
+  }
 
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        const ctx = await this.context(tx, actor.clinicId, dto);
-        const lines = await this.resolveItems(tx, actor.clinicId, dto.items);
+  /**
+   * Registra los cargos dentro de una transacción que ya existe: la venta de mostrador la
+   * comparte con el cobro, así o queda todo o no queda nada.
+   */
+  async createInTx(
+    tx: Tx,
+    actor: AuthUser,
+    dto: CreateChargesDto,
+    prep: ChargePrep,
+  ): Promise<CreatedCharges> {
+    const { today, maxDiscountPercent } = prep;
+    const me = { licenseNumber: prep.licenseNumber };
+    const ctx = await this.context(tx, actor.clinicId, dto);
+    const lines = await this.resolveItems(tx, actor.clinicId, dto.items);
 
-        // Todos los productos se bloquean al inicio y en orden: dos cargos simultáneos
-        // que comparten insumos nunca se bloquean entre sí
-        const productIds = [
-          ...new Set(
-            lines.flatMap((l) =>
-              l.kind === 'PRODUCT'
-                ? [l.product.id]
-                : l.service.supplies.map((s) => s.product.id),
-            ),
-          ),
-        ].sort((x, y) => x - y);
-        for (const productId of productIds)
-          await this.stock.lockProduct(tx, actor.clinicId, productId);
+    // Todos los productos se bloquean al inicio y en orden: dos cargos simultáneos
+    // que comparten insumos nunca se bloquean entre sí
+    const productIds = [
+      ...new Set(
+        lines.flatMap((l) =>
+          l.kind === 'PRODUCT'
+            ? [l.product.id]
+            : l.service.supplies.map((s) => s.product.id),
+        ),
+      ),
+    ].sort((x, y) => x - y);
+    for (const productId of productIds)
+      await this.stock.lockProduct(tx, actor.clinicId, productId);
 
-        const createdIds: number[] = [];
-        const shortages: CreatedCharges['shortages'] = [];
-        for (const [index, line] of lines.entries()) {
-          const item = dto.items[index];
-          const amounts = lineAmounts({
-            quantity: item.quantity,
-            unitPrice: line.unitPrice,
-            discount: item.discount ?? 0,
-            affectation: line.igv,
+    const createdIds: number[] = [];
+    const shortages: CreatedCharges['shortages'] = [];
+    for (const [index, line] of lines.entries()) {
+      const item = dto.items[index];
+      const amounts = lineAmounts({
+        quantity: item.quantity,
+        unitPrice: line.unitPrice,
+        discount: item.discount ?? 0,
+        affectation: line.igv,
+      });
+      if (amounts.discount.gt(0)) {
+        if (!item.discountReason)
+          throw new BadRequestException(
+            `Indica el motivo del descuento en ${line.description}`,
+          );
+        if (
+          actor.role !== 'ADMIN' &&
+          discountPercent(amounts.gross, amounts.discount).gt(
+            maxDiscountPercent,
+          )
+        )
+          throw new ForbiddenException(
+            `El descuento en ${line.description} supera el ${Number(maxDiscountPercent)} % permitido: lo autoriza el administrador`,
+          );
+      }
+
+      // Controlados: paciente, receta y veterinario con colegiatura
+      const controlled =
+        line.kind === 'PRODUCT'
+          ? line.product.controlled
+            ? [line.product.name]
+            : []
+          : line.service.supplies
+              .filter((s) => s.product.controlled)
+              .map((s) => s.product.name);
+      if (controlled.length) {
+        const what = `${line.description} lleva ${controlled.join(', ')} (controlado)`;
+        if (!ctx.petId)
+          throw new BadRequestException(`${what}: indica la mascota`);
+        if (!item.prescriptionRef)
+          throw new BadRequestException(`${what}: indica el N.º de receta`);
+        if (!me.licenseNumber)
+          throw new ForbiddenException(
+            `${what}: lo registra un veterinario con colegiatura`,
+          );
+      }
+      const vetId = controlled.length || me.licenseNumber ? actor.id : null;
+
+      const charge = await tx.charge.create({
+        data: {
+          clinicId: actor.clinicId,
+          clientId: ctx.clientId,
+          visitId: ctx.visitId,
+          petId: ctx.petId,
+          kind: line.kind,
+          careServiceId: line.kind === 'SERVICE' ? line.service.id : null,
+          productId: line.kind === 'PRODUCT' ? line.product.id : null,
+          presentationId: line.kind === 'PRODUCT' ? line.presentation.id : null,
+          description: line.description,
+          quantity: item.quantity,
+          unitPrice: line.unitPrice,
+          discount: amounts.discount,
+          discountReason: amounts.discount.gt(0) ? item.discountReason : null,
+          igvAffectation: line.igv,
+          igvRate: amounts.rate,
+          sunatUnit: line.sunatUnit,
+          taxableAmount: amounts.taxable,
+          igvAmount: amounts.igv,
+          total: amounts.total,
+          prescriptionRef: item.prescriptionRef ?? null,
+          vetId,
+          createdById: actor.id,
+        },
+        select: { id: true },
+      });
+      createdIds.push(charge.id);
+
+      const movement = {
+        clinicId: actor.clinicId,
+        userId: actor.id,
+        today,
+        petId: ctx.petId,
+        vetId,
+        prescriptionRef: item.prescriptionRef ?? null,
+        refType: 'charge',
+        refId: charge.id,
+      };
+      if (line.kind === 'PRODUCT') {
+        // Venta directa: si no hay stock, no se vende (409 con lo disponible)
+        await this.stock.deduct(tx, {
+          ...movement,
+          productId: line.product.id,
+          quantity: new D(item.quantity).times(line.presentation.factor),
+          type: 'SALE',
+          reason: `Venta: ${line.description}`,
+        });
+      } else {
+        for (const supply of line.service.supplies) {
+          const { missing } = await this.stock.deductAvailable(tx, {
+            ...movement,
+            productId: supply.product.id,
+            quantity: supply.quantity.times(item.quantity),
+            type: 'TREATMENT',
+            reason: `Insumo de ${line.service.name}`,
           });
-          if (amounts.discount.gt(0)) {
-            if (!item.discountReason)
-              throw new BadRequestException(
-                `Indica el motivo del descuento en ${line.description}`,
-              );
-            if (
-              actor.role !== 'ADMIN' &&
-              discountPercent(amounts.gross, amounts.discount).gt(
-                maxDiscountPercent,
-              )
-            )
-              throw new ForbiddenException(
-                `El descuento en ${line.description} supera el ${Number(maxDiscountPercent)} % permitido: lo autoriza el administrador`,
-              );
-          }
-
-          // Controlados: paciente, receta y veterinario con colegiatura
-          const controlled =
-            line.kind === 'PRODUCT'
-              ? line.product.controlled
-                ? [line.product.name]
-                : []
-              : line.service.supplies
-                  .filter((s) => s.product.controlled)
-                  .map((s) => s.product.name);
-          if (controlled.length) {
-            const what = `${line.description} lleva ${controlled.join(', ')} (controlado)`;
-            if (!ctx.petId)
-              throw new BadRequestException(`${what}: indica la mascota`);
-            if (!item.prescriptionRef)
-              throw new BadRequestException(`${what}: indica el N.º de receta`);
-            if (!me.licenseNumber)
-              throw new ForbiddenException(
-                `${what}: lo registra un veterinario con colegiatura`,
-              );
-          }
-          const vetId = controlled.length || me.licenseNumber ? actor.id : null;
-
-          const charge = await tx.charge.create({
-            data: {
-              clinicId: actor.clinicId,
-              clientId: ctx.clientId,
-              visitId: ctx.visitId,
-              petId: ctx.petId,
-              kind: line.kind,
-              careServiceId: line.kind === 'SERVICE' ? line.service.id : null,
-              productId: line.kind === 'PRODUCT' ? line.product.id : null,
-              presentationId:
-                line.kind === 'PRODUCT' ? line.presentation.id : null,
-              description: line.description,
-              quantity: item.quantity,
-              unitPrice: line.unitPrice,
-              discount: amounts.discount,
-              discountReason: amounts.discount.gt(0)
-                ? item.discountReason
-                : null,
-              igvAffectation: line.igv,
-              igvRate: amounts.rate,
-              sunatUnit: line.sunatUnit,
-              taxableAmount: amounts.taxable,
-              igvAmount: amounts.igv,
-              total: amounts.total,
-              prescriptionRef: item.prescriptionRef ?? null,
-              vetId,
-              createdById: actor.id,
-            },
-            select: { id: true },
-          });
-          createdIds.push(charge.id);
-
-          const movement = {
-            clinicId: actor.clinicId,
-            userId: actor.id,
-            today,
-            petId: ctx.petId,
-            vetId,
-            prescriptionRef: item.prescriptionRef ?? null,
-            refType: 'charge',
-            refId: charge.id,
-          };
-          if (line.kind === 'PRODUCT') {
-            // Venta directa: si no hay stock, no se vende (409 con lo disponible)
-            await this.stock.deduct(tx, {
-              ...movement,
-              productId: line.product.id,
-              quantity: new D(item.quantity).times(line.presentation.factor),
-              type: 'SALE',
-              reason: `Venta: ${line.description}`,
-            });
-          } else {
-            for (const supply of line.service.supplies) {
-              const { missing } = await this.stock.deductAvailable(tx, {
-                ...movement,
+          if (missing.gt(0)) {
+            await tx.stockShortage.create({
+              data: {
+                clinicId: actor.clinicId,
+                chargeId: charge.id,
                 productId: supply.product.id,
-                quantity: supply.quantity.times(item.quantity),
-                type: 'TREATMENT',
-                reason: `Insumo de ${line.service.name}`,
-              });
-              if (missing.gt(0)) {
-                await tx.stockShortage.create({
-                  data: {
-                    clinicId: actor.clinicId,
-                    chargeId: charge.id,
-                    productId: supply.product.id,
-                    quantity: missing,
-                  },
-                });
-                shortages.push({
-                  product: supply.product.name,
-                  baseUnit: supply.product.baseUnit,
-                  quantity: missing.toNumber(),
-                });
-              }
-            }
+                quantity: missing,
+              },
+            });
+            shortages.push({
+              product: supply.product.name,
+              baseUnit: supply.product.baseUnit,
+              quantity: missing.toNumber(),
+            });
           }
         }
+      }
+    }
 
-        const rows = await tx.charge.findMany({
-          where: { id: { in: createdIds } },
-          select: CHARGE_SELECT,
-          orderBy: { id: 'asc' },
-        });
-        return { charges: rows.map(toChargeView), shortages };
-      },
-      { timeout: 20_000 },
-    );
+    const rows = await tx.charge.findMany({
+      where: { id: { in: createdIds } },
+      select: CHARGE_SELECT,
+      orderBy: { id: 'asc' },
+    });
+    return { charges: rows.map(toChargeView), shortages };
+  }
 
+  async logCreated(
+    actor: AuthUser,
+    visitId: number | null,
+    result: CreatedCharges,
+    ip?: string,
+  ): Promise<void> {
     const discounted = result.charges.filter((c) => c.discount > 0);
     await this.audit.log({
       clinicId: actor.clinicId,
@@ -256,7 +296,7 @@ export class ChargesService {
       entityId: result.charges[0]?.id,
       ip,
       data: {
-        visitId: dto.visitId ?? null,
+        visitId,
         charges: result.charges.map((c) => ({
           id: c.id,
           description: c.description,
@@ -270,7 +310,6 @@ export class ChargesService {
         shortages: result.shortages,
       },
     });
-    return result;
   }
 
   /**
@@ -289,15 +328,16 @@ export class ChargesService {
           status: string;
           created_by_id: number;
           visit_id: number | null;
+          paid_amount: Prisma.Decimal;
         }[]
-      >`SELECT status::text AS status, created_by_id, visit_id FROM charges
+      >`SELECT status::text AS status, created_by_id, visit_id, paid_amount FROM charges
         WHERE id = ${id} AND clinic_id = ${actor.clinicId} FOR UPDATE`;
       if (!row) throw new NotFoundException('El cargo no existe');
       if (row.status === 'VOID')
         throw new ConflictException('El cargo ya fue quitado');
-      if (row.status === 'PAID')
+      if (row.status === 'PAID' || new D(row.paid_amount).gt(0))
         throw new ConflictException(
-          'El cargo ya está cobrado: se anula desde caja',
+          'El cargo tiene pagos: primero anula el cobro en caja',
         );
 
       if (actor.role !== 'ADMIN') {
@@ -377,9 +417,26 @@ export class ChargesService {
     });
     const pending = rows.map(toChargeView);
     const pendingTotal = rows
-      .reduce((sum, r) => sum.plus(r.total), new D(0))
+      .reduce((sum, r) => sum.plus(r.total).minus(r.paidAmount), new D(0))
       .toNumber();
-    return { client, pending, pendingTotal };
+    const receipts = await this.prisma.receipt.findMany({
+      where: { clinicId, clientId },
+      select: {
+        id: true,
+        number: true,
+        total: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: { id: 'desc' },
+      take: 20,
+    });
+    return {
+      client,
+      pending,
+      pendingTotal,
+      receipts: receipts.map((r) => ({ ...r, total: Number(r.total) })),
+    };
   }
 
   async shortages(

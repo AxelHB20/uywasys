@@ -2,7 +2,7 @@
 
 > Plan actualizado el 28 de octubre de 2026. Este archivo es la versión vigente.
 >
-> **Estado:** Fases 0, 1 y 2 terminadas. **Fase 3 (Atención y cobro) en curso:** paso 0 listo (correlativos por clínica y pruebas de aislamiento) y paso 1 listo (backend de atenciones, cargos con IGV y FEFO, insumos sin stock como alerta, controlados, descuentos con tope, quitar cargos y cuenta del cliente). Sigue el paso 2: backend de caja (apertura y cierre, cobros, pagos parciales, venta de mostrador, egresos y ticket). Pendiente de la Fase 0: desplegar en un servidor de prueba (hito de demo).
+> **Estado:** Fases 0, 1 y 2 terminadas. **Fase 3 (Atención y cobro) en curso:** pasos 0, 1 y 2 listos en backend (correlativos y aislamiento; atenciones y cargos; caja con sesiones y arqueo, cobros mixtos y parciales sin duplicados, venta de mostrador a "Cliente varios", egresos, anulación con devolución, ticket NV y reporte). Entorno de desarrollo completo en Docker. Sigue el paso 3: pantallas de atención. Pendiente de la Fase 0: desplegar en un servidor de prueba (hito de demo).
 
 Construimos el sistema en 9 fases alrededor de un solo circuito: **llega → espera → se atiende → se cobra → queda en el historial**. Cada fase agrega algo a ese circuito o lo hace más completo, y termina con algo que una clínica real puede usar. Primero se cierra el circuito completo de forma simple (Fase 3) y después se profundiza cada parte: comprobantes SUNAT, historia clínica, grooming y reportes.
 

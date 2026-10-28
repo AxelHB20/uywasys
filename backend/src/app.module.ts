@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module.js';
 import { CareServicesModule } from './care-services/care-services.module.js';
+import { CashModule } from './cash/cash.module.js';
 import { ClientsModule } from './clients/clients.module.js';
 import { ClinicModule } from './clinic/clinic.module.js';
 import { AuditModule } from './common/audit/audit.module.js';
@@ -30,6 +31,7 @@ import { VisitsModule } from './visits/visits.module.js';
     InventoryModule,
     CareServicesModule,
     VisitsModule,
+    CashModule,
     HealthModule,
   ],
 })

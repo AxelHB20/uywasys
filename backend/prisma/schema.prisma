@@ -53,6 +53,11 @@ model Clinic {
   visitAddenda     VisitAddendum[]
   charges          Charge[]
   stockShortages   StockShortage[]
+  cashRegisters    CashRegister[]
+  cashSessions     CashSession[]
+  receipts         Receipt[]
+  payments         Payment[]
+  cashMovements    CashMovement[]
 
   @@map("clinics")
 }
@@ -89,6 +94,12 @@ model User {
   chargesVoided   Charge[]        @relation("ChargeVoidedBy")
   chargesAsVet    Charge[]        @relation("ChargeVet")
   shortagesClosed StockShortage[]
+  sessionsOpened  CashSession[]   @relation("SessionOpenedBy")
+  sessionsClosed  CashSession[]   @relation("SessionClosedBy")
+  receiptsCreated Receipt[]       @relation("ReceiptCreatedBy")
+  receiptsVoided  Receipt[]       @relation("ReceiptVoidedBy")
+  cashMovements   CashMovement[]  @relation("CashMovementBy")
+  cashVoided      CashMovement[]  @relation("CashMovementVoidedBy")
 
   @@index([clinicId])
   @@map("users")
@@ -191,6 +202,8 @@ model Client {
   /// Nombre, documento y celular normalizados (minúsculas, sin tildes) para buscar
   searchText       String        @map("search_text") @db.VarChar(200)
   active           Boolean       @default(true)
+  /// "Cliente varios" (C-00000) para ventas de mostrador anónimas: no aparece en listas ni cifras
+  walkIn           Boolean       @default(false) @map("walk_in")
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -199,6 +212,7 @@ model Client {
   authorized AuthorizedPerson[]
   visits     Visit[]
   charges    Charge[]
+  receipts   Receipt[]
 
   @@unique([clinicId, docType, docNumber])
   @@unique([clinicId, number])
@@ -603,6 +617,8 @@ model Charge {
   taxableAmount   Decimal        @map("taxable_amount") @db.Decimal(12, 2)
   igvAmount       Decimal        @map("igv_amount") @db.Decimal(12, 2)
   total           Decimal        @db.Decimal(12, 2)
+  /// Lo cobrado hasta ahora (pagos parciales); PAID cuando llega al total
+  paidAmount      Decimal        @default(0) @map("paid_amount") @db.Decimal(12, 2)
   /// Controlados: receta y veterinario responsable
   prescriptionRef String?        @map("prescription_ref") @db.VarChar(60)
   vetId           Int?           @map("vet_id")
@@ -624,6 +640,7 @@ model Charge {
   createdBy    User                 @relation("ChargeCreatedBy", fields: [createdById], references: [id])
   voidedBy     User?                @relation("ChargeVoidedBy", fields: [voidedById], references: [id])
   shortages    StockShortage[]
+  allocations  PaymentAllocation[]
 
   @@index([clinicId, clientId, status])
   @@index([clinicId, createdAt])
@@ -655,4 +672,175 @@ model StockShortage {
   @@index([chargeId])
   @@index([productId])
   @@map("stock_shortages")
+}
+
+// ─── Fase 3, paso 2: caja ────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  CASH
+  YAPE
+  PLIN
+  CARD
+  TRANSFER
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum ReceiptStatus {
+  ACTIVE
+  VOID
+}
+
+/// EXPENSE = egreso de caja chica · REFUND = devolución al anular un cobro
+enum CashMovementKind {
+  EXPENSE
+  REFUND
+}
+
+/// Caja física. Cada clínica empieza con "Caja principal"; puede tener más.
+model CashRegister {
+  id        Int      @id @default(autoincrement())
+  clinicId  Int      @map("clinic_id")
+  name      String   @db.VarChar(60)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clinic   Clinic        @relation(fields: [clinicId], references: [id])
+  sessions CashSession[]
+
+  @@unique([clinicId, name])
+  @@map("cash_registers")
+}
+
+/// Turno de una caja: de la apertura al cierre con arqueo. Una sola abierta por caja.
+model CashSession {
+  id            Int               @id @default(autoincrement())
+  clinicId      Int               @map("clinic_id")
+  registerId    Int               @map("register_id")
+  status        CashSessionStatus @default(OPEN)
+  openingAmount Decimal           @map("opening_amount") @db.Decimal(12, 2)
+  openedById    Int               @map("opened_by_id")
+  openedAt      DateTime          @default(now()) @map("opened_at") @db.Timestamptz(3)
+  closedById    Int?              @map("closed_by_id")
+  closedAt      DateTime?         @map("closed_at") @db.Timestamptz(3)
+  /// Efectivo que debía haber: inicial + cobros en efectivo − egresos − devoluciones
+  expectedCash  Decimal?          @map("expected_cash") @db.Decimal(12, 2)
+  countedCash   Decimal?          @map("counted_cash") @db.Decimal(12, 2)
+  difference    Decimal?          @db.Decimal(12, 2)
+  closingNote   String?           @map("closing_note") @db.VarChar(200)
+
+  clinic    Clinic         @relation(fields: [clinicId], references: [id])
+  register  CashRegister   @relation(fields: [registerId], references: [id])
+  openedBy  User           @relation("SessionOpenedBy", fields: [openedById], references: [id])
+  closedBy  User?          @relation("SessionClosedBy", fields: [closedById], references: [id])
+  receipts  Receipt[]
+  movements CashMovement[]
+
+  @@index([registerId, status])
+  @@index([clinicId, openedAt])
+  @@map("cash_sessions")
+}
+
+/// Cobro: ticket NV-000001. En la Fase 4 se le adjunta la boleta o factura electrónica.
+model Receipt {
+  id          Int           @id @default(autoincrement())
+  clinicId    Int           @map("clinic_id")
+  /// Correlativo de la clínica (NV-000001)
+  number      Int
+  clientId    Int           @map("client_id")
+  sessionId   Int           @map("session_id")
+  /// Lo aplicado a los cargos (la suma de los pagos)
+  total       Decimal       @db.Decimal(12, 2)
+  /// Vuelto entregado en efectivo
+  change      Decimal       @default(0) @db.Decimal(12, 2)
+  /// Clave que manda la pantalla: un reintento devuelve el mismo cobro
+  requestKey  String        @map("request_key") @db.VarChar(64)
+  status      ReceiptStatus @default(ACTIVE)
+  createdById Int           @map("created_by_id")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  voidedById  Int?          @map("voided_by_id")
+  voidedAt    DateTime?     @map("voided_at") @db.Timestamptz(3)
+  voidReason  String?       @map("void_reason") @db.VarChar(200)
+
+  clinic      Clinic              @relation(fields: [clinicId], references: [id])
+  client      Client              @relation(fields: [clientId], references: [id])
+  session     CashSession         @relation(fields: [sessionId], references: [id])
+  createdBy   User                @relation("ReceiptCreatedBy", fields: [createdById], references: [id])
+  voidedBy    User?               @relation("ReceiptVoidedBy", fields: [voidedById], references: [id])
+  payments    Payment[]
+  allocations PaymentAllocation[]
+  refunds     CashMovement[]
+
+  @@unique([clinicId, number])
+  @@unique([clinicId, requestKey])
+  @@index([sessionId])
+  @@index([clientId])
+  @@index([clinicId, createdAt])
+  @@map("receipts")
+}
+
+/// Cada medio de pago dentro de un cobro (efectivo + Yape, por ejemplo).
+model Payment {
+  id            Int           @id @default(autoincrement())
+  clinicId      Int           @map("clinic_id")
+  receiptId     Int           @map("receipt_id")
+  method        PaymentMethod
+  /// Lo que se aplica a la deuda
+  amount        Decimal       @db.Decimal(12, 2)
+  /// Efectivo entregado por el cliente (para calcular el vuelto)
+  tendered      Decimal?      @db.Decimal(12, 2)
+  /// Código de operación de Yape, Plin o transferencia; voucher de tarjeta
+  operationCode String?       @map("operation_code") @db.VarChar(40)
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+
+  @@index([receiptId])
+  @@map("payments")
+}
+
+/// Qué parte del cobro cubre cada cargo.
+model PaymentAllocation {
+  id        Int     @id @default(autoincrement())
+  receiptId Int     @map("receipt_id")
+  chargeId  Int     @map("charge_id")
+  amount    Decimal @db.Decimal(12, 2)
+
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+  charge  Charge  @relation(fields: [chargeId], references: [id])
+
+  @@index([receiptId])
+  @@index([chargeId])
+  @@map("payment_allocations")
+}
+
+/// Salidas de dinero de una sesión: egresos de caja chica y devoluciones.
+model CashMovement {
+  id          Int              @id @default(autoincrement())
+  clinicId    Int              @map("clinic_id")
+  sessionId   Int              @map("session_id")
+  kind        CashMovementKind
+  /// Los egresos son siempre en efectivo; una devolución sale por el mismo medio del pago
+  method      PaymentMethod    @default(CASH)
+  amount      Decimal          @db.Decimal(12, 2)
+  reason      String           @db.VarChar(200)
+  receiptId   Int?             @map("receipt_id")
+  createdById Int              @map("created_by_id")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  voidedById  Int?             @map("voided_by_id")
+  voidedAt    DateTime?        @map("voided_at") @db.Timestamptz(3)
+  voidReason  String?          @map("void_reason") @db.VarChar(200)
+
+  clinic    Clinic      @relation(fields: [clinicId], references: [id])
+  session   CashSession @relation(fields: [sessionId], references: [id])
+  receipt   Receipt?    @relation(fields: [receiptId], references: [id])
+  createdBy User        @relation("CashMovementBy", fields: [createdById], references: [id])
+  voidedBy  User?       @relation("CashMovementVoidedBy", fields: [voidedById], references: [id])
+
+  @@index([sessionId])
+  @@index([receiptId])
+  @@map("cash_movements")
 }
