@@ -20,6 +20,19 @@ export const routes: Routes = [
       import('./features/auth/change-password.page').then((m) => m.ChangePasswordPage),
   },
   {
+    // Públicas: se pueden leer antes de iniciar sesión
+    path: 'legal/terminos',
+    title: 'Términos del servicio · Uywa',
+    data: { doc: 'terminos' },
+    loadComponent: () => import('./features/legal/legal.page').then((m) => m.LegalPage),
+  },
+  {
+    path: 'legal/privacidad',
+    title: 'Política de privacidad · Uywa',
+    data: { doc: 'privacidad' },
+    loadComponent: () => import('./features/legal/legal.page').then((m) => m.LegalPage),
+  },
+  {
     // Todo lo que está dentro del layout exige sesión
     path: '',
     canActivate: [authGuard],
@@ -33,11 +46,20 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/dashboard/dashboard.page').then((m) => m.DashboardPage),
       },
-      // Módulos pendientes: cada uno reemplaza su pantalla temporal cuando se construye.
       {
         path: 'cola',
         title: 'Cola de hoy · Uywa',
         loadComponent: () => import('./features/queue/queue.page').then((m) => m.QueuePage),
+      },
+      {
+        path: 'atenciones',
+        title: 'Atenciones · Uywa',
+        loadComponent: () => import('./features/visits/visits.page').then((m) => m.VisitsPage),
+      },
+      {
+        path: 'atenciones/:id',
+        title: 'Atención · Uywa',
+        loadComponent: () => import('./features/visits/visit.page').then((m) => m.VisitPage),
       },
       {
         path: 'clientes/importar',
@@ -67,25 +89,34 @@ export const routes: Routes = [
       {
         path: 'grooming',
         title: 'Grooming · Uywa',
-        loadComponent: comingSoon,
-        data: {
-          title: 'Grooming',
-          icon: 'scissors',
-          phase: 'Fase 3',
-          description:
-            'Check-in con checklist, tablero por estados, aviso por WhatsApp y comisiones.',
-        },
+        loadComponent: () =>
+          import('./features/grooming/board.page').then((m) => m.GroomingBoardPage),
+      },
+      {
+        path: 'grooming/comisiones',
+        title: 'Comisiones de grooming · Uywa',
+        canActivate: [roleGuard('ADMIN', 'GROOMER')],
+        loadComponent: () =>
+          import('./features/grooming/commissions.page').then((m) => m.GroomingCommissionsPage),
+      },
+      {
+        path: 'grooming/:id/constancia',
+        title: 'Constancia de grooming · Uywa',
+        loadComponent: () =>
+          import('./features/grooming/certificate.page').then((m) => m.GroomingCertificatePage),
+      },
+      {
+        path: 'grooming/ingreso',
+        title: 'Ingreso a grooming · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION', 'GROOMER')],
+        loadComponent: () =>
+          import('./features/grooming/check-in.page').then((m) => m.GroomingCheckInPage),
       },
       {
         path: 'citas',
         title: 'Citas · Uywa',
-        loadComponent: comingSoon,
-        data: {
-          title: 'Citas',
-          icon: 'calendar',
-          phase: 'Fase 5',
-          description: 'Agenda de citas por veterinario.',
-        },
+        loadComponent: () =>
+          import('./features/appointments/agenda.page').then((m) => m.AgendaPage),
       },
       {
         path: 'consultas',
@@ -94,21 +125,64 @@ export const routes: Routes = [
         data: {
           title: 'Consultas',
           icon: 'stethoscope',
-          phase: 'Fase 5',
           description: 'Historia clínica con método SOAP, recetas y adjuntos.',
         },
       },
       {
         path: 'vacunas',
         title: 'Vacunas · Uywa',
-        loadComponent: comingSoon,
-        data: {
-          title: 'Vacunas',
-          icon: 'syringe',
-          phase: 'Fase 5',
-          description:
-            'Vacunas y desparasitaciones con fecha del próximo refuerzo y carnet imprimible.',
-        },
+        loadComponent: () =>
+          import('./features/medical/vaccine-reminders.page').then((m) => m.VaccineRemindersPage),
+      },
+      {
+        path: 'mascotas/:id',
+        title: 'Historia clínica · Uywa',
+        loadComponent: () =>
+          import('./features/medical/pet-record.page').then((m) => m.PetRecordPage),
+      },
+      {
+        path: 'presupuestos',
+        title: 'Presupuestos · Uywa',
+        loadComponent: () =>
+          import('./features/estimates/estimates.page').then((m) => m.EstimatesPage),
+      },
+      {
+        path: 'presupuestos/nuevo',
+        title: 'Nuevo presupuesto · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        loadComponent: () =>
+          import('./features/estimates/new-estimate.page').then((m) => m.NewEstimatePage),
+      },
+      {
+        path: 'presupuestos/:id',
+        title: 'Presupuesto · Uywa',
+        loadComponent: () =>
+          import('./features/estimates/estimate.page').then((m) => m.EstimatePage),
+      },
+      {
+        path: 'recetas/:id',
+        title: 'Receta · Uywa',
+        loadComponent: () =>
+          import('./features/medical/prescription-print.page').then((m) => m.PrescriptionPrintPage),
+      },
+      {
+        path: 'mascotas/:id/consentimiento',
+        title: 'Consentimiento informado · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/medical/consent-sign.page').then((m) => m.ConsentSignPage),
+      },
+      {
+        path: 'consentimientos/:id',
+        title: 'Consentimiento · Uywa',
+        loadComponent: () =>
+          import('./features/medical/consent-print.page').then((m) => m.ConsentPrintPage),
+      },
+      {
+        path: 'mascotas/:id/carnet',
+        title: 'Carnet de vacunación · Uywa',
+        loadComponent: () =>
+          import('./features/medical/immunization-card.page').then((m) => m.ImmunizationCardPage),
       },
       {
         path: 'inventario',
@@ -154,13 +228,28 @@ export const routes: Routes = [
       {
         path: 'caja',
         title: 'Caja · Uywa',
-        loadComponent: comingSoon,
-        data: {
-          title: 'Caja y ventas',
-          icon: 'receipt',
-          phase: 'Fase 4',
-          description: 'Cuenta del paciente, boletas electrónicas, Yape y cierre de caja.',
-        },
+        canActivate: [roleGuard('ADMIN', 'RECEPTION', 'CASHIER')],
+        loadComponent: () => import('./features/cash/cash.page').then((m) => m.CashPage),
+      },
+      {
+        path: 'caja/tickets/:id',
+        title: 'Ticket · Uywa',
+        canActivate: [roleGuard('ADMIN', 'RECEPTION', 'CASHIER')],
+        loadComponent: () => import('./features/cash/ticket.page').then((m) => m.TicketPage),
+      },
+      {
+        path: 'comprobantes',
+        title: 'Comprobantes · Uywa',
+        canActivate: [roleGuard('ADMIN', 'RECEPTION', 'CASHIER')],
+        loadComponent: () =>
+          import('./features/billing/documents.page').then((m) => m.DocumentsPage),
+      },
+      {
+        path: 'comprobantes/configuracion',
+        title: 'Facturación electrónica · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/billing/billing-settings.page').then((m) => m.BillingSettingsPage),
       },
       // Configuración: solo el administrador
       {
@@ -171,12 +260,25 @@ export const routes: Routes = [
           import('./features/settings/clinic-settings.page').then((m) => m.ClinicSettingsPage),
       },
       {
+        path: 'actividad',
+        title: 'Actividad · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/activity/activity.page').then((m) => m.ActivityPage),
+      },
+      {
         path: 'usuarios',
         title: 'Usuarios · Uywa',
         canActivate: [roleGuard('ADMIN')],
         loadComponent: () => import('./features/users/users.page').then((m) => m.UsersPage),
       },
+      {
+        // Dirección que no existe: se avisa en vez de mandar al inicio sin explicación
+        path: '**',
+        title: 'Página no encontrada · Uywa',
+        loadComponent: () =>
+          import('./features/not-found/not-found.page').then((m) => m.NotFoundPage),
+      },
     ],
   },
-  { path: '**', redirectTo: 'dashboard' },
 ];

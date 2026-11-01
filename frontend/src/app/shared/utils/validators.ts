@@ -35,8 +35,23 @@ export function apiErrorMessage(
   fallback = 'No se pudo completar la acción. Inténtalo de nuevo.',
 ): string {
   const body =
-    (error as { error?: { message?: string; errors?: string[] }; status?: number } | null) ?? null;
+    (error as {
+      error?: { message?: string; errors?: string[]; reference?: string };
+      status?: number;
+    } | null) ?? null;
   if (body?.status === 0)
     return 'No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.';
+  // Error inesperado del servidor: el código permite encontrarlo en los registros
+  if ((body?.status ?? 0) >= 500) {
+    const reference = body?.error?.reference;
+    return reference
+      ? `Ocurrió un error inesperado. Si se repite, avisa a soporte con el código ${reference}.`
+      : 'Ocurrió un error inesperado. Inténtalo de nuevo en unos minutos.';
+  }
   return body?.error?.errors?.[0] ?? body?.error?.message ?? fallback;
+}
+
+/** Datos extra de un error de la API (por ejemplo { visitId } en un 409). */
+export function apiErrorDetails<T extends Record<string, unknown>>(error: unknown): Partial<T> {
+  return ((error as { error?: { details?: T } } | null)?.error?.details ?? {}) as Partial<T>;
 }

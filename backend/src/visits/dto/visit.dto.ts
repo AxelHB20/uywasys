@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -69,6 +70,70 @@ export class UpdateVisitDto {
   @IsString()
   @MaxLength(5000, { message: 'Las notas admiten hasta 5000 caracteres' })
   notes?: string | null;
+
+  // ── SOAP ──
+
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(5000, { message: 'La anamnesis admite hasta 5000 caracteres' })
+  anamnesis?: string | null;
+
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: 'La frecuencia cardiaca es un número entero' })
+  @Min(10, { message: 'Revisa la frecuencia cardiaca: parece demasiado baja' })
+  @Max(400, { message: 'Revisa la frecuencia cardiaca: parece demasiado alta' })
+  heartRate?: number | null;
+
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: 'La frecuencia respiratoria es un número entero' })
+  @Min(4, {
+    message: 'Revisa la frecuencia respiratoria: parece demasiado baja',
+  })
+  @Max(200, {
+    message: 'Revisa la frecuencia respiratoria: parece demasiado alta',
+  })
+  respiratoryRate?: number | null;
+
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsNumber({ maxDecimalPlaces: 1 }, { message: 'El TLLC admite 1 decimal' })
+  @Min(0, { message: 'El TLLC no puede ser negativo' })
+  @Max(10, { message: 'Revisa el TLLC: parece demasiado alto' })
+  capillaryRefillS?: number | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(40, { message: 'Mucosas admite hasta 40 caracteres' })
+  mucosa?: string | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(40, { message: 'Hidratación admite hasta 40 caracteres' })
+  hydration?: string | null;
+
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: 'La condición corporal va de 1 a 9' })
+  @Min(1, { message: 'La condición corporal va de 1 a 9' })
+  @Max(9, { message: 'La condición corporal va de 1 a 9' })
+  bodyCondition?: number | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(5000, { message: 'El examen físico admite hasta 5000 caracteres' })
+  physicalExam?: string | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(300, { message: 'El diagnóstico admite hasta 300 caracteres' })
+  diagnosis?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  diagnosisDefinitive?: boolean;
 }
 
 export class CancelVisitDto {

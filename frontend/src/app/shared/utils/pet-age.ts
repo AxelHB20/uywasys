@@ -1,7 +1,8 @@
 /** Edad legible a partir de AAAA-MM-DD: "3 años", "1 año y 2 meses", "5 meses", "2 semanas". */
 export function petAge(birthDate: string | null, today: Date = new Date()): string | null {
   if (!birthDate) return null;
-  const [y, m, d] = birthDate.split('-').map(Number);
+  // Acepta AAAA-MM-DD o la fecha ISO completa (algunas respuestas traen la hora)
+  const [y, m, d] = birthDate.slice(0, 10).split('-').map(Number);
   let months = (today.getFullYear() - y) * 12 + (today.getMonth() + 1 - m);
   if (today.getDate() < d) months -= 1;
   if (months < 0) return null;
@@ -31,7 +32,8 @@ export function ageParts(
   birthDate: string,
   today: Date = new Date(),
 ): { years: number; months: number } {
-  const [y, m, d] = birthDate.split('-').map(Number);
+  // Acepta AAAA-MM-DD o la fecha ISO completa (algunas respuestas traen la hora)
+  const [y, m, d] = birthDate.slice(0, 10).split('-').map(Number);
   let months = (today.getFullYear() - y) * 12 + (today.getMonth() + 1 - m);
   if (today.getDate() < d) months -= 1;
   months = Math.max(0, months);

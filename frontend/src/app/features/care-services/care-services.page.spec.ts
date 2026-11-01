@@ -15,7 +15,10 @@ const castration: CareService = {
   igv: 'TAXED',
   durationMin: 90,
   active: true,
-  supplies: [{ productId: 7, name: 'Ketamina 50 mg/ml', baseUnit: 'ML', quantity: 2 }],
+  sizePrices: [],
+  supplies: [
+    { productId: 7, name: 'Ketamina 50 mg/ml', baseUnit: 'ML', quantity: 2, controlled: true },
+  ],
 };
 const consult: CareService = {
   id: 2,
@@ -25,6 +28,7 @@ const consult: CareService = {
   igv: 'TAXED',
   durationMin: 30,
   active: true,
+  sizePrices: [],
   supplies: [],
 };
 
@@ -135,6 +139,7 @@ describe('CareServicesPage', () => {
       igv: 'TAXED',
       durationMin: null,
       supplies: [{ productId: 9, quantity: 1 }],
+      sizePrices: [],
     });
     req.flush({ ...consult, id: 3, name: 'Vacuna triple felina', category: 'VACCINATION' });
     fixture.detectChanges();

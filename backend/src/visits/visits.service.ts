@@ -27,6 +27,19 @@ import type { VisitDetail, VisitSummary } from './visit.views.js';
 
 const PAGE_SIZE = 20;
 
+/** Campos del SOAP que se guardan tal cual (null borra) */
+const SOAP_FIELDS = [
+  'anamnesis',
+  'heartRate',
+  'respiratoryRate',
+  'capillaryRefillS',
+  'mucosa',
+  'hydration',
+  'bodyCondition',
+  'physicalExam',
+  'diagnosis',
+] as const;
+
 /**
  * Atenciones: abrir (desde la cola o la ficha), registrar signos y notas, cerrar o cancelar.
  * Cerrada, la atención es parte de la historia clínica: solo admite adendas.
@@ -43,82 +56,9 @@ export class VisitsService {
     dto: OpenVisitDto,
     ip?: string,
   ): Promise<VisitDetail> {
-    const id = await this.prisma.$transaction(async (tx) => {
-      // Bloquea la mascota: dos clics en "Atender" no abren dos atenciones
-      const [pet] = await tx.$queryRaw<
-        {
-          name: string;
-          client_id: number;
-          active: boolean;
-          deceased_at: Date | null;
-        }[]
-      >`SELECT name, client_id, active, deceased_at FROM pets
-        WHERE id = ${dto.petId} AND clinic_id = ${actor.clinicId} FOR UPDATE`;
-      if (!pet) throw new NotFoundException('La mascota no existe');
-      if (pet.deceased_at)
-        throw new BadRequestException(
-          `${pet.name} está registrada como fallecida`,
-        );
-      const client = await tx.client.findUniqueOrThrow({
-        where: { id: pet.client_id },
-        select: { active: true },
-      });
-      if (!pet.active || !client.active)
-        throw new BadRequestException(
-          `${pet.name} está inactiva: actívala en la ficha del cliente`,
-        );
-
-      const open = await tx.visit.findFirst({
-        where: { clinicId: actor.clinicId, petId: dto.petId, status: 'OPEN' },
-        select: { id: true },
-      });
-      if (open)
-        throw new ConflictException({
-          message: `${pet.name} ya tiene una atención abierta`,
-          visitId: open.id,
-        });
-
-      let type = dto.type ?? 'CONSULTATION';
-      let reason = dto.reason ?? null;
-      if (dto.queueEntryId) {
-        const entry = await tx.queueEntry.findFirst({
-          where: {
-            id: dto.queueEntryId,
-            clinicId: actor.clinicId,
-            petId: dto.petId,
-          },
-          select: { status: true, startedAt: true, type: true, reason: true },
-        });
-        if (!entry)
-          throw new NotFoundException('Esa entrada de la cola no existe');
-        if (!OPEN_STATUSES.includes(entry.status))
-          throw new ConflictException('Esa entrada de la cola ya se cerró');
-        type = dto.type ?? entry.type;
-        reason = dto.reason ?? entry.reason;
-        await tx.queueEntry.update({
-          where: { id: dto.queueEntryId },
-          data: {
-            status: 'IN_PROGRESS',
-            startedAt: entry.startedAt ?? new Date(),
-            attendedBy: { connect: { id: actor.id } },
-          },
-        });
-      }
-
-      const visit = await tx.visit.create({
-        data: {
-          clinicId: actor.clinicId,
-          petId: dto.petId,
-          clientId: pet.client_id,
-          queueEntryId: dto.queueEntryId ?? null,
-          type,
-          reason,
-          attendedById: actor.id,
-        },
-        select: { id: true },
-      });
-      return visit.id;
-    });
+    const id = await this.prisma.$transaction((tx) =>
+      this.openInTx(tx, actor, dto),
+    );
 
     await this.audit.log({
       clinicId: actor.clinicId,
@@ -130,6 +70,88 @@ export class VisitsService {
       data: { petId: dto.petId, queueEntryId: dto.queueEntryId ?? null },
     });
     return this.get(actor.clinicId, id);
+  }
+
+  /** Abre la atención dentro de una transacción que ya existe (también la usa el ingreso a grooming). */
+  async openInTx(
+    tx: Prisma.TransactionClient,
+    actor: AuthUser,
+    dto: OpenVisitDto,
+  ): Promise<number> {
+    // Bloquea la mascota: dos clics en "Atender" no abren dos atenciones
+    const [pet] = await tx.$queryRaw<
+      {
+        name: string;
+        client_id: number;
+        active: boolean;
+        deceased_at: Date | null;
+      }[]
+    >`SELECT name, client_id, active, deceased_at FROM pets
+      WHERE id = ${dto.petId} AND clinic_id = ${actor.clinicId} FOR UPDATE`;
+    if (!pet) throw new NotFoundException('La mascota no existe');
+    if (pet.deceased_at)
+      throw new BadRequestException(
+        `${pet.name} está registrada como fallecida`,
+      );
+    const client = await tx.client.findUniqueOrThrow({
+      where: { id: pet.client_id },
+      select: { active: true },
+    });
+    if (!pet.active || !client.active)
+      throw new BadRequestException(
+        `${pet.name} está inactiva: actívala en la ficha del cliente`,
+      );
+
+    const open = await tx.visit.findFirst({
+      where: { clinicId: actor.clinicId, petId: dto.petId, status: 'OPEN' },
+      select: { id: true },
+    });
+    if (open)
+      throw new ConflictException({
+        message: `${pet.name} ya tiene una atención abierta`,
+        visitId: open.id,
+      });
+
+    let type = dto.type ?? 'CONSULTATION';
+    let reason = dto.reason ?? null;
+    if (dto.queueEntryId) {
+      const entry = await tx.queueEntry.findFirst({
+        where: {
+          id: dto.queueEntryId,
+          clinicId: actor.clinicId,
+          petId: dto.petId,
+        },
+        select: { status: true, startedAt: true, type: true, reason: true },
+      });
+      if (!entry)
+        throw new NotFoundException('Esa entrada de la cola no existe');
+      if (!OPEN_STATUSES.includes(entry.status))
+        throw new ConflictException('Esa entrada de la cola ya se cerró');
+      type = dto.type ?? entry.type;
+      reason = dto.reason ?? entry.reason;
+      await tx.queueEntry.update({
+        where: { id: dto.queueEntryId },
+        data: {
+          status: 'IN_PROGRESS',
+          startedAt: entry.startedAt ?? new Date(),
+          attendedBy: { connect: { id: actor.id } },
+        },
+      });
+    }
+
+    const visit = await tx.visit.create({
+      data: {
+        clinicId: actor.clinicId,
+        petId: dto.petId,
+        clientId: pet.client_id,
+        queueEntryId: dto.queueEntryId ?? null,
+        type,
+        reason,
+        attendedById: actor.id,
+      },
+      select: { id: true },
+    });
+    return visit.id;
   }
 
   async get(clinicId: number, id: number): Promise<VisitDetail> {
@@ -188,7 +210,7 @@ export class VisitsService {
     };
   }
 
-  /** Signos, motivo y notas: solo mientras está abierta. El peso también actualiza la ficha. */
+  /** Signos, SOAP, motivo y notas: solo mientras está abierta. El peso también actualiza la ficha. */
   async update(
     actor: AuthUser,
     id: number,
@@ -201,6 +223,11 @@ export class VisitsService {
       if (dto.weightKg !== undefined) data.weightKg = dto.weightKg;
       if (dto.temperatureC !== undefined) data.temperatureC = dto.temperatureC;
       if (dto.notes !== undefined) data.notes = dto.notes;
+      for (const key of SOAP_FIELDS)
+        if (dto[key] !== undefined)
+          (data as Record<string, unknown>)[key] = dto[key];
+      if (dto.diagnosisDefinitive !== undefined)
+        data.diagnosisDefinitive = dto.diagnosisDefinitive;
       await tx.visit.update({ where: { id }, data });
       if (dto.weightKg != null)
         await tx.pet.update({
@@ -214,6 +241,7 @@ export class VisitsService {
   async close(actor: AuthUser, id: number, ip?: string): Promise<VisitDetail> {
     await this.prisma.$transaction(async (tx) => {
       const visit = await this.lockOpen(tx, actor.clinicId, id);
+      await this.notGrooming(tx, id);
       const now = new Date();
       await tx.visit.update({
         where: { id },
@@ -248,6 +276,7 @@ export class VisitsService {
   ): Promise<VisitDetail> {
     await this.prisma.$transaction(async (tx) => {
       const visit = await this.lockOpen(tx, actor.clinicId, id);
+      await this.notGrooming(tx, id);
       const charges = await tx.charge.count({
         where: { visitId: id, status: { not: 'VOID' } },
       });
@@ -320,6 +349,20 @@ export class VisitsService {
       data: { addendumId: addendum.id },
     });
     return this.get(actor.clinicId, id);
+  }
+
+  /** La atención de un grooming se cierra al entregar la mascota (o se cancela) desde el tablero */
+  private async notGrooming(tx: Prisma.TransactionClient, visitId: number) {
+    const grooming = await tx.groomingSession.findUnique({
+      where: { visitId },
+      select: { id: true },
+    });
+    if (grooming)
+      throw new ConflictException({
+        message:
+          'Es un servicio de grooming: se cierra al entregar la mascota desde el tablero',
+        groomingId: grooming.id,
+      });
   }
 
   private async lockOpen(

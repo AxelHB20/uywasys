@@ -72,6 +72,7 @@ describe('App', () => {
         clients: { active: 0, newThisMonth: 0 },
         pets: { active: 0 },
     inventory: { expiring: 0, lowStock: 0 },
+    sales: { total: 0, receipts: 0 },
         recentClients: [],
       });
     await fixture.whenStable();
@@ -113,6 +114,7 @@ describe('App', () => {
         clients: { active: 0, newThisMonth: 0 },
         pets: { active: 0 },
     inventory: { expiring: 0, lowStock: 0 },
+    sales: { total: 0, receipts: 0 },
         recentClients: [],
       });
     await fixture.whenStable();

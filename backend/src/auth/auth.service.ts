@@ -97,15 +97,22 @@ export class AuthService {
       action: 'auth.login',
     });
 
+    return { token: await this.sign(user), user: toSessionUser(user) };
+  }
+
+  private sign(user: {
+    id: number;
+    clinicId: number;
+    role: SessionPayload['role'];
+    sessionVersion: number;
+  }): Promise<string> {
     const payload: SessionPayload = {
       sub: user.id,
       clinicId: user.clinicId,
       role: user.role,
+      sv: user.sessionVersion,
     };
-    return {
-      token: await this.jwt.signAsync(payload),
-      user: toSessionUser(user),
-    };
+    return this.jwt.signAsync(payload);
   }
 
   async me(userId: number): Promise<SessionUser> {
@@ -117,13 +124,16 @@ export class AuthService {
     return toSessionUser(user);
   }
 
-  /** Cambia la contraseña del propio usuario. Si tenía una clave temporal, deja de estar obligado a cambiarla. */
+  /**
+   * Cambia la contraseña del propio usuario. Si tenía una clave temporal, deja de estar obligado
+   * a cambiarla. Las sesiones abiertas en otros equipos se cierran; esta recibe un token nuevo.
+   */
   async changePassword(
     userId: number,
     currentPassword: string,
     newPassword: string,
     ip?: string,
-  ): Promise<SessionUser> {
+  ): Promise<{ token: string; user: SessionUser }> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('El usuario no existe');
 
@@ -136,11 +146,12 @@ export class AuthService {
       );
     }
 
-    await this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         passwordHash: await hashPassword(newPassword),
         mustChangePassword: false,
+        sessionVersion: { increment: 1 },
       },
     });
     await this.audit.log({
@@ -151,7 +162,7 @@ export class AuthService {
       ip,
       action: 'auth.password_change',
     });
-    return this.me(userId);
+    return { token: await this.sign(updated), user: await this.me(userId) };
   }
 }
 

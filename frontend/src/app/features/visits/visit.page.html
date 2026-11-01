@@ -1,0 +1,972 @@
+<section class="space-y-6">
+  @if (visit(); as v) {
+    <a
+      [routerLink]="v.status === 'OPEN' && v.queueEntryId ? '/cola' : '/atenciones'"
+      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+    >
+      <app-icon name="chevron-left" class="size-4" />
+      {{ v.status === 'OPEN' && v.queueEntryId ? 'Cola de hoy' : 'Atenciones' }}
+    </a>
+  } @else {
+    <a
+      routerLink="/atenciones"
+      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+    >
+      <app-icon name="chevron-left" class="size-4" /> Atenciones
+    </a>
+  }
+
+  @if (loading() && !visit()) {
+    <div class="card space-y-3 p-6" aria-busy="true" aria-label="Cargando atención">
+      <div class="h-6 w-64 animate-pulse rounded bg-slate-100"></div>
+      <div class="h-4 w-40 animate-pulse rounded bg-slate-100"></div>
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (visit(); as v) {
+    <!-- Encabezado: paciente y estado -->
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex min-w-0 items-center gap-4">
+        <span
+          class="grid size-14 shrink-0 place-items-center rounded-2xl bg-anil-600 text-white"
+          aria-hidden="true"
+        >
+          <app-icon [name]="speciesIcons[v.pet.species]" class="size-7" />
+        </span>
+        <div class="min-w-0">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Historia {{ petCode(v.pet.number) }} · {{ v.openedAt | fecha: 'datetime' }}
+          </p>
+          <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
+            {{ v.pet.name }}
+          </h1>
+          <p class="mt-0.5 text-sm text-slate-600">
+            {{ speciesLabels[v.pet.species] }}
+            @if (v.pet.breed) {
+              · {{ v.pet.breed }}
+            }
+            @if (v.pet.sex) {
+              · {{ sexLabels[v.pet.sex] }}
+            }
+            @if (petAge(v.pet.birthDate); as age) {
+              · {{ age }}
+            }
+            ·
+            <a
+              [routerLink]="['/clientes', v.client.id]"
+              class="font-medium text-anil-700 hover:underline"
+              >{{ v.client.name }}</a
+            >
+            <span class="tabular-nums"> · {{ formatPhone(v.client.phone) }}</span>
+          </p>
+        </div>
+      </div>
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <app-badge [tone]="statusTone[v.status]">{{ statusLabels[v.status] }}</app-badge>
+        @if (v.grooming; as g) {
+          <a routerLink="/grooming" class="btn btn-secondary">
+            <app-icon name="scissors" class="size-4" /> Tablero de grooming
+          </a>
+        } @else if (editable()) {
+          <button type="button" class="btn btn-ghost" (click)="askCancel()">Cancelar</button>
+          <button type="button" class="btn btn-primary" (click)="askClose()">
+            <app-icon name="check" class="size-4" /> Cerrar atención
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (v.grooming && v.status === 'OPEN') {
+      <p
+        class="flex gap-3 rounded-2xl bg-anil-50 p-4 text-sm text-anil-900 ring-1 ring-anil-200"
+        role="status"
+      >
+        <app-icon name="scissors" class="mt-0.5 size-5 shrink-0 text-anil-600" />
+        <span>
+          Servicio de grooming
+          <strong>GR-{{ v.grooming.number.toString().padStart(5, '0') }}</strong
+          >: se cierra al entregar la mascota desde el tablero. Aquí puedes agregar servicios o
+          productos (toman el precio de su tamaño).
+        </span>
+      </p>
+    }
+
+    <!-- Alertas de la mascota: siempre visibles y con texto -->
+    @if (v.pet.aggressive || v.pet.allergies) {
+      <div class="grid gap-3 sm:grid-cols-2" role="alert">
+        @if (v.pet.aggressive) {
+          <div class="flex gap-3 rounded-2xl bg-rose-50 p-4 text-rose-900 ring-1 ring-rose-200">
+            <app-icon name="alert" class="mt-0.5 size-5 shrink-0 text-rose-600" />
+            <p>
+              <span class="font-semibold">Agresivo.</span>
+              {{ v.pet.aggressiveNote ?? 'Manipular con precaución.' }}
+            </p>
+          </div>
+        }
+        @if (v.pet.allergies) {
+          <div class="flex gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900 ring-1 ring-amber-200">
+            <app-icon name="alert" class="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <p><span class="font-semibold">Alergias:</span> {{ v.pet.allergies }}</p>
+          </div>
+        }
+      </div>
+    }
+
+    @if (editable() && acceptedEstimates().length) {
+      <div
+        class="flex flex-col gap-3 rounded-2xl bg-anil-50 p-4 ring-1 ring-anil-200 sm:flex-row sm:items-center sm:justify-between"
+        role="status"
+      >
+        <div class="flex items-start gap-3">
+          <app-icon name="clipboard-list" class="mt-0.5 size-5 shrink-0 text-anil-600" />
+          <p class="text-sm text-anil-950">
+            <span class="font-semibold">{{ v.pet.name }} tiene un presupuesto aceptado.</span>
+            @for (e of acceptedEstimates(); track e.id; let last = $last) {
+              {{ e.code }} · {{ e.title }} · {{ money(e.total) }}{{ last ? '' : ';' }}
+            }
+          </p>
+        </div>
+        <a
+          [routerLink]="['/presupuestos', acceptedEstimates()[0].id]"
+          [queryParams]="{ atencion: v.id }"
+          class="btn btn-primary h-10 shrink-0"
+        >
+          Cargar a esta atención
+        </a>
+      </div>
+    }
+
+    @if (v.status === 'CANCELLED') {
+      <p class="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+        Atención cancelada
+        @if (v.closedBy) {
+          por {{ v.closedBy.fullName }}
+        }
+        : {{ v.cancelReason }}
+      </p>
+    }
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] lg:items-start">
+      <div class="min-w-0 space-y-6">
+        <!-- Consulta (SOAP) o notas del servicio -->
+        <section class="card p-5 sm:p-6" aria-labelledby="notes-title">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="notes-title" class="font-display text-lg font-semibold text-slate-900">
+              {{ isConsultation() ? 'Consulta' : 'Signos y notas' }}
+            </h2>
+            @if (isConsultation()) {
+              <p class="text-xs text-slate-500">Método SOAP</p>
+            }
+          </div>
+          <form [formGroup]="notesForm" (ngSubmit)="saveNotes()" novalidate class="mt-4 space-y-6">
+            <div>
+              <label for="v-reason" class="field-label">Motivo</label>
+              <input
+                id="v-reason"
+                formControlName="reason"
+                class="field-input"
+                placeholder="Ej.: vacuna anual, vómitos desde ayer"
+                autocomplete="off"
+                maxlength="200"
+              />
+            </div>
+
+            @if (isConsultation()) {
+              <!-- S -->
+              <fieldset class="space-y-1.5">
+                <legend class="soap-legend">
+                  <span class="soap-letter" aria-hidden="true">S</span> Anamnesis
+                </legend>
+                <label for="v-anamnesis" class="sr-only">Anamnesis</label>
+                <textarea
+                  id="v-anamnesis"
+                  formControlName="anamnesis"
+                  rows="3"
+                  maxlength="5000"
+                  class="field-input h-auto py-2.5"
+                  placeholder="Lo que cuenta el dueño: desde cuándo, apetito, vómitos, cambios en casa"
+                ></textarea>
+              </fieldset>
+            }
+
+            <!-- O -->
+            <fieldset>
+              @if (isConsultation()) {
+                <legend class="soap-legend">
+                  <span class="soap-letter" aria-hidden="true">O</span> Examen físico
+                </legend>
+              }
+              <div class="mt-1.5 grid grid-cols-2 gap-4" [class.sm:grid-cols-4]="isConsultation()">
+                <div>
+                  <label for="v-weight" class="field-label">Peso (kg)</label>
+                  <input
+                    id="v-weight"
+                    type="number"
+                    inputmode="decimal"
+                    step="0.01"
+                    min="0"
+                    formControlName="weightKg"
+                    class="field-input tabular-nums"
+                    [placeholder]="v.pet.weightKg ? 'Antes: ' + v.pet.weightKg : ''"
+                    [attr.aria-invalid]="invalid(notesForm.controls.weightKg)"
+                  />
+                  @if (invalid(notesForm.controls.weightKg)) {
+                    <p class="field-error">Peso válido, hasta 2 decimales</p>
+                  }
+                </div>
+                <div>
+                  <label for="v-temp" class="field-label">Temperatura (°C)</label>
+                  <input
+                    id="v-temp"
+                    type="number"
+                    inputmode="decimal"
+                    step="0.1"
+                    formControlName="temperatureC"
+                    class="field-input tabular-nums"
+                    [attr.aria-invalid]="invalid(notesForm.controls.temperatureC)"
+                  />
+                  @if (invalid(notesForm.controls.temperatureC)) {
+                    <p class="field-error">Entre 30 y 45 °C, con 1 decimal</p>
+                  }
+                </div>
+                @if (isConsultation()) {
+                  <div>
+                    <label for="v-fc" class="field-label">
+                      FC <span class="font-normal text-slate-500">(lpm)</span>
+                    </label>
+                    <input
+                      id="v-fc"
+                      type="number"
+                      inputmode="numeric"
+                      step="1"
+                      formControlName="heartRate"
+                      class="field-input tabular-nums"
+                      [attr.aria-invalid]="invalid(notesForm.controls.heartRate)"
+                    />
+                    @if (invalid(notesForm.controls.heartRate)) {
+                      <p class="field-error">Entre 10 y 400</p>
+                    }
+                  </div>
+                  <div>
+                    <label for="v-fr" class="field-label">
+                      FR <span class="font-normal text-slate-500">(rpm)</span>
+                    </label>
+                    <input
+                      id="v-fr"
+                      type="number"
+                      inputmode="numeric"
+                      step="1"
+                      formControlName="respiratoryRate"
+                      class="field-input tabular-nums"
+                      [attr.aria-invalid]="invalid(notesForm.controls.respiratoryRate)"
+                    />
+                    @if (invalid(notesForm.controls.respiratoryRate)) {
+                      <p class="field-error">Entre 4 y 200</p>
+                    }
+                  </div>
+                  <div>
+                    <label for="v-tllc" class="field-label">
+                      TLLC <span class="font-normal text-slate-500">(s)</span>
+                    </label>
+                    <input
+                      id="v-tllc"
+                      type="number"
+                      inputmode="decimal"
+                      step="0.5"
+                      formControlName="capillaryRefillS"
+                      class="field-input tabular-nums"
+                      [attr.aria-invalid]="invalid(notesForm.controls.capillaryRefillS)"
+                    />
+                    @if (invalid(notesForm.controls.capillaryRefillS)) {
+                      <p class="field-error">Entre 0 y 10, con 1 decimal</p>
+                    }
+                  </div>
+                  <div>
+                    <label for="v-mucosa" class="field-label">Mucosas</label>
+                    <input
+                      id="v-mucosa"
+                      formControlName="mucosa"
+                      class="field-input"
+                      list="v-mucosa-list"
+                      autocomplete="off"
+                      maxlength="40"
+                    />
+                    <datalist id="v-mucosa-list">
+                      @for (m of mucosaOptions; track m) {
+                        <option [value]="m"></option>
+                      }
+                    </datalist>
+                  </div>
+                  <div>
+                    <label for="v-hydration" class="field-label">Hidratación</label>
+                    <input
+                      id="v-hydration"
+                      formControlName="hydration"
+                      class="field-input"
+                      list="v-hydration-list"
+                      autocomplete="off"
+                      maxlength="40"
+                    />
+                    <datalist id="v-hydration-list">
+                      @for (h of hydrationOptions; track h) {
+                        <option [value]="h"></option>
+                      }
+                    </datalist>
+                  </div>
+                  <div>
+                    <label for="v-bcs" class="field-label">
+                      Cond. corporal <span class="font-normal text-slate-500">(1-9)</span>
+                    </label>
+                    <select id="v-bcs" formControlName="bodyCondition" class="field-input">
+                      <option [ngValue]="null">—</option>
+                      @for (b of bodyConditions; track b.value) {
+                        <option [ngValue]="b.value">{{ b.label }}</option>
+                      }
+                    </select>
+                  </div>
+                }
+              </div>
+              @if (isConsultation()) {
+                <label for="v-exam" class="sr-only">Hallazgos del examen</label>
+                <textarea
+                  id="v-exam"
+                  formControlName="physicalExam"
+                  rows="3"
+                  maxlength="5000"
+                  class="field-input mt-4 h-auto py-2.5"
+                  placeholder="Hallazgos: ganglios, auscultación, abdomen, piel, oídos…"
+                ></textarea>
+              }
+            </fieldset>
+
+            @if (isConsultation()) {
+              <!-- A -->
+              <fieldset>
+                <legend class="soap-legend">
+                  <span class="soap-letter" aria-hidden="true">A</span> Diagnóstico
+                </legend>
+                <div class="mt-1.5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <label for="v-dx" class="sr-only">Diagnóstico</label>
+                  <input
+                    id="v-dx"
+                    formControlName="diagnosis"
+                    class="field-input mt-0 sm:flex-1"
+                    autocomplete="off"
+                    maxlength="300"
+                    placeholder="Ej.: gastroenteritis aguda"
+                  />
+                  <label
+                    class="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2.5 self-start sm:self-auto rounded-xl px-3 text-sm text-slate-700 ring-1 ring-slate-300 has-[:checked]:bg-emerald-50 has-[:checked]:text-emerald-800 has-[:checked]:ring-emerald-300 has-[:disabled]:cursor-default"
+                  >
+                    <input
+                      type="checkbox"
+                      formControlName="diagnosisDefinitive"
+                      class="size-4 accent-emerald-600"
+                    />
+                    {{ notesForm.controls.diagnosisDefinitive.value ? 'Definitivo' : 'Presuntivo' }}
+                  </label>
+                </div>
+              </fieldset>
+            }
+
+            <fieldset class="space-y-1.5">
+              @if (isConsultation()) {
+                <legend class="soap-legend">
+                  <span class="soap-letter" aria-hidden="true">P</span> Plan y tratamiento
+                </legend>
+              } @else {
+                <legend class="field-label">Notas del servicio</legend>
+              }
+              <label for="v-notes" class="sr-only">
+                {{ isConsultation() ? 'Plan y tratamiento' : 'Notas' }}
+              </label>
+              <textarea
+                id="v-notes"
+                formControlName="notes"
+                rows="4"
+                maxlength="5000"
+                class="field-input h-auto py-2.5"
+                [placeholder]="
+                  isConsultation()
+                    ? 'Tratamiento, exámenes pedidos, indicaciones al dueño y control'
+                    : 'Lo que se hizo y lo que se observó'
+                "
+              ></textarea>
+            </fieldset>
+
+            @if (editable()) {
+              <div class="flex items-center justify-end gap-3">
+                @if (notesForm.dirty) {
+                  <span class="text-xs text-amber-700">Cambios sin guardar</span>
+                }
+                <button
+                  type="submit"
+                  class="btn btn-secondary"
+                  [disabled]="saving() || !notesForm.dirty"
+                >
+                  Guardar
+                </button>
+              </div>
+            }
+          </form>
+
+          @if (v.status === 'CLOSED') {
+            <div class="mt-6 border-t border-slate-100 pt-5">
+              <h3 class="text-sm font-semibold text-slate-900">Adendas</h3>
+              <p class="mt-0.5 text-sm text-slate-500">
+                La atención cerrada no se edita: las correcciones se agregan aquí con autor y fecha.
+              </p>
+              @if (v.addenda.length) {
+                <ul class="mt-3 space-y-2">
+                  @for (a of v.addenda; track a.id) {
+                    <li class="rounded-xl bg-slate-50 px-4 py-3 text-sm ring-1 ring-slate-200/70">
+                      <p class="whitespace-pre-line text-slate-800">{{ a.text }}</p>
+                      <p class="mt-1 text-xs text-slate-500">
+                        {{ a.author.fullName }} ·
+                        {{ a.createdAt | fecha: 'datetime' }}
+                      </p>
+                    </li>
+                  }
+                </ul>
+              }
+              @if (canEdit()) {
+                <div class="mt-3">
+                  <label for="v-addendum" class="sr-only">Nueva adenda</label>
+                  <textarea
+                    id="v-addendum"
+                    [formControl]="addendum"
+                    rows="2"
+                    maxlength="2000"
+                    class="field-input h-auto py-2.5"
+                    placeholder="Ej.: la temperatura correcta era 38.9 °C"
+                    [attr.aria-invalid]="invalid(addendum)"
+                  ></textarea>
+                  @if (invalid(addendum)) {
+                    <p class="field-error">Escribe al menos 3 caracteres</p>
+                  }
+                  <div class="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      class="btn btn-secondary"
+                      [disabled]="saving()"
+                      (click)="saveAddendum()"
+                    >
+                      Agregar adenda
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </section>
+
+        <!-- Vacunas y desparasitaciones -->
+        <section class="card p-5 sm:p-6" aria-labelledby="vac-title">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 id="vac-title" class="font-display text-lg font-semibold text-slate-900">
+                Vacunas y desparasitaciones
+              </h2>
+              <p class="mt-0.5 text-sm text-slate-500">
+                Quedan en el carnet de {{ v.pet.name }} con su próximo refuerzo.
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <a [routerLink]="['/mascotas', v.pet.id]" class="btn btn-ghost h-10 px-3">
+                <app-icon name="file-text" class="size-4" /> Carnet
+              </a>
+              @if (editable() && !addingVaccine()) {
+                <button
+                  type="button"
+                  class="btn btn-secondary h-10"
+                  (click)="addingVaccine.set(true)"
+                >
+                  <app-icon name="plus" class="size-4" /> Aplicar
+                </button>
+              }
+            </div>
+          </div>
+          @if (addingVaccine()) {
+            <div class="mt-4 rounded-2xl bg-slate-50/70 p-4 ring-1 ring-slate-200">
+              <app-immunization-form
+                [petId]="v.pet.id"
+                [visitId]="v.id"
+                (saved)="onImmunization($event)"
+                (cancelled)="addingVaccine.set(false)"
+              />
+            </div>
+          }
+          <div class="mt-2">
+            <app-immunization-list
+              [items]="v.immunizations"
+              [canVoid]="editable()"
+              empty="No se aplicó ninguna en esta atención."
+              (changed)="onImmunization($event)"
+            />
+          </div>
+        </section>
+
+        <!-- Recetas -->
+        @if (v.prescriptions.length || (editable() && canPrescribe())) {
+          <section class="card p-5 sm:p-6" aria-labelledby="rx-title">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 id="rx-title" class="font-display text-lg font-semibold text-slate-900">
+                  Receta
+                </h2>
+                <p class="mt-0.5 text-sm text-slate-500">
+                  Lo que se entrega en la clínica se carga a la cuenta y baja del inventario.
+                </p>
+              </div>
+              @if (editable() && canPrescribe() && !prescribing()) {
+                <button
+                  type="button"
+                  class="btn btn-secondary h-10"
+                  (click)="prescribing.set(true)"
+                >
+                  <app-icon name="plus" class="size-4" /> Nueva receta
+                </button>
+              }
+            </div>
+            @if (prescribing()) {
+              <div class="mt-4 rounded-2xl bg-slate-50/70 p-4 ring-1 ring-slate-200">
+                <app-prescription-form
+                  [visitId]="v.id"
+                  (saved)="onPrescription()"
+                  (cancelled)="prescribing.set(false)"
+                />
+              </div>
+            }
+            @if (v.prescriptions.length) {
+              <div class="mt-4 space-y-3">
+                <app-prescription-list [items]="v.prescriptions" (changed)="onPrescription()" />
+              </div>
+            }
+          </section>
+        }
+
+        <!-- Archivos y consentimientos -->
+        <app-pet-documents [petId]="v.pet.id" [visitId]="v.id" />
+
+        <!-- Cargos -->
+        <section class="card overflow-hidden" aria-labelledby="charges-title">
+          <div class="flex items-center justify-between gap-3 px-5 pt-5 sm:px-6">
+            <h2 id="charges-title" class="font-display text-lg font-semibold text-slate-900">
+              Servicios y productos
+            </h2>
+            <p class="font-display text-lg font-semibold text-slate-900 tabular-nums">
+              {{ money(v.total) }}
+            </p>
+          </div>
+
+          @if (shortages().length) {
+            <div
+              class="mx-5 mt-4 flex gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200 sm:mx-6"
+            >
+              <app-icon name="package" class="mt-0.5 size-4 shrink-0 text-amber-600" />
+              <p>
+                Se usó sin stock registrado:
+                @for (s of shortages(); track $index; let last = $last) {
+                  {{ shortageText(s) }}{{ last ? '.' : ', ' }}
+                }
+                El administrador lo cuadra en inventario.
+              </p>
+            </div>
+          }
+
+          @if (activeCharges().length) {
+            <ul class="mt-4 divide-y divide-slate-100 border-t border-slate-100">
+              @for (c of activeCharges(); track c.id) {
+                <li class="flex items-start gap-3 px-5 py-3.5 sm:px-6">
+                  <div class="min-w-0 flex-1">
+                    <p class="font-medium text-slate-900">{{ c.description }}</p>
+                    <p class="text-sm text-slate-500 tabular-nums">
+                      {{ chargeLine(c) }}
+                      @if (c.discount) {
+                        · descuento {{ money(c.discount) }} ({{ c.discountReason }})
+                      }
+                      @if (c.prescriptionRef) {
+                        · receta {{ c.prescriptionRef }}
+                      }
+                    </p>
+                    <p class="text-xs text-slate-400">{{ c.createdBy.fullName }}</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-semibold text-slate-900 tabular-nums">{{ money(c.total) }}</p>
+                    <app-badge [tone]="chargeTone[c.status]" class="mt-1">{{
+                      c.status === 'PENDING' && c.paidAmount
+                        ? 'Abonó ' + money(c.paidAmount)
+                        : chargeLabels[c.status]
+                    }}</app-badge>
+                  </div>
+                  @if (canVoid(c)) {
+                    <button
+                      type="button"
+                      class="btn btn-ghost size-10 shrink-0 px-0 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                      [attr.aria-label]="'Quitar ' + c.description"
+                      title="Quitar"
+                      (click)="askVoid(c)"
+                    >
+                      <app-icon name="trash" class="size-4" />
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+          } @else if (!editable()) {
+            <p class="px-5 pt-3 pb-5 text-sm text-slate-500 sm:px-6">Sin servicios ni productos.</p>
+          }
+
+          @if (voidedCharges().length) {
+            <details class="border-t border-slate-100 px-5 py-3 text-sm sm:px-6">
+              <summary class="cursor-pointer text-slate-500">
+                {{ voidedCharges().length }} quitado(s)
+              </summary>
+              <ul class="mt-2 space-y-1 text-slate-500">
+                @for (c of voidedCharges(); track c.id) {
+                  <li>
+                    <span class="line-through">{{ c.description }} {{ money(c.total) }}</span>
+                    — {{ c.voidReason }}
+                  </li>
+                }
+              </ul>
+            </details>
+          }
+
+          <!-- Agregar -->
+          @if (editable()) {
+            <div class="border-t border-slate-100 bg-slate-50/60 px-5 py-5 sm:px-6">
+              <div class="relative">
+                <label for="v-search" class="sr-only">Buscar servicio o producto</label>
+                <app-icon
+                  name="search"
+                  class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  id="v-search"
+                  type="search"
+                  [formControl]="search"
+                  placeholder="Agregar: busca un servicio o producto"
+                  autocomplete="off"
+                  class="field-input mt-0 bg-white pl-10"
+                  role="combobox"
+                  aria-controls="v-results"
+                  [attr.aria-expanded]="serviceOptions().length + productOptions().length > 0"
+                />
+              </div>
+              @if (serviceOptions().length || productOptions().length) {
+                <ul
+                  id="v-results"
+                  role="listbox"
+                  class="mt-1 max-h-72 overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200"
+                >
+                  @for (o of serviceOptions().concat(productOptions()); track o.key) {
+                    <li role="option" aria-selected="false">
+                      <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-anil-50 focus-visible:bg-anil-50 focus-visible:outline-none"
+                        (click)="pick(o)"
+                      >
+                        <span class="min-w-0">
+                          <span class="block truncate font-medium text-slate-900">{{
+                            o.description
+                          }}</span>
+                          <span class="block truncate text-xs text-slate-500">
+                            {{ o.kind === 'SERVICE' ? 'Servicio' : 'Producto' }}
+                            @if (o.detail) {
+                              · {{ o.detail }}
+                            }
+                            @if (o.controlled) {
+                              · controlado
+                            }
+                          </span>
+                        </span>
+                        <span class="shrink-0 font-semibold text-slate-900 tabular-nums">{{
+                          money(o.unitPrice)
+                        }}</span>
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (lines.length) {
+                <ul class="mt-4 space-y-3" aria-label="Por registrar">
+                  @for (g of lines.controls; track g; let i = $index) {
+                    <li [formGroup]="g" class="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+                      <div class="flex items-start gap-3">
+                        <div class="min-w-0 flex-1">
+                          <p class="font-medium text-slate-900">
+                            {{ g.controls.option.value.description }}
+                          </p>
+                          <p class="text-xs text-slate-500 tabular-nums">
+                            {{ money(g.controls.option.value.unitPrice) }} c/u
+                          </p>
+                        </div>
+                        <label [for]="'line-qty-' + i" class="sr-only">Cantidad</label>
+                        <input
+                          [id]="'line-qty-' + i"
+                          type="number"
+                          inputmode="decimal"
+                          min="0"
+                          step="any"
+                          formControlName="quantity"
+                          class="field-input mt-0 w-20 tabular-nums"
+                          [attr.aria-invalid]="invalid(g.controls.quantity)"
+                        />
+                        <p class="w-24 pt-2.5 text-right font-semibold text-slate-900 tabular-nums">
+                          {{ money(lineTotal(g)) }}
+                        </p>
+                        <button
+                          type="button"
+                          class="btn btn-ghost size-10 shrink-0 px-0 text-slate-500"
+                          [attr.aria-label]="
+                            'Quitar ' + g.controls.option.value.description + ' de la lista'
+                          "
+                          (click)="removeLine(i)"
+                        >
+                          <app-icon name="x" class="size-4" />
+                        </button>
+                      </div>
+                      @if (invalid(g.controls.quantity)) {
+                        <p class="field-error">Cantidad mayor a 0</p>
+                      }
+
+                      @if (g.controls.option.value.controlled) {
+                        <div class="mt-3">
+                          <label [for]="'line-rx-' + i" class="field-label"
+                            >N.º de receta (controlado)
+                            <span class="text-rose-600" aria-hidden="true">*</span></label
+                          >
+                          <input
+                            [id]="'line-rx-' + i"
+                            formControlName="prescriptionRef"
+                            class="field-input"
+                            autocomplete="off"
+                            maxlength="60"
+                            [attr.aria-invalid]="lineError(g, 'prescription')"
+                          />
+                          @if (lineError(g, 'prescription')) {
+                            <p class="field-error">
+                              Indica el N.º de receta. Solo lo registra un veterinario con
+                              colegiatura.
+                            </p>
+                          }
+                        </div>
+                      }
+
+                      @if (g.controls.showDiscount.value) {
+                        <div class="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
+                          <div>
+                            <label [for]="'line-disc-' + i" class="field-label"
+                              >Descuento (S/)</label
+                            >
+                            <input
+                              [id]="'line-disc-' + i"
+                              type="number"
+                              inputmode="decimal"
+                              min="0"
+                              step="0.01"
+                              formControlName="discount"
+                              class="field-input tabular-nums"
+                              [attr.aria-invalid]="lineError(g, 'discountTooBig')"
+                            />
+                          </div>
+                          <div>
+                            <label [for]="'line-disc-r-' + i" class="field-label">Motivo</label>
+                            <input
+                              [id]="'line-disc-r-' + i"
+                              formControlName="discountReason"
+                              class="field-input"
+                              placeholder="Ej.: cliente frecuente"
+                              maxlength="120"
+                              [attr.aria-invalid]="lineError(g, 'discountReason')"
+                            />
+                          </div>
+                        </div>
+                        @if (lineError(g, 'discountTooBig')) {
+                          <p class="field-error">El descuento no puede ser mayor que el importe</p>
+                        } @else if (lineError(g, 'discountReason')) {
+                          <p class="field-error">Indica el motivo del descuento</p>
+                        }
+                      } @else {
+                        <button
+                          type="button"
+                          class="mt-2 text-sm font-medium text-anil-700 hover:underline"
+                          (click)="g.controls.showDiscount.setValue(true)"
+                        >
+                          Aplicar descuento
+                        </button>
+                      }
+                    </li>
+                  }
+                </ul>
+                <div class="mt-4 flex flex-wrap items-center justify-end gap-3">
+                  <p class="text-sm text-slate-600">
+                    Por registrar:
+                    <span class="font-semibold text-slate-900 tabular-nums">{{
+                      money(linesTotal())
+                    }}</span>
+                  </p>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    [disabled]="saving()"
+                    (click)="submitLines()"
+                  >
+                    Registrar {{ lines.length === 1 ? 'cargo' : lines.length + ' cargos' }}
+                  </button>
+                </div>
+              } @else if (!activeCharges().length) {
+                <p class="mt-3 text-sm text-slate-500">
+                  Busca lo que se le hizo o se le vendió. Los insumos de cada servicio se descuentan
+                  solos del inventario.
+                </p>
+              }
+            </div>
+          }
+        </section>
+      </div>
+
+      <!-- Resumen -->
+      <aside class="space-y-6 lg:sticky lg:top-24">
+        <section class="card p-5" aria-labelledby="summary-title">
+          <h2
+            id="summary-title"
+            class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            Resumen
+          </h2>
+          <dl class="mt-3 space-y-2.5 text-sm">
+            <div class="flex justify-between gap-3">
+              <dt class="text-slate-500">Atiende</dt>
+              <dd class="text-right font-medium text-slate-900">{{ v.attendedBy.fullName }}</dd>
+            </div>
+            <div class="flex justify-between gap-3">
+              <dt class="text-slate-500">Inicio</dt>
+              <dd class="text-slate-900 tabular-nums">
+                {{ v.openedAt | fecha: 'time' }}
+              </dd>
+            </div>
+            @if (v.closedAt) {
+              <div class="flex justify-between gap-3">
+                <dt class="text-slate-500">
+                  {{ v.status === 'CANCELLED' ? 'Cancelada' : 'Cierre' }}
+                </dt>
+                <dd class="text-slate-900 tabular-nums">
+                  {{ v.closedAt | fecha: 'datetime' }}
+                </dd>
+              </div>
+            }
+            <div class="flex justify-between gap-3 border-t border-slate-100 pt-2.5">
+              <dt class="text-slate-500">Total de la atención</dt>
+              <dd class="font-semibold text-slate-900 tabular-nums">{{ money(v.total) }}</dd>
+            </div>
+            <div class="flex justify-between gap-3">
+              <dt class="text-slate-500">Por cobrar</dt>
+              <dd
+                class="font-semibold tabular-nums"
+                [class]="pending() ? 'text-amber-700' : 'text-emerald-700'"
+              >
+                {{ money(pending()) }}
+              </dd>
+            </div>
+          </dl>
+          @if (canCollect() && pending() > 0 && v.status === 'CLOSED') {
+            <a
+              routerLink="/caja"
+              [queryParams]="{ cobrar: v.client.id }"
+              class="btn btn-primary mt-4 w-full"
+              >Cobrar {{ money(pending()) }}</a
+            >
+          }
+          <a [routerLink]="['/clientes', v.client.id]" class="btn btn-secondary mt-2 w-full">
+            Ver cuenta del cliente
+          </a>
+        </section>
+      </aside>
+    </div>
+  }
+</section>
+
+<!-- Cerrar -->
+<app-modal
+  [open]="modal() === 'close'"
+  title="Cerrar atención"
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  @if (visit(); as v) {
+    <p class="text-slate-700">
+      Después de cerrarla, la atención de <strong>{{ v.pet.name }}</strong> ya no se edita: las
+      correcciones se agregan como adenda.
+    </p>
+    @if (pending()) {
+      <p class="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+        Quedan <strong class="tabular-nums">{{ money(pending()) }}</strong> por cobrar en la cuenta
+        de {{ v.client.name }}.
+      </p>
+    }
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button type="button" class="btn btn-primary" [disabled]="saving()" (click)="confirmClose()">
+      Cerrar atención
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Cancelar / quitar cargo: piden motivo -->
+<app-modal
+  [open]="modal() === 'cancel' || modal() === 'void'"
+  [title]="modal() === 'cancel' ? 'Cancelar atención' : 'Quitar cargo'"
+  [description]="
+    modal() === 'cancel'
+      ? 'Para una atención abierta por error. La mascota vuelve a la espera.'
+      : 'El stock vuelve al mismo lote de donde salió.'
+  "
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  <form
+    id="reason-form"
+    [formGroup]="reasonForm"
+    (ngSubmit)="modal() === 'cancel' ? confirmCancel() : confirmVoid()"
+    novalidate
+  >
+    @if (modal() === 'void' && voiding(); as c) {
+      <p class="mb-4 text-slate-700">
+        {{ c.description }} · <span class="tabular-nums">{{ money(c.total) }}</span>
+      </p>
+    }
+    @if (modal() === 'cancel' && activeCharges().length) {
+      <p class="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+        Primero quita los cargos de la atención.
+      </p>
+    }
+    <label for="r-reason" class="field-label"
+      >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+    >
+    <input
+      id="r-reason"
+      formControlName="reason"
+      class="field-input"
+      autocomplete="off"
+      maxlength="200"
+      [attr.aria-invalid]="invalid(reasonForm.controls.reason)"
+    />
+    @if (invalid(reasonForm.controls.reason)) {
+      <p class="field-error">Escribe el motivo (mínimo 3 letras)</p>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button type="submit" form="reason-form" class="btn btn-danger" [disabled]="saving()">
+      {{ modal() === 'cancel' ? 'Cancelar atención' : 'Quitar cargo' }}
+    </button>
+  </ng-container>
+</app-modal>

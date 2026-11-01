@@ -28,7 +28,7 @@
         >
         <div class="min-w-0">
           <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            Cliente {{ clientCode(c.number) }} · desde {{ c.createdAt | date: 'MMM y' : '-0500' }}
+            Cliente {{ clientCode(c.number) }} · desde {{ c.createdAt | fecha: 'month' }}
           </p>
           <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
             {{ c.name }}
@@ -57,114 +57,199 @@
       }
     </div>
 
+    @if (c.anonymizedAt) {
+      <div
+        class="flex gap-3 rounded-2xl bg-slate-100 px-5 py-4 text-sm text-slate-700 ring-1 ring-slate-200"
+        role="status"
+      >
+        <app-icon name="shield-check" class="mt-0.5 size-5 shrink-0 text-slate-500" />
+        <p>
+          <span class="font-semibold text-slate-900"
+            >Datos personales borrados el {{ c.anonymizedAt | fecha: 'date' }}.</span
+          >
+          Lo pidió el cliente (Ley N.° 29733). Las atenciones de sus mascotas y los cobros se
+          conservan sin sus datos, y la ficha ya no se puede editar.
+        </p>
+      </div>
+    }
+
     <div class="grid gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start">
       <!-- Columna del dueño -->
       <aside class="space-y-6 lg:sticky lg:top-24">
-        <section class="card p-5" aria-labelledby="contact-title">
+        @if (!c.anonymizedAt) {
+          <section class="card p-5" aria-labelledby="contact-title">
+            <h2
+              id="contact-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Contacto
+            </h2>
+            <p class="mt-3 font-display text-xl font-semibold text-slate-900 tabular-nums">
+              {{ formatPhone(c.phone) }}
+            </p>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <a [href]="'tel:+51' + c.phone" class="btn btn-secondary">
+                <app-icon name="phone" class="size-4" /> Llamar
+              </a>
+              <a
+                [href]="whatsappLink(c.phone)"
+                target="_blank"
+                rel="noopener"
+                class="btn btn-secondary"
+              >
+                <app-icon name="message-circle" class="size-4" /> WhatsApp
+              </a>
+            </div>
+            <dl class="mt-5 space-y-3 border-t border-slate-100 pt-4 text-sm">
+              <div class="flex gap-3">
+                <dt class="sr-only">Correo</dt>
+                <app-icon name="mail" class="mt-0.5 size-4 shrink-0 text-slate-400" />
+                <dd class="break-all" [class]="c.email ? 'text-slate-900' : 'text-slate-500'">
+                  {{ c.email ?? 'Sin correo' }}
+                </dd>
+              </div>
+              <div class="flex gap-3">
+                <dt class="sr-only">Dirección</dt>
+                <app-icon name="map-pin" class="mt-0.5 size-4 shrink-0 text-slate-400" />
+                <dd [class]="c.address ? 'text-slate-900' : 'text-slate-500'">
+                  {{ c.address ?? 'Sin dirección' }}
+                  @if (c.district) {
+                    <span class="block text-slate-500">{{ c.district }}</span>
+                  }
+                </dd>
+              </div>
+            </dl>
+            @if (c.notes) {
+              <p
+                class="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70"
+              >
+                {{ c.notes }}
+              </p>
+            }
+          </section>
+        }
+
+        <section class="card p-5" aria-labelledby="account-title">
           <h2
-            id="contact-title"
+            id="account-title"
             class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
           >
-            Contacto
+            Cuenta
           </h2>
-          <p class="mt-3 font-display text-xl font-semibold text-slate-900 tabular-nums">
-            {{ formatPhone(c.phone) }}
-          </p>
-          <div class="mt-3 grid grid-cols-2 gap-2">
-            <a [href]="'tel:+51' + c.phone" class="btn btn-secondary">
-              <app-icon name="phone" class="size-4" /> Llamar
-            </a>
-            <a
-              [href]="whatsappLink(c.phone)"
-              target="_blank"
-              rel="noopener"
-              class="btn btn-secondary"
-            >
-              <app-icon name="message-circle" class="size-4" /> WhatsApp
-            </a>
-          </div>
-          <dl class="mt-5 space-y-3 border-t border-slate-100 pt-4 text-sm">
-            <div class="flex gap-3">
-              <dt class="sr-only">Correo</dt>
-              <app-icon name="mail" class="mt-0.5 size-4 shrink-0 text-slate-400" />
-              <dd class="break-all" [class]="c.email ? 'text-slate-900' : 'text-slate-500'">
-                {{ c.email ?? 'Sin correo' }}
-              </dd>
-            </div>
-            <div class="flex gap-3">
-              <dt class="sr-only">Dirección</dt>
-              <app-icon name="map-pin" class="mt-0.5 size-4 shrink-0 text-slate-400" />
-              <dd [class]="c.address ? 'text-slate-900' : 'text-slate-500'">
-                {{ c.address ?? 'Sin dirección' }}
-                @if (c.district) {
-                  <span class="block text-slate-500">{{ c.district }}</span>
+          @if (account(); as acc) {
+            @if (acc.pendingTotal > 0) {
+              <p class="mt-3 font-display text-2xl font-semibold text-amber-700 tabular-nums">
+                {{ money(acc.pendingTotal) }}
+              </p>
+              <p class="text-sm text-slate-500">por cobrar</p>
+              <ul class="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm">
+                @for (c of acc.pending.slice(0, 5); track c.id) {
+                  <li class="flex justify-between gap-3">
+                    <span class="min-w-0 truncate text-slate-700"
+                      >{{ c.description }}
+                      @if (c.pet) {
+                        <span class="text-slate-400">· {{ c.pet.name }}</span>
+                      }
+                    </span>
+                    <span class="shrink-0 text-slate-900 tabular-nums">{{ money(c.balance) }}</span>
+                  </li>
                 }
-              </dd>
-            </div>
-          </dl>
-          @if (c.notes) {
-            <p
-              class="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70"
-            >
-              {{ c.notes }}
-            </p>
+                @if (acc.pending.length > 5) {
+                  <li class="text-slate-500">y {{ acc.pending.length - 5 }} más</li>
+                }
+              </ul>
+              @if (canCollect()) {
+                <a
+                  routerLink="/caja"
+                  [queryParams]="{ cobrar: c.id }"
+                  class="btn btn-primary mt-4 w-full"
+                  >Cobrar</a
+                >
+              } @else {
+                <p class="mt-3 text-xs text-slate-500">Se cobra en caja.</p>
+              }
+            } @else {
+              <p class="mt-3 flex items-center gap-2 font-medium text-emerald-700">
+                <app-icon name="check" class="size-4" /> Al día
+              </p>
+            }
+            @if (acc.receipts.length) {
+              <p class="mt-4 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">
+                Últimos cobros
+              </p>
+              <ul class="mt-2 space-y-1.5 text-sm">
+                @for (r of acc.receipts.slice(0, 3); track r.id) {
+                  <li
+                    class="flex justify-between gap-3"
+                    [class]="r.status === 'VOID' ? 'text-slate-400 line-through' : 'text-slate-700'"
+                  >
+                    <span class="tabular-nums">{{ r.createdAt | fecha: 'date' }}</span>
+                    <span class="tabular-nums">{{ money(r.total) }}</span>
+                  </li>
+                }
+              </ul>
+            }
+          } @else {
+            <div class="mt-3 h-8 w-32 animate-pulse rounded bg-slate-100" aria-hidden="true"></div>
           }
         </section>
 
-        <section class="card p-5" aria-labelledby="auth-title">
-          <div class="flex items-center justify-between gap-3">
-            <h2
-              id="auth-title"
-              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
-            >
-              Autorizados a recoger
-            </h2>
-            @if (canEdit()) {
-              <button
-                type="button"
-                class="btn btn-ghost -mr-2 h-10 px-2.5 text-anil-700"
-                (click)="openAuthorized()"
+        @if (!c.anonymizedAt) {
+          <section class="card p-5" aria-labelledby="auth-title">
+            <div class="flex items-center justify-between gap-3">
+              <h2
+                id="auth-title"
+                class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
               >
-                <app-icon name="plus" class="size-4" /> Agregar
-              </button>
-            }
-          </div>
-          @if (c.authorized.length) {
-            <ul class="mt-2 divide-y divide-slate-100">
-              @for (person of c.authorized; track person.id) {
-                <li class="flex items-center gap-3 py-2.5">
-                  <div class="min-w-0 flex-1">
-                    <p class="truncate text-sm font-medium text-slate-900">
-                      {{ person.name }}
-                      @if (person.relation) {
-                        <span class="font-normal text-slate-500">· {{ person.relation }}</span>
-                      }
-                    </p>
-                    <p class="text-xs text-slate-500 tabular-nums">
-                      {{ person.dni ? 'DNI ' + person.dni : 'Sin DNI' }}
-                      @if (person.phone) {
-                        · {{ formatPhone(person.phone) }}
-                      }
-                    </p>
-                  </div>
-                  @if (canEdit()) {
-                    <button
-                      type="button"
-                      class="btn btn-ghost size-10 shrink-0 px-0 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                      (click)="askRemove(person)"
-                      [attr.aria-label]="'Quitar a ' + person.name"
-                      title="Quitar"
-                    >
-                      <app-icon name="trash" class="size-4" />
-                    </button>
-                  }
-                </li>
+                Autorizados a recoger
+              </h2>
+              @if (canEdit()) {
+                <button
+                  type="button"
+                  class="btn btn-ghost -mr-2 h-10 px-2.5 text-anil-700"
+                  (click)="openAuthorized()"
+                >
+                  <app-icon name="plus" class="size-4" /> Agregar
+                </button>
               }
-            </ul>
-          } @else {
-            <p class="mt-2 text-sm text-slate-500">Solo el dueño puede recoger a sus mascotas.</p>
-          }
-        </section>
+            </div>
+            @if (c.authorized.length) {
+              <ul class="mt-2 divide-y divide-slate-100">
+                @for (person of c.authorized; track person.id) {
+                  <li class="flex items-center gap-3 py-2.5">
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-slate-900">
+                        {{ person.name }}
+                        @if (person.relation) {
+                          <span class="font-normal text-slate-500">· {{ person.relation }}</span>
+                        }
+                      </p>
+                      <p class="text-xs text-slate-500 tabular-nums">
+                        {{ person.dni ? 'DNI ' + person.dni : 'Sin DNI' }}
+                        @if (person.phone) {
+                          · {{ formatPhone(person.phone) }}
+                        }
+                      </p>
+                    </div>
+                    @if (canEdit()) {
+                      <button
+                        type="button"
+                        class="btn btn-ghost size-10 shrink-0 px-0 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                        (click)="askRemove(person)"
+                        [attr.aria-label]="'Quitar a ' + person.name"
+                        title="Quitar"
+                      >
+                        <app-icon name="trash" class="size-4" />
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="mt-2 text-sm text-slate-500">Solo el dueño puede recoger a sus mascotas.</p>
+            }
+          </section>
+        }
 
         <section class="card p-5" aria-labelledby="privacy-title">
           <h2
@@ -173,23 +258,65 @@
           >
             Protección de datos
           </h2>
-          <ul class="mt-3 space-y-2 text-sm">
-            <li class="flex gap-2.5 text-slate-800">
-              <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />
-              Autorizó el uso de sus datos el {{ c.consentAt | date: 'd MMM y' : '-0500' }}
-            </li>
-            <li
-              class="flex gap-2.5"
-              [class]="c.marketingConsent ? 'text-slate-800' : 'text-slate-500'"
-            >
-              <app-icon
-                [name]="c.marketingConsent ? 'check' : 'x'"
-                class="mt-0.5 size-4 shrink-0"
-                [class]="c.marketingConsent ? 'text-emerald-600' : 'text-slate-400'"
-              />
-              {{ c.marketingConsent ? 'Acepta promociones' : 'No acepta promociones' }}
-            </li>
-          </ul>
+          @if (c.anonymizedAt) {
+            <p class="mt-3 text-sm text-slate-600">
+              Anonimizado el {{ c.anonymizedAt | fecha: 'date' }}. El motivo quedó en la bitácora de
+              Actividad.
+            </p>
+          } @else {
+            <ul class="mt-3 space-y-2 text-sm">
+              <li class="flex gap-2.5 text-slate-800">
+                <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                <span
+                  >Autorizó el uso de sus datos el {{ c.consentAt | fecha: 'date' }}
+                  <span class="block text-xs text-slate-500"
+                    >{{
+                      c.consentChannel === 'IMPORT' ? 'Declarado al importar' : 'En recepción'
+                    }}
+                    · texto {{ c.consentVersion }}</span
+                  ></span
+                >
+              </li>
+              <li
+                class="flex gap-2.5"
+                [class]="c.marketingConsent ? 'text-slate-800' : 'text-slate-500'"
+              >
+                <app-icon
+                  [name]="c.marketingConsent ? 'check' : 'x'"
+                  class="mt-0.5 size-4 shrink-0"
+                  [class]="c.marketingConsent ? 'text-emerald-600' : 'text-slate-400'"
+                />
+                {{ c.marketingConsent ? 'Acepta promociones' : 'No acepta promociones' }}
+              </li>
+            </ul>
+            @if (isAdmin()) {
+              <div class="mt-4 border-t border-slate-100 pt-4">
+                <p class="text-xs text-slate-500">Si el cliente lo pide (derechos ARCO):</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-secondary h-10"
+                    [disabled]="downloading()"
+                    (click)="downloadData()"
+                  >
+                    <app-icon
+                      [name]="downloading() ? 'loader' : 'download'"
+                      class="size-4"
+                      [class.animate-spin]="downloading()"
+                    />
+                    Descargar sus datos
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost h-10 text-rose-700 hover:text-rose-800"
+                    (click)="openAnonymize()"
+                  >
+                    Borrar sus datos
+                  </button>
+                </div>
+              </div>
+            }
+          }
         </section>
       </aside>
 
@@ -235,7 +362,11 @@
                   <div class="min-w-0 flex-1">
                     <div class="flex items-baseline justify-between gap-2">
                       <h3 class="truncate font-display text-lg font-semibold text-slate-900">
-                        {{ pet.name }}
+                        <a
+                          [routerLink]="['/mascotas', pet.id]"
+                          class="hover:text-anil-700 hover:underline"
+                          >{{ pet.name }}</a
+                        >
                       </h3>
                       <span class="shrink-0 text-xs font-medium text-slate-500 tabular-nums">{{
                         petCode(pet.number)
@@ -272,6 +403,16 @@
                   </div>
                 </dl>
 
+                <a
+                  [routerLink]="['/mascotas', pet.id]"
+                  class="mt-3 flex min-h-11 items-center justify-between rounded-xl px-3 text-sm font-medium text-anil-700 ring-1 ring-anil-100 hover:bg-anil-50"
+                >
+                  <span class="flex items-center gap-2">
+                    <app-icon name="file-text" class="size-4" /> Historia clínica y vacunas
+                  </span>
+                  <app-icon name="chevron-right" class="size-4" />
+                </a>
+
                 @if (pet.aggressive || pet.allergies) {
                   <div class="mt-3 space-y-2">
                     @if (pet.aggressive) {
@@ -301,8 +442,20 @@
 
                 @if (canEdit()) {
                   <div class="mt-auto flex gap-2 pt-4">
-                    <button type="button" class="btn btn-primary flex-1" (click)="openQueue(pet)">
-                      <app-icon name="clock" class="size-4" /> Poner en cola
+                    <button
+                      type="button"
+                      class="btn btn-primary flex-1 px-3"
+                      [disabled]="saving()"
+                      (click)="attend(pet)"
+                    >
+                      <app-icon name="stethoscope" class="size-4" /> Atender
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary flex-1 px-3"
+                      (click)="openQueue(pet)"
+                    >
+                      <app-icon name="clock" class="size-4" /> A la cola
                     </button>
                     <button
                       type="button"
@@ -348,7 +501,7 @@
                     <p class="text-sm text-slate-500">
                       {{ speciesLabels[pet.species] }}
                       @if (pet.deceasedAt) {
-                        · Falleció el {{ pet.deceasedAt | date: 'd MMM y' : 'UTC' }}
+                        · Falleció el {{ pet.deceasedAt | fecha: 'calendar' }}
                       } @else {
                         · Inactiva
                       }
@@ -363,6 +516,55 @@
               }
             </ul>
           </details>
+        }
+
+        <h2 class="pt-2 font-display text-lg font-semibold text-slate-900">
+          Atenciones
+          <span class="font-sans text-base font-normal text-slate-500">{{ historyTotal() }}</span>
+        </h2>
+        @if (history().length) {
+          <ul class="card divide-y divide-slate-100">
+            @for (v of history(); track v.id) {
+              <li>
+                <a
+                  [routerLink]="['/atenciones', v.id]"
+                  class="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50"
+                >
+                  <app-icon
+                    [name]="speciesIcons[v.pet.species]"
+                    class="size-5 shrink-0 text-slate-400"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p class="font-medium text-slate-900">
+                      {{ v.pet.name }}
+                      <span class="text-sm font-normal text-slate-500"
+                        >· {{ v.openedAt | fecha: 'date' }}</span
+                      >
+                    </p>
+                    <p class="truncate text-sm text-slate-500">
+                      {{ v.reason ?? 'Sin motivo' }} · {{ v.attendedBy.fullName }}
+                      @if (v.weightKg) {
+                        · {{ v.weightKg }} kg
+                      }
+                    </p>
+                  </div>
+                  <div class="shrink-0 text-right">
+                    <p class="text-sm font-semibold text-slate-900 tabular-nums">
+                      {{ money(v.total) }}
+                    </p>
+                    <p
+                      class="text-xs"
+                      [class]="v.status === 'OPEN' ? 'font-medium text-anil-700' : 'text-slate-500'"
+                    >
+                      {{ visitLabels[v.status] }}
+                    </p>
+                  </div>
+                </a>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="card px-5 py-6 text-sm text-slate-500">Aún no tiene atenciones registradas.</p>
         }
       </div>
     </div>
@@ -508,7 +710,7 @@
   [dismissible]="false"
   (closed)="close()"
 >
-  <form id="pet-form" (ngSubmit)="savePet()" novalidate>
+  <form id="pet-form" (submit)="$event.preventDefault(); savePet()" novalidate>
     <app-pet-fields [group]="petForm" idPrefix="modal-pet" />
     @if (editingPet()) {
       <div [formGroup]="petStatus" class="mt-5 space-y-3 border-t border-slate-100 pt-5">
@@ -695,6 +897,52 @@
         <app-icon name="loader" class="size-4 animate-spin" />
       }
       Quitar
+    </button>
+  </ng-container>
+</app-modal>
+
+<app-modal
+  [open]="modal() === 'anonymize'"
+  title="Borrar los datos personales"
+  description="Se borran su nombre, documento, celular, correo, dirección, notas y personas autorizadas. Sus mascotas quedan inactivas. Las atenciones y los cobros se conservan sin sus datos, porque la historia clínica y la ley tributaria lo exigen."
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form [formGroup]="anonymizeForm" class="space-y-4" (ngSubmit)="confirmAnonymize()">
+    <div>
+      <label for="anon-reason" class="field-label"
+        >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="anon-reason"
+        formControlName="reason"
+        class="field-input"
+        maxlength="300"
+        placeholder="Ej.: lo pidió por escrito el 28/10/2026"
+        [attr.aria-invalid]="invalid(anonymizeForm, 'reason')"
+        aria-describedby="anon-reason-error"
+      />
+      @if (invalid(anonymizeForm, 'reason')) {
+        <p id="anon-reason-error" class="field-error">Escribe el motivo (al menos 5 letras)</p>
+      }
+    </div>
+    <label class="flex cursor-pointer gap-3 text-sm text-slate-800">
+      <input
+        type="checkbox"
+        formControlName="confirm"
+        class="mt-0.5 size-5 shrink-0 rounded accent-rose-600"
+        [attr.aria-invalid]="invalid(anonymizeForm, 'confirm')"
+      />
+      Entiendo que esto no se puede deshacer
+    </label>
+    @if (invalid(anonymizeForm, 'confirm')) {
+      <p class="field-error">Marca la casilla para confirmar</p>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
+    <button type="button" class="btn btn-danger" [disabled]="saving()" (click)="confirmAnonymize()">
+      Borrar sus datos
     </button>
   </ng-container>
 </app-modal>

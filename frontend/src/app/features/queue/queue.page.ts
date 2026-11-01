@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import {
   catchError,
   debounceTime,
@@ -27,12 +27,13 @@ import {
 } from '../../core/services/clients.models';
 import { ClientsService } from '../../core/services/clients.service';
 import { QueueItem, QueueService, QueueStatus } from '../../core/services/queue.service';
+import { VisitsService } from '../../core/services/visits.service';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { SPECIES_ICONS } from '../../shared/utils/records';
-import { apiErrorMessage } from '../../shared/utils/validators';
+import { apiErrorDetails, apiErrorMessage } from '../../shared/utils/validators';
 import { QueueCardComponent } from './queue-card.component';
 import { clockTime, durationLabel, minutesBetween } from './queue-time';
 
@@ -94,6 +95,8 @@ export class QueuePage {
   private readonly clients = inject(ClientsService);
   private readonly toast = inject(ToastService);
   private readonly session = inject(SessionService);
+  private readonly visits = inject(VisitsService);
+  private readonly router = inject(Router);
 
   protected readonly columns = COLUMNS;
   protected readonly speciesIcons = SPECIES_ICONS;
@@ -231,6 +234,35 @@ export class QueuePage {
   protected move(item: QueueItem, status: QueueStatus): void {
     this.patch(item, { status }, () => {
       if (status === 'DONE') this.toast.success(`${item.pet.name} terminó su atención`);
+    });
+  }
+
+  /** Abre la atención y lleva a su pantalla. Si ya había una abierta, lleva a esa. */
+  protected attend(item: QueueItem): void {
+    if (this.busyId()) return;
+    // Grooming: pasa por el ingreso (tamaño, servicios y checklist)
+    if (item.type === 'GROOMING') {
+      void this.router.navigate(['/grooming/ingreso'], {
+        queryParams: { petId: item.pet.id, cola: item.id },
+      });
+      return;
+    }
+    this.busyId.set(item.id);
+    this.visits.open(item.pet.id, item.id).subscribe({
+      next: (visit) => {
+        this.busyId.set(null);
+        void this.router.navigate(['/atenciones', visit.id]);
+      },
+      error: (error: unknown) => {
+        this.busyId.set(null);
+        const { visitId } = apiErrorDetails<{ visitId: number }>(error);
+        if (visitId) {
+          void this.router.navigate(['/atenciones', visitId]);
+          return;
+        }
+        this.toast.error(apiErrorMessage(error));
+        this.load(true);
+      },
     });
   }
 

@@ -12,6 +12,7 @@ import { IconComponent } from '../../../shared/ui/icon/icon.component';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { formatQty, money, unitLabel } from '../../../shared/utils/stock';
 import { apiErrorMessage } from '../../../shared/utils/validators';
+import { FechaPipe } from '../../../shared/pipes/fecha.pipe';
 
 type Step = 1 | 2 | 3 | 4;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -26,7 +27,7 @@ const STATUS: Record<ProductImportRow['status'], { label: string; tone: BadgeTon
 /** Carga inicial del inventario desde Excel, en 4 pasos (mismo flujo que la de clientes). */
 @Component({
   selector: 'app-import-products-page',
-  imports: [RouterLink, IconComponent, BadgeComponent],
+  imports: [FechaPipe, RouterLink, IconComponent, BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './import-products.page.html',
 })

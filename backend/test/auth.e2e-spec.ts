@@ -99,6 +99,69 @@ describe('Autenticación (e2e)', () => {
     expect(String(res.headers['set-cookie'])).toMatch(/uywa_session=;/);
   });
 
+  it('cambiar la contraseña cierra las sesiones de otros equipos, pero no la actual', async () => {
+    const login = async () =>
+      String(
+        (
+          await request(app.getHttpServer())
+            .post('/api/auth/login')
+            .send({ email, password })
+            .expect(200)
+        ).headers['set-cookie'],
+      );
+    const pcRecepcion = await login();
+    const celular = await login();
+
+    const change = await request(app.getHttpServer())
+      .patch('/api/auth/password')
+      .set('Cookie', pcRecepcion)
+      .send({ currentPassword: password, newPassword: 'ClaveNueva456' })
+      .expect(200);
+    const nueva = String(change.headers['set-cookie']);
+    expect(nueva).toContain('uywa_session=');
+
+    const fuera = await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Cookie', celular)
+      .expect(401);
+    expect(fuera.body.message).toBe(
+      'Tu contraseña cambió. Inicia sesión de nuevo',
+    );
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Cookie', nueva)
+      .expect(200);
+
+    // Se deja la clave como estaba para el resto de pruebas
+    await request(app.getHttpServer())
+      .patch('/api/auth/password')
+      .set('Cookie', nueva)
+      .send({ currentPassword: 'ClaveNueva456', newPassword: password })
+      .expect(200);
+  });
+
+  it('limita los intentos de login por conexión, aunque sean a cuentas distintas', async () => {
+    const before = process.env.LOGIN_RATE_LIMIT;
+    process.env.LOGIN_RATE_LIMIT = '3';
+    try {
+      const statuses: number[] = [];
+      let blocked: request.Response | undefined;
+      for (let i = 0; i < 5; i++) {
+        const res = await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .send({ email: `nadie-${i}@uywa.pe`, password: 'Cualquiera123' });
+        statuses.push(res.status);
+        if (res.status === 429) blocked = res;
+      }
+      expect(statuses).toContain(429);
+      expect(blocked?.body.message).toBe(
+        'Demasiados intentos seguidos. Espera un minuto y vuelve a intentarlo',
+      );
+    } finally {
+      process.env.LOGIN_RATE_LIMIT = before;
+    }
+  });
+
   it('registra los intentos en la bitácora', async () => {
     const actions = await prisma.auditLog.findMany({
       where: { clinicId },

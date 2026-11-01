@@ -76,19 +76,24 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
             @case ('ARRIVED') {
               <button
                 type="button"
-                class="btn btn-primary h-10 flex-1"
+                class="btn btn-primary h-10 flex-1 px-3 whitespace-nowrap"
                 [disabled]="busy()"
-                (click)="move.emit('IN_PROGRESS')"
+                (click)="attend.emit()"
               >
-                Atender
+                @if (it.type === 'GROOMING') {
+                  <app-icon name="scissors" class="size-4" /> Ingreso
+                } @else {
+                  <app-icon name="stethoscope" class="size-4" /> Atender
+                }
               </button>
               <button
                 type="button"
-                class="btn btn-secondary h-10 flex-1"
+                class="btn btn-secondary h-10 flex-1 px-3 whitespace-nowrap"
                 [disabled]="busy()"
                 (click)="move.emit('WAITING')"
+                title="Pasar a la sala de espera"
               >
-                A espera
+                Esperar
               </button>
             }
             @case ('WAITING') {
@@ -96,28 +101,38 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
                 type="button"
                 class="btn btn-primary h-10 flex-1"
                 [disabled]="busy()"
-                (click)="move.emit('IN_PROGRESS')"
+                (click)="attend.emit()"
               >
-                Atender
+                @if (it.type === 'GROOMING') {
+                  <app-icon name="scissors" class="size-4" /> Ingreso
+                } @else {
+                  <app-icon name="stethoscope" class="size-4" /> Atender
+                }
               </button>
             }
             @case ('IN_PROGRESS') {
-              <button
-                type="button"
-                class="btn btn-primary h-10 flex-1"
-                [disabled]="busy()"
-                (click)="move.emit('DONE')"
-              >
-                <app-icon name="check" class="size-4" /> Terminar
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary h-10"
-                [disabled]="busy()"
-                (click)="move.emit('WAITING')"
-              >
-                Devolver
-              </button>
+              @if (it.visit?.status === 'OPEN') {
+                <a [routerLink]="['/atenciones', it.visit!.id]" class="btn btn-primary h-10 flex-1">
+                  <app-icon name="stethoscope" class="size-4" /> Continuar atención
+                </a>
+              } @else {
+                <button
+                  type="button"
+                  class="btn btn-primary h-10 flex-1"
+                  [disabled]="busy()"
+                  (click)="move.emit('DONE')"
+                >
+                  <app-icon name="check" class="size-4" /> Terminar
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary h-10"
+                  [disabled]="busy()"
+                  (click)="move.emit('WAITING')"
+                >
+                  Devolver
+                </button>
+              }
             }
           }
           <button
@@ -160,6 +175,8 @@ export class QueueCardComponent {
   readonly canEdit = input(false);
   readonly busy = input(false);
   readonly move = output<QueueStatus>();
+  /** Abrir la atención (la entrada pasa a "En atención") */
+  readonly attend = output<void>();
   readonly toggleUrgent = output<void>();
   readonly cancel = output<void>();
 

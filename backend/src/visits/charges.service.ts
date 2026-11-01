@@ -10,7 +10,11 @@ import type { AuthUser } from '../common/auth/auth-user.js';
 import { discountPercent, lineAmounts } from '../common/money/igv.js';
 import { clinicToday } from '../common/time/clinic-today.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type { BaseUnit, DocumentType } from '../generated/prisma/enums.js';
+import type {
+  BaseUnit,
+  DocumentType,
+  PetSize,
+} from '../generated/prisma/enums.js';
 import { StockService } from '../inventory/stock.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -28,6 +32,14 @@ const D = Prisma.Decimal;
 
 /** Unidad SUNAT (catálogo 03) de los servicios */
 const SERVICE_UNIT = 'ZZ';
+
+/** Se agrega al nombre del cargo cuando rige el precio de ese tamaño */
+export const SIZE_LABELS: Record<PetSize, string> = {
+  SMALL: 'pequeño',
+  MEDIUM: 'mediano',
+  LARGE: 'grande',
+  GIANT: 'gigante',
+};
 
 export interface CreatedCharges {
   charges: ChargeView[];
@@ -133,7 +145,12 @@ export class ChargesService {
     const { today, maxDiscountPercent } = prep;
     const me = { licenseNumber: prep.licenseNumber };
     const ctx = await this.context(tx, actor.clinicId, dto);
-    const lines = await this.resolveItems(tx, actor.clinicId, dto.items);
+    const lines = await this.resolveItems(
+      tx,
+      actor.clinicId,
+      dto.items,
+      ctx.size,
+    );
 
     // Todos los productos se bloquean al inicio y en orden: dos cargos simultáneos
     // que comparten insumos nunca se bloquean entre sí
@@ -322,63 +339,9 @@ export class ChargesService {
     dto: VoidChargeDto,
     ip?: string,
   ): Promise<ChargeView> {
-    const charge = await this.prisma.$transaction(async (tx) => {
-      const [row] = await tx.$queryRaw<
-        {
-          status: string;
-          created_by_id: number;
-          visit_id: number | null;
-          paid_amount: Prisma.Decimal;
-        }[]
-      >`SELECT status::text AS status, created_by_id, visit_id, paid_amount FROM charges
-        WHERE id = ${id} AND clinic_id = ${actor.clinicId} FOR UPDATE`;
-      if (!row) throw new NotFoundException('El cargo no existe');
-      if (row.status === 'VOID')
-        throw new ConflictException('El cargo ya fue quitado');
-      if (row.status === 'PAID' || new D(row.paid_amount).gt(0))
-        throw new ConflictException(
-          'El cargo tiene pagos: primero anula el cobro en caja',
-        );
-
-      if (actor.role !== 'ADMIN') {
-        const visit = row.visit_id
-          ? await lockVisit(tx, actor.clinicId, row.visit_id)
-          : null;
-        if (row.created_by_id !== actor.id || visit?.status !== 'OPEN')
-          throw new ForbiddenException(
-            row.created_by_id !== actor.id
-              ? 'Solo quien registró el cargo o el administrador pueden quitarlo'
-              : 'La atención ya se cerró: solo el administrador puede quitar el cargo',
-          );
-      }
-
-      await this.stock.restore(tx, {
-        clinicId: actor.clinicId,
-        refType: 'charge',
-        refId: id,
-        userId: actor.id,
-        reason: `Cargo quitado: ${dto.reason}`,
-      });
-      const now = new Date();
-      await tx.stockShortage.updateMany({
-        where: { chargeId: id, resolvedAt: null },
-        data: {
-          resolvedAt: now,
-          resolvedById: actor.id,
-          resolution: 'Cargo quitado',
-        },
-      });
-      return tx.charge.update({
-        where: { id },
-        data: {
-          status: 'VOID',
-          voidedAt: now,
-          voidedById: actor.id,
-          voidReason: dto.reason,
-        },
-        select: CHARGE_SELECT,
-      });
-    });
+    const charge = await this.prisma.$transaction((tx) =>
+      this.voidInTx(tx, actor, id, dto.reason),
+    );
 
     await this.audit.log({
       clinicId: actor.clinicId,
@@ -394,6 +357,74 @@ export class ChargesService {
       },
     });
     return toChargeView(charge);
+  }
+
+  /**
+   * Quita un cargo pendiente dentro de una transacción que ya existe (también lo usa la
+   * cancelación de un grooming). `force` omite la regla de quién puede quitarlo.
+   */
+  async voidInTx(
+    tx: Tx,
+    actor: AuthUser,
+    id: number,
+    reason: string,
+    force = false,
+  ) {
+    const [row] = await tx.$queryRaw<
+      {
+        status: string;
+        created_by_id: number;
+        visit_id: number | null;
+        paid_amount: Prisma.Decimal;
+      }[]
+    >`SELECT status::text AS status, created_by_id, visit_id, paid_amount FROM charges
+        WHERE id = ${id} AND clinic_id = ${actor.clinicId} FOR UPDATE`;
+    if (!row) throw new NotFoundException('El cargo no existe');
+    if (row.status === 'VOID')
+      throw new ConflictException('El cargo ya fue quitado');
+    if (row.status === 'PAID' || new D(row.paid_amount).gt(0))
+      throw new ConflictException(
+        'El cargo tiene pagos: primero anula el cobro en caja',
+      );
+
+    if (actor.role !== 'ADMIN' && !force) {
+      const visit = row.visit_id
+        ? await lockVisit(tx, actor.clinicId, row.visit_id)
+        : null;
+      if (row.created_by_id !== actor.id || visit?.status !== 'OPEN')
+        throw new ForbiddenException(
+          row.created_by_id !== actor.id
+            ? 'Solo quien registró el cargo o el administrador pueden quitarlo'
+            : 'La atención ya se cerró: solo el administrador puede quitar el cargo',
+        );
+    }
+
+    await this.stock.restore(tx, {
+      clinicId: actor.clinicId,
+      refType: 'charge',
+      refId: id,
+      userId: actor.id,
+      reason: `Cargo quitado: ${reason}`,
+    });
+    const now = new Date();
+    await tx.stockShortage.updateMany({
+      where: { chargeId: id, resolvedAt: null },
+      data: {
+        resolvedAt: now,
+        resolvedById: actor.id,
+        resolution: 'Cargo quitado',
+      },
+    });
+    return tx.charge.update({
+      where: { id },
+      data: {
+        status: 'VOID',
+        voidedAt: now,
+        voidedById: actor.id,
+        voidReason: reason,
+      },
+      select: CHARGE_SELECT,
+    });
   }
 
   /** Cuenta del cliente: lo que tiene por pagar. Los pagos llegan con la caja. */
@@ -515,6 +546,8 @@ export class ChargesService {
     clientId: number;
     petId: number | null;
     visitId: number | null;
+    /** Tamaño del grooming de la atención: sus servicios toman el precio de ese tamaño */
+    size: PetSize | null;
   }> {
     if (dto.visitId) {
       const visit = await lockVisit(tx, clinicId, dto.visitId);
@@ -523,10 +556,15 @@ export class ChargesService {
         throw new ConflictException(
           'La atención ya se cerró: registra el cargo como venta aparte en la cuenta del cliente',
         );
+      const grooming = await tx.groomingSession.findUnique({
+        where: { visitId: visit.id },
+        select: { size: true },
+      });
       return {
         clientId: visit.client_id,
         petId: visit.pet_id,
         visitId: visit.id,
+        size: grooming?.size ?? null,
       };
     }
     const client = await tx.client.findFirst({
@@ -544,11 +582,22 @@ export class ChargesService {
       if (!pet)
         throw new BadRequestException('La mascota no es de este cliente');
     }
-    return { clientId: client.id, petId: dto.petId ?? null, visitId: null };
+    return {
+      clientId: client.id,
+      petId: dto.petId ?? null,
+      visitId: null,
+      size: null,
+    };
   }
 
   /** Busca cada servicio o producto en el catálogo de la clínica y toma su precio vigente. */
-  private async resolveItems(tx: Tx, clinicId: number, items: ChargeItemDto[]) {
+  /** Precio, IGV e insumos de cada línea según el catálogo (también lo usan los presupuestos) */
+  async resolveItems(
+    tx: Tx,
+    clinicId: number,
+    items: ChargeItemDto[],
+    size: PetSize | null = null,
+  ) {
     const serviceIds = items.flatMap((i) =>
       i.careServiceId ? [i.careServiceId] : [],
     );
@@ -563,6 +612,9 @@ export class ChargesService {
             name: true,
             price: true,
             igv: true,
+            sizePrices: size
+              ? { where: { size }, select: { price: true } }
+              : false,
             supplies: {
               select: {
                 quantity: true,
@@ -611,6 +663,7 @@ export class ChargesService {
         const service = services.find((s) => s.id === item.careServiceId);
         if (!service)
           throw new NotFoundException('El servicio no existe o está inactivo');
+        const sizePrice = size ? service.sizePrices?.[0]?.price : undefined;
         return {
           kind: 'SERVICE' as const,
           service: {
@@ -620,8 +673,11 @@ export class ChargesService {
               quantity: new D(s.quantity),
             })),
           },
-          description: service.name,
-          unitPrice: service.price,
+          description:
+            sizePrice && size
+              ? `${service.name} (${SIZE_LABELS[size]})`.slice(0, 200)
+              : service.name,
+          unitPrice: sizePrice ?? service.price,
           igv: service.igv,
           sunatUnit: SERVICE_UNIT,
         };

@@ -72,6 +72,27 @@ Antes de usarlo con una clínica real, cambia en `.env` el `JWT_SECRET` y la con
 | frontend | `npx ng test` | Pruebas del frontend |
 | frontend | `npx ng build` | Compilación de producción |
 
+## Prueba del día completo (navegador)
+
+Recorre en Chrome el día de la clínica: registrar cliente → cola → atención → cobro con vuelto → cierre de caja. Corre sola en GitHub Actions; para correrla en tu PC, con Docker arriba:
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium
+npx playwright test
+```
+
+Usa el administrador del seed (`admin@uywa.pe` / `CambiaEstaClave123`); si cambiaste la clave, pásala con `E2E_PASSWORD`.
+
+## Producción
+
+Servidor con HTTPS, respaldo diario cifrado y monitoreo: todo está en `deploy/` y la guía paso a paso en [docs/DEPLOY.md](docs/DEPLOY.md). Para probarlo en tu PC: copia `deploy/.env.example` como `deploy/.env` con `DOMAIN=localhost` y corre `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build`.
+
+## Facturación electrónica
+
+Boletas, facturas y notas de crédito por un PSE (Nubefact), con una cola de envío que reintenta sola. Viene en modo **Simulación** para la demo; para conectar el PSE real sigue [docs/FACTURACION.md](docs/FACTURACION.md).
+
 ## Reglas del proyecto
 
 - Toda tabla de negocio lleva `clinic_id`: el sistema está preparado para varias clínicas. La clínica sale siempre del usuario logueado (`@CurrentUser()`), nunca de lo que envía el navegador.

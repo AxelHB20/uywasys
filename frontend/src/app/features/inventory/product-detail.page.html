@@ -117,7 +117,7 @@
             }}</app-badge>
           </div>
           <p class="mt-1 text-sm text-slate-500 tabular-nums">
-            {{ b.expiresAt }} · Lote {{ b.lotNumber ?? '—' }}
+            {{ b.expiresAt | fecha: 'calendar' }} · Lote {{ b.lotNumber ?? '—' }}
           </p>
         } @else {
           <p class="mt-1 text-slate-500">
@@ -180,7 +180,9 @@
                           <app-badge [tone]="expiryBadge[b.expiry.level].tone">{{
                             expiryText(b.expiry.days)
                           }}</app-badge>
-                          <p class="mt-1 text-xs text-slate-500 tabular-nums">{{ b.expiresAt }}</p>
+                          <p class="mt-1 text-xs text-slate-500 tabular-nums">
+                            {{ b.expiresAt | fecha: 'calendar' }}
+                          </p>
                         } @else {
                           <span class="text-slate-500">No vence</span>
                         }
@@ -193,7 +195,7 @@
                       </td>
                       <td class="px-5 py-3 text-slate-700">
                         <p class="whitespace-nowrap tabular-nums">
-                          {{ b.receivedAt | date: 'd MMM y' : '-0500' }}
+                          {{ b.receivedAt | fecha: 'date' }}
                           @if (b.unitCost !== null) {
                             · {{ money(b.unitCost) }} c/u
                           }
@@ -248,9 +250,7 @@
               @for (m of movements(); track m.id) {
                 <li class="flex gap-4 px-5 py-3">
                   <div class="w-20 shrink-0 text-xs text-slate-500 tabular-nums">
-                    {{ m.createdAt | date: 'dd/MM/yy' : '-0500' }}<br />{{
-                      m.createdAt | date: 'HH:mm' : '-0500'
-                    }}
+                    {{ m.createdAt | fecha: 'date' }}<br />{{ m.createdAt | fecha: 'time' }}
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
@@ -574,7 +574,7 @@
         <option value="auto">Automático (el que vence primero)</option>
         @for (b of outflowBatches(); track b.id) {
           <option [ngValue]="b.id">
-            Lote {{ b.lotNumber ?? '—' }} · {{ b.expiresAt ?? 'no vence' }} ·
+            Lote {{ b.lotNumber ?? '—' }} · {{ (b.expiresAt | fecha: 'calendar') || 'no vence' }} ·
             {{ units(b.quantity) }}
           </option>
         }

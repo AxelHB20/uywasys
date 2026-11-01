@@ -45,6 +45,10 @@
     }
   </ul>
 
+  @if (canManage()) {
+    <app-shortages-panel [canResolve]="isAdmin()" [focus]="filtro() === 'faltantes'" />
+  }
+
   <div class="flex flex-col gap-3 sm:flex-row" role="search">
     <div class="relative flex-1">
       <label for="inv-search" class="sr-only">Buscar por nombre, código o código de barras</label>
@@ -190,7 +194,7 @@
                           expiryText(e.days)
                         }}</app-badge>
                         <p class="mt-1 text-xs text-slate-500 tabular-nums">
-                          {{ e.date }}
+                          {{ e.date | fecha: 'calendar' }}
                           @if (e.lotNumber) {
                             · Lote {{ e.lotNumber }}
                           }

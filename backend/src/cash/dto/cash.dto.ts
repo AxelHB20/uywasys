@@ -72,6 +72,11 @@ export class CollectDto {
   @RequestKey()
   requestKey: string;
 
+  /** Comprobante: nota de venta interna (por defecto), boleta o factura electrónica */
+  @IsOptional()
+  @IsIn(['NOTE', 'BOLETA', 'FACTURA'], { message: 'Elige el comprobante' })
+  document?: 'NOTE' | 'BOLETA' | 'FACTURA';
+
   @IsInt({ message: 'Elige el cliente' })
   @Min(1)
   clientId: number;
@@ -108,6 +113,11 @@ export class CollectDto {
 export class CounterSaleDto {
   @RequestKey()
   requestKey: string;
+
+  /** Comprobante: nota de venta interna (por defecto), boleta o factura electrónica */
+  @IsOptional()
+  @IsIn(['NOTE', 'BOLETA', 'FACTURA'], { message: 'Elige el comprobante' })
+  document?: 'NOTE' | 'BOLETA' | 'FACTURA';
 
   /** Sin cliente = "Cliente varios" */
   @IsOptional()

@@ -7,6 +7,8 @@ import {
 import { Prisma } from '../generated/prisma/client.js';
 import type { Species } from '../generated/prisma/enums.js';
 import { CashService } from '../cash/cash.service.js';
+import type { AuthUser } from '../common/auth/auth-user.js';
+import { CASH_ROLES } from '../common/auth/staff-roles.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   OPEN_STATUSES,
@@ -30,6 +32,8 @@ export interface DashboardSummary {
   pets: { active: number };
   /** Lotes vencidos o que vencen en 30 días, y productos con stock bajo */
   inventory: { expiring: number; lowStock: number };
+  /** Grooming: en el tablero, listos para entregar y entregados hoy */
+  grooming: { active: number; ready: number; delivered: number };
   /** Lo cobrado hoy (menos devoluciones) y cuántos cobros */
   sales: { total: number; receipts: number };
   recentClients: {
@@ -38,6 +42,15 @@ export interface DashboardSummary {
     createdAt: Date;
     pets: { name: string; species: Species }[];
   }[];
+}
+
+/** Aviso de la campana: cada uno lleva a la pantalla donde se resuelve. */
+export interface HeaderAlert {
+  kind:
+    'urgent' | 'expiring' | 'lowStock' | 'shortage' | 'staleCash' | 'billing';
+  count: number;
+  link: string;
+  query?: Record<string, string>;
 }
 
 /** Resumen del día para la pantalla de inicio. Solo cifras reales de módulos ya construidos. */
@@ -104,7 +117,7 @@ export class DashboardService {
     ]);
 
     const in30 = new Date(toDbDate(day).getTime() + 30 * 86_400_000);
-    const [expiring, lowRows, sales] = await Promise.all([
+    const [expiring, lowRows, sales, groomingRows] = await Promise.all([
       this.prisma.productBatch.count({
         where: {
           clinicId,
@@ -117,7 +130,22 @@ export class DashboardService {
         SELECT count(*) AS n FROM products
         WHERE clinic_id = ${clinicId} AND active AND min_stock > 0 AND total_stock <= min_stock`),
       this.cash.today(clinicId, timezone),
+      this.prisma.groomingSession.groupBy({
+        by: ['status'],
+        where: {
+          clinicId,
+          OR: [
+            { status: { in: ['WAITING', 'BATHING', 'CUTTING', 'READY'] } },
+            { status: 'DELIVERED', day: toDbDate(day) },
+          ],
+        },
+        _count: { _all: true },
+      }),
     ]);
+    const groomed = (...statuses: string[]) =>
+      groomingRows
+        .filter((r) => statuses.includes(r.status))
+        .reduce((sum, r) => sum + r._count._all, 0);
 
     const count = (status: string) =>
       byStatus.find((row) => row.status === status)?._count._all ?? 0;
@@ -144,7 +172,113 @@ export class DashboardService {
       pets: { active: activePets },
       inventory: { expiring, lowStock: Number(lowRows[0]?.n ?? 0) },
       sales,
+      grooming: {
+        active: groomed('WAITING', 'BATHING', 'CUTTING', 'READY'),
+        ready: groomed('READY'),
+        delivered: groomed('DELIVERED'),
+      },
       recentClients: recent,
     };
+  }
+
+  /**
+   * Avisos de la campana, según el rol: urgencias en la cola (todos), vencimientos, stock
+   * bajo e insumos usados sin stock (administrador y veterinario), y una caja que quedó
+   * abierta desde otro día (quienes manejan la caja). Solo conteos: es liviano.
+   */
+  async alerts(user: AuthUser): Promise<HeaderAlert[]> {
+    const { clinicId, role } = user;
+    const { timezone } = await this.prisma.clinic.findUniqueOrThrow({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const day = clinicDay(timezone);
+    const pharmacy = role === 'ADMIN' || role === 'VET';
+    const cash = CASH_ROLES.includes(role);
+    const in30 = new Date(toDbDate(day).getTime() + 30 * 86_400_000);
+    const none = Promise.resolve(0);
+
+    const [urgent, expiring, lowRows, shortages, staleCash, billing] =
+      await Promise.all([
+        this.prisma.queueEntry.count({
+          where: {
+            clinicId,
+            day: toDbDate(day),
+            urgent: true,
+            status: { in: OPEN_STATUSES },
+          },
+        }),
+        pharmacy
+          ? this.prisma.productBatch.count({
+              where: {
+                clinicId,
+                quantity: { gt: 0 },
+                expiresAt: { lte: in30 },
+                product: { active: true },
+              },
+            })
+          : none,
+        pharmacy
+          ? this.prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`
+            SELECT count(*) AS n FROM products
+            WHERE clinic_id = ${clinicId} AND active AND min_stock > 0 AND total_stock <= min_stock`)
+          : Promise.resolve([{ n: 0n }]),
+        pharmacy
+          ? this.prisma.stockShortage.count({
+              where: { clinicId, resolvedAt: null },
+            })
+          : none,
+        cash
+          ? this.prisma.cashSession.count({
+              where: {
+                clinicId,
+                status: 'OPEN',
+                openedAt: { lt: startOfDayIn(timezone, day) },
+              },
+            })
+          : none,
+        // Comprobantes que SUNAT rechazó o que no salen después de varios intentos
+        cash
+          ? this.prisma.electronicDocument.count({
+              where: {
+                clinicId,
+                OR: [
+                  { status: 'REJECTED' },
+                  { status: 'ERROR', attempts: { gte: 3 } },
+                ],
+              },
+            })
+          : none,
+      ]);
+
+    const alerts: HeaderAlert[] = [
+      { kind: 'urgent', count: urgent, link: '/cola' },
+      {
+        kind: 'expiring',
+        count: expiring,
+        link: '/inventario',
+        query: { filtro: 'expiring' },
+      },
+      {
+        kind: 'lowStock',
+        count: Number(lowRows[0]?.n ?? 0),
+        link: '/inventario',
+        query: { filtro: 'low' },
+      },
+      {
+        kind: 'shortage',
+        count: shortages,
+        link: '/inventario',
+        query: { filtro: 'faltantes' },
+      },
+      { kind: 'staleCash', count: staleCash, link: '/caja' },
+      {
+        kind: 'billing',
+        count: billing,
+        link: '/comprobantes',
+        query: { estado: 'PROBLEMS' },
+      },
+    ];
+    return alerts.filter((a) => a.count > 0);
   }
 }

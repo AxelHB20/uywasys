@@ -353,6 +353,20 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
       quantity: 30,
       charge: { description: 'Baño medicado', pet: { name: 'Toby' } },
     });
+    // La campana avisa al veterinario, no a recepción
+    const kinds = async (role: string) =>
+      (
+        await http()
+          .get('/api/dashboard/alerts')
+          .set('Cookie', cookies[role])
+          .expect(200)
+      ).body.map(
+        (a: { kind: string; count: number }) => `${a.kind}:${a.count}`,
+      );
+    expect(await kinds('vet')).toContain('shortage:1');
+    expect(await kinds('reception')).not.toContainEqual(
+      expect.stringMatching(/^shortage/),
+    );
     await http()
       .post(`/api/inventory/shortages/${list.body[0].id}/resolve`)
       .set('Cookie', cookies.vet)
@@ -368,6 +382,9 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
       .set('Cookie', cookies.admin)
       .expect(200);
     expect(open.body).toEqual([]);
+    expect(await kinds('admin')).not.toContainEqual(
+      expect.stringMatching(/^shortage/),
+    );
   });
 
   it('venta directa sin stock: 409 y no queda nada de la operación, ni las otras líneas', async () => {

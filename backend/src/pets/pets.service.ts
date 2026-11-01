@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { clinicToday } from '../common/time/clinic-today.js';
+import { anonymizedError } from '../clients/anonymized.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreatePetDto, UpdatePetDto } from './dto/pet.dto.js';
 import {
@@ -45,9 +46,10 @@ export class PetsService {
   ): Promise<PetView> {
     const client = await this.prisma.client.findFirst({
       where: { id: clientId, clinicId: actor.clinicId },
-      select: { id: true },
+      select: { id: true, anonymizedAt: true },
     });
     if (!client) throw new NotFoundException('El cliente no existe');
+    if (client.anonymizedAt) throw anonymizedError();
     const today = await clinicToday(this.prisma, actor.clinicId);
 
     const pet = await this.prisma.$transaction(async (tx) =>
@@ -84,6 +86,11 @@ export class PetsService {
       select: PET_SELECT,
     });
     if (!current) throw new NotFoundException('La mascota no existe');
+    const owner = await this.prisma.pet.findUniqueOrThrow({
+      where: { id },
+      select: { client: { select: { anonymizedAt: true } } },
+    });
+    if (owner.client.anonymizedAt) throw anonymizedError();
     const today = await clinicToday(this.prisma, actor.clinicId);
 
     const pet = await this.prisma.pet.update({

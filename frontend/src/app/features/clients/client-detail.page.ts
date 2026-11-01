@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -9,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { SessionService } from '../../core/auth/session.service';
 import {
@@ -24,7 +23,14 @@ import {
   SPECIES_LABELS,
 } from '../../core/services/clients.models';
 import { ClientsService } from '../../core/services/clients.service';
+import { CASH_ROLES } from '../../core/services/cash.models';
 import { QueueService } from '../../core/services/queue.service';
+import {
+  ClientAccount,
+  VISIT_STATUS_LABELS,
+  VisitSummary,
+} from '../../core/services/visits.models';
+import { VisitsService } from '../../core/services/visits.service';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
@@ -47,19 +53,21 @@ import {
   petCode,
   relativeDay,
 } from '../../shared/utils/records';
-import { apiErrorMessage } from '../../shared/utils/validators';
+import { money } from '../../shared/utils/stock';
+import { apiErrorDetails, apiErrorMessage } from '../../shared/utils/validators';
 import { PetFieldsComponent } from './pet-fields/pet-fields.component';
 import { createPetForm, patchPetForm, toPetInput } from './pet-fields/pet-form';
+import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 
 type DocChoice = DocumentType | 'NONE';
-type Modal = 'client' | 'pet' | 'queue' | 'authorized' | 'remove-authorized' | null;
+type Modal = 'client' | 'pet' | 'queue' | 'authorized' | 'remove-authorized' | 'anonymize' | null;
 
 @Component({
   selector: 'app-client-detail-page',
   imports: [
+    FechaPipe,
     ReactiveFormsModule,
     RouterLink,
-    DatePipe,
     IconComponent,
     BadgeComponent,
     ModalComponent,
@@ -73,6 +81,8 @@ export class ClientDetailPage {
   private readonly queue = inject(QueueService);
   private readonly toast = inject(ToastService);
   private readonly session = inject(SessionService);
+  private readonly visits = inject(VisitsService);
+  private readonly router = inject(Router);
 
   /** :id de la ruta */
   readonly id = input.required<string>();
@@ -96,11 +106,32 @@ export class ClientDetailPage {
   protected readonly initials = initials;
   protected readonly relativeDay = relativeDay;
   protected readonly today = toIsoDate(new Date());
-  protected readonly canEdit = computed(() =>
-    FRONT_DESK_ROLES.includes(this.session.role() ?? 'CASHIER'),
+  /** Un cliente anonimizado ya no se edita: solo queda su historia, sin datos personales. */
+  protected readonly canEdit = computed(
+    () =>
+      FRONT_DESK_ROLES.includes(this.session.role() ?? 'CASHIER') && !this.client()?.anonymizedAt,
   );
+  protected readonly isAdmin = this.session.isAdmin;
+  protected readonly downloading = signal(false);
+  protected readonly anonymizeForm = new FormGroup({
+    reason: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(5), Validators.maxLength(300)],
+    }),
+    confirm: new FormControl(false, { nonNullable: true, validators: [Validators.requiredTrue] }),
+  });
 
+  protected readonly money = money;
+  protected readonly canCollect = computed(() =>
+    CASH_ROLES.includes(this.session.role() ?? 'GROOMER'),
+  );
+  protected readonly visitLabels = VISIT_STATUS_LABELS;
   protected readonly client = signal<ClientDetail | null>(null);
+  /** Lo que debe y sus últimos cobros */
+  protected readonly account = signal<ClientAccount | null>(null);
+  /** Atenciones de sus mascotas, de la más reciente a la más antigua */
+  protected readonly history = signal<VisitSummary[]>([]);
+  protected readonly historyTotal = signal(0);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly activePets = computed(() => this.client()?.pets.filter((p) => p.active) ?? []);
@@ -183,10 +214,44 @@ export class ClientDetailPage {
       next: (client) => {
         this.client.set(client);
         this.loading.set(false);
+        this.loadAccount(id);
       },
       error: (error: unknown) => {
         this.loadError.set(apiErrorMessage(error, 'No se pudo cargar la ficha del cliente.'));
         this.loading.set(false);
+      },
+    });
+  }
+
+  /** Cuenta e historial: si fallan, la ficha igual se ve. */
+  private loadAccount(id: number): void {
+    this.visits.account(id).subscribe({
+      next: (account) => this.account.set(account),
+      error: () => this.account.set(null),
+    });
+    this.visits.list({ clientId: id }).subscribe({
+      next: (page) => {
+        this.history.set(page.items);
+        this.historyTotal.set(page.total);
+      },
+      error: () => this.history.set([]),
+    });
+  }
+
+  /** Atender sin pasar por la cola (por ejemplo, una venta o un control rápido). */
+  protected attend(pet: Pet): void {
+    if (this.saving()) return;
+    this.saving.set(true);
+    this.visits.open(pet.id).subscribe({
+      next: (visit) => {
+        this.saving.set(false);
+        void this.router.navigate(['/atenciones', visit.id]);
+      },
+      error: (error: unknown) => {
+        this.saving.set(false);
+        const { visitId } = apiErrorDetails<{ visitId: number }>(error);
+        if (visitId) void this.router.navigate(['/atenciones', visitId]);
+        else this.toast.error(apiErrorMessage(error));
       },
     });
   }
@@ -346,6 +411,45 @@ export class ClientDetailPage {
     this.run(this.clients.removeAuthorized(c.id, person.id), () => {
       this.client.set({ ...c, authorized: c.authorized.filter((p) => p.id !== person.id) });
       this.toast.success(`${person.name} ya no está autorizado`);
+    });
+  }
+
+  // ── Derechos ARCO (Ley 29733) ──
+  /** Acceso: descarga todo lo que la clínica guarda del cliente. */
+  protected downloadData(): void {
+    const c = this.client();
+    if (!c || this.downloading()) return;
+    this.downloading.set(true);
+    this.clients.exportData(c.id).subscribe({
+      next: (blob) => {
+        this.downloading.set(false);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `datos-${clientCode(c.number)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        this.toast.success('Se descargaron sus datos. Entrégaselos al cliente.');
+      },
+      error: (error: unknown) => {
+        this.downloading.set(false);
+        this.toast.error(apiErrorMessage(error, 'No se pudieron descargar sus datos.'));
+      },
+    });
+  }
+
+  protected openAnonymize(): void {
+    this.anonymizeForm.reset({ reason: '', confirm: false });
+    this.modal.set('anonymize');
+  }
+
+  /** Cancelación: borra los datos personales; las atenciones y cobros quedan sin ellos. */
+  protected confirmAnonymize(): void {
+    const c = this.client();
+    if (!c || this.invalidForm(this.anonymizeForm)) return;
+    this.run(this.clients.anonymize(c.id, this.anonymizeForm.getRawValue().reason.trim()), () => {
+      this.load();
+      this.toast.success('Se borraron sus datos personales. Su historia queda sin ellos.');
     });
   }
 

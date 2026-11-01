@@ -15,6 +15,7 @@ import {
   ProductInput,
   ProductPage,
   PurchaseInput,
+  Shortage,
   StockFilter,
 } from './inventory.models';
 
@@ -126,5 +127,17 @@ export class InventoryService {
     const data = new FormData();
     data.append('file', file);
     return this.http.post<ProductImportResult>('/api/inventory/import', data);
+  }
+
+  /** Faltantes sin resolver (administrador y veterinario) */
+  shortages(): Observable<Shortage[]> {
+    return this.http.get<Shortage[]>('/api/inventory/shortages');
+  }
+
+  /** El administrador anota qué se hizo (se registró la compra, se hizo el conteo…) */
+  resolveShortage(id: number, resolution: string): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`/api/inventory/shortages/${id}/resolve`, {
+      resolution,
+    });
   }
 }

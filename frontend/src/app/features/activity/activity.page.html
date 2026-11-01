@@ -1,0 +1,159 @@
+<section class="space-y-6">
+  <div>
+    <h1 class="font-display text-2xl font-semibold text-slate-900">Actividad</h1>
+    <p class="mt-1 max-w-3xl text-slate-600">
+      Quién hizo qué y cuándo. Lo marcado con
+      <strong class="font-semibold">Revisar</strong> conviene mirarlo: anulaciones, ajustes de
+      stock, cambios de precio y accesos fallidos.
+    </p>
+  </div>
+
+  <form
+    [formGroup]="filters"
+    class="card grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:items-end"
+    aria-label="Filtrar actividad"
+    (submit)="$event.preventDefault()"
+  >
+    <div>
+      <label for="act-area" class="field-label">Área</label>
+      <select id="act-area" formControlName="area" class="field-input">
+        <option [ngValue]="null">Todas</option>
+        @for (a of areas; track a[0]) {
+          <option [ngValue]="a[0]">{{ a[1] }}</option>
+        }
+      </select>
+    </div>
+    <div>
+      <label for="act-user" class="field-label">Persona</label>
+      <select id="act-user" formControlName="userId" class="field-input">
+        <option [ngValue]="null">Todo el equipo</option>
+        @for (u of users.value() ?? []; track u.id) {
+          <option [ngValue]="u.id">{{ u.fullName }}{{ u.active ? '' : ' (inactivo)' }}</option>
+        }
+      </select>
+    </div>
+    <div>
+      <label for="act-from" class="field-label">Desde</label>
+      <input id="act-from" type="date" formControlName="from" class="field-input" />
+    </div>
+    <div>
+      <label for="act-to" class="field-label">Hasta</label>
+      <input id="act-to" type="date" formControlName="to" class="field-input" />
+    </div>
+    <label
+      class="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-medium text-slate-800 sm:col-span-2 lg:col-span-1"
+    >
+      <input type="checkbox" formControlName="important" class="size-5 rounded accent-anil-600" />
+      Solo lo que conviene revisar
+    </label>
+  </form>
+
+  @if (list.isLoading() && !items().length) {
+    <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando actividad">
+      @for (i of [1, 2, 3, 4]; track i) {
+        <div class="flex items-center gap-4 p-5">
+          <div class="h-4 w-12 animate-pulse rounded bg-slate-100"></div>
+          <div class="h-4 w-64 animate-pulse rounded bg-slate-100"></div>
+        </div>
+      }
+    </div>
+  } @else if (list.error()) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">No se pudo cargar la actividad.</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="list.reload()">
+        Reintentar
+      </button>
+    </div>
+  } @else if (!items().length) {
+    <div class="card flex flex-col items-center px-6 py-14 text-center">
+      <span class="grid size-14 place-items-center rounded-2xl bg-anil-50 text-anil-700"
+        ><app-icon name="history" class="size-7"
+      /></span>
+      <p class="mt-4 font-medium text-slate-900">
+        {{ filtered() ? 'Nada con esos filtros' : 'Todavía no hay actividad registrada' }}
+      </p>
+      @if (filtered()) {
+        <button type="button" class="btn btn-secondary mt-5" (click)="clear()">
+          Quitar filtros
+        </button>
+      }
+    </div>
+  } @else {
+    <p class="text-sm text-slate-600" aria-live="polite">
+      {{ total() }} {{ total() === 1 ? 'registro' : 'registros' }}
+      @if (filtered()) {
+        ·
+        <button type="button" class="font-medium text-anil-700 hover:underline" (click)="clear()">
+          Quitar filtros
+        </button>
+      }
+    </p>
+
+    @for (g of groups(); track g.day) {
+      <div>
+        <h2 class="mb-2 text-sm font-semibold text-slate-700">{{ g.label }}</h2>
+        <ol class="card divide-y divide-slate-100">
+          @for (item of g.items; track item.id) {
+            <li class="flex gap-4 px-5 py-3.5">
+              <time
+                class="w-11 shrink-0 pt-0.5 text-sm text-slate-500 tabular-nums"
+                [attr.datetime]="item.at"
+                >{{ item.at | fecha: 'time' }}</time
+              >
+              <div class="min-w-0 flex-1">
+                <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-900">
+                  <span class="font-medium">{{ actionLabel(item.action) }}</span>
+                  @if (item.important) {
+                    <app-badge tone="warning">Revisar</app-badge>
+                  }
+                </p>
+                <p class="text-sm text-slate-600">
+                  {{ who(item) }}
+                  @if (item.ip && item.action.startsWith('auth.')) {
+                    <span class="text-slate-500">· conexión {{ item.ip }}</span>
+                  }
+                </p>
+                @for (line of describe(item.data); track $index) {
+                  <p class="text-sm break-words text-slate-600">{{ line }}</p>
+                }
+              </div>
+              @if (link(item); as route) {
+                <a
+                  [routerLink]="route"
+                  class="inline-flex min-h-11 shrink-0 items-center self-start text-sm font-medium text-anil-700 hover:text-anil-900"
+                  [attr.aria-label]="'Ver ' + actionLabel(item.action).toLowerCase()"
+                  >Ver</a
+                >
+              }
+            </li>
+          }
+        </ol>
+      </div>
+    }
+
+    @if (pages() > 1) {
+      <nav class="flex items-center justify-between" aria-label="Páginas">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          [disabled]="page() === 1"
+          (click)="page.set(page() - 1)"
+        >
+          Anterior
+        </button>
+        <span class="text-sm text-slate-600 tabular-nums"
+          >Página {{ page() }} de {{ pages() }}</span
+        >
+        <button
+          type="button"
+          class="btn btn-secondary"
+          [disabled]="page() === pages()"
+          (click)="page.set(page() + 1)"
+        >
+          Siguiente
+        </button>
+      </nav>
+    }
+  }
+</section>

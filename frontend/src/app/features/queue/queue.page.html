@@ -94,6 +94,7 @@
                   [canEdit]="canEdit()"
                   [busy]="busyId() === item.id"
                   (move)="move(item, $event)"
+                  (attend)="attend(item)"
                   (toggleUrgent)="toggleUrgent(item)"
                   (cancel)="cancelling.set(item)"
                 />
@@ -159,6 +160,14 @@
               <app-badge [tone]="item.status === 'DONE' ? 'success' : 'neutral'" class="shrink-0">{{
                 closedSummary(item)
               }}</app-badge>
+              @if (item.visit) {
+                <a
+                  [routerLink]="['/atenciones', item.visit.id]"
+                  class="btn btn-ghost h-10 shrink-0 px-3 text-sm"
+                  [attr.aria-label]="'Ver la atención de ' + item.pet.name"
+                  >Ver</a
+                >
+              }
             </li>
           }
         </ul>

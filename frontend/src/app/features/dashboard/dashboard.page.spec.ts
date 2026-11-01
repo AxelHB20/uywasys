@@ -55,6 +55,7 @@ describe('DashboardPage', () => {
     clients: { active: 12, newThisMonth: 4 },
     pets: { active: 18 },
     inventory: { expiring: 0, lowStock: 0 },
+    sales: { total: 0, receipts: 0 },
     recentClients: [
       {
         id: 7,
@@ -85,6 +86,22 @@ describe('DashboardPage', () => {
     expect(text).toContain('Vómitos');
     expect(text).not.toContain('Sistema en línea');
     expect(text).not.toContain('No hay conexión');
+  });
+
+  it('las ventas del día las ve quien maneja la caja, no el veterinario', async () => {
+    const vet = render();
+    http.expectOne('/api/dashboard').flush({ ...summary, sales: { total: 1250.5, receipts: 7 } });
+    http.expectOne('/api/health').flush({ status: 'ok', time: '2026-10-27T15:00:00Z' });
+    await vet.whenStable();
+    vet.detectChanges();
+    expect(vet.nativeElement.textContent).not.toContain('Ventas de hoy');
+
+    TestBed.inject(SessionService).user.update((u) => (u ? { ...u, role: 'CASHIER' } : u));
+    vet.detectChanges();
+    const text: string = vet.nativeElement.textContent;
+    expect(text).toContain('Ventas de hoy');
+    expect(text).toContain('S/ 1,250.50');
+    expect(text).toContain('7 cobros');
   });
 
   it('avisa solo cuando no hay conexión con el servidor', async () => {

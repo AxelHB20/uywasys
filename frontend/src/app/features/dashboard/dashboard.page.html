@@ -122,22 +122,51 @@
         <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
       }
     </li>
-    <li class="card p-4 sm:p-5">
-      <div class="flex items-start justify-between gap-2">
-        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Mascotas</p>
-        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-maiz-100 text-amber-800">
-          <app-icon name="paw" class="size-[18px]" />
-        </span>
-      </div>
-      @if (d) {
-        <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
-          {{ d.pets.active }}
-        </p>
-        <p class="mt-1 text-sm text-slate-500">Activas en la clínica</p>
-      } @else {
-        <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
-      }
-    </li>
+    @if (showSales()) {
+      <li class="card p-4 sm:p-5">
+        <div class="flex items-start justify-between gap-2">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Ventas de hoy</p>
+          <span
+            class="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"
+          >
+            <app-icon name="receipt" class="size-[18px]" />
+          </span>
+        </div>
+        @if (d) {
+          <p
+            class="mt-2 font-display text-2xl font-semibold whitespace-nowrap text-slate-900 tabular-nums sm:text-3xl"
+          >
+            {{ money(d.sales.total) }}
+          </p>
+          <p class="mt-1 text-sm text-slate-500">
+            <a routerLink="/caja" class="hover:text-anil-700"
+              >{{ d.sales.receipts }} {{ d.sales.receipts === 1 ? 'cobro' : 'cobros' }}</a
+            >
+          </p>
+        } @else {
+          <div class="mt-3 h-8 w-20 animate-pulse rounded bg-slate-100"></div>
+        }
+      </li>
+    } @else {
+      <li class="card p-4 sm:p-5">
+        <div class="flex items-start justify-between gap-2">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Mascotas</p>
+          <span
+            class="grid size-9 shrink-0 place-items-center rounded-xl bg-maiz-100 text-amber-800"
+          >
+            <app-icon name="paw" class="size-[18px]" />
+          </span>
+        </div>
+        @if (d) {
+          <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
+            {{ d.pets.active }}
+          </p>
+          <p class="mt-1 text-sm text-slate-500">Activas en la clínica</p>
+        } @else {
+          <div class="mt-3 h-8 w-12 animate-pulse rounded bg-slate-100"></div>
+        }
+      </li>
+    }
   </ul>
 
   <!-- Inventario: solo aparece si hay algo que atender -->
@@ -184,6 +213,39 @@
           }
         </div>
       </section>
+    }
+  }
+
+  <!-- Grooming del día: solo si hay movimiento -->
+  @if (data()?.grooming; as gr) {
+    @if (gr.active || gr.delivered) {
+      <a
+        routerLink="/grooming"
+        class="card flex flex-col gap-3 p-4 hover:ring-anil-300 sm:flex-row sm:items-center sm:gap-6 sm:px-6"
+        aria-label="Grooming de hoy"
+      >
+        <span class="flex items-center gap-2 font-medium text-slate-900">
+          <span class="grid size-9 place-items-center rounded-xl bg-anil-50 text-anil-700"
+            ><app-icon name="scissors" class="size-[18px]"
+          /></span>
+          Grooming
+        </span>
+        <span class="flex flex-wrap gap-2 text-sm">
+          <span class="rounded-xl bg-slate-100 px-3 py-2 font-medium text-slate-700 tabular-nums"
+            >{{ gr.active }} en el tablero</span
+          >
+          @if (gr.ready) {
+            <span
+              class="rounded-xl bg-emerald-50 px-3 py-2 font-medium text-emerald-800 tabular-nums"
+              >{{ gr.ready }} {{ gr.ready === 1 ? 'listo' : 'listos' }} para entregar</span
+            >
+          }
+          <span class="rounded-xl bg-slate-100 px-3 py-2 font-medium text-slate-700 tabular-nums"
+            >{{ gr.delivered }} {{ gr.delivered === 1 ? 'entregado' : 'entregados' }} hoy</span
+          >
+        </span>
+        <app-icon name="chevron-right" class="ml-auto size-4 text-slate-400 max-sm:hidden" />
+      </a>
     }
   }
 

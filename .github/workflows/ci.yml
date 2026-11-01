@@ -61,3 +61,123 @@ jobs:
       - run: npm ci
       - run: npm test -- --watch=false
       - run: npm run build
+
+  # Día completo en el navegador: recepción → cola → atención → caja → cierre
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: uywasys
+          POSTGRES_PASSWORD: uywasys
+          POSTGRES_DB: uywasys
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U uywasys"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://uywasys:uywasys@localhost:5432/uywasys
+      CORS_ORIGIN: http://localhost:4200
+      JWT_SECRET: ci-secret-solo-para-pruebas-de-32-caracteres-o-mas
+      SESSION_HOURS: 8
+      COOKIE_SECURE: false
+      SEED_CLINIC_NAME: Veterinaria E2E
+      SEED_ADMIN_NAME: Administrador
+      SEED_ADMIN_EMAIL: admin@uywa.pe
+      SEED_ADMIN_PASSWORD: CambiaEstaClave123
+      E2E_EMAIL: admin@uywa.pe
+      E2E_PASSWORD: CambiaEstaClave123
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            e2e/package-lock.json
+      - name: Backend (migraciones, seed y API)
+        working-directory: backend
+        run: |
+          npm ci
+          npx prisma migrate deploy
+          npx prisma db seed
+          npm run build
+          nohup node dist/main > ../backend.log 2>&1 &
+      - name: Frontend (servidor de desarrollo con proxy a la API)
+        working-directory: frontend
+        run: |
+          npm ci
+          nohup npx ng serve --port 4200 > ../frontend.log 2>&1 &
+      - name: Esperar a que todo responda
+        run: |
+          for i in $(seq 1 90); do
+            curl -sf http://localhost:4200/api/health && exit 0
+            sleep 2
+          done
+          echo "El sistema no respondió" && cat backend.log frontend.log && exit 1
+      - name: Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Reporte y logs si falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reporte
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            backend.log
+            frontend.log
+
+  # Producción en miniatura: construye las imágenes, levanta todo con HTTPS, carga los datos de
+  # demostración y prueba que el respaldo se pueda restaurar. Si algo de esto se rompe, se ve aquí.
+  produccion:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose -f deploy/docker-compose.yml --env-file deploy/.env
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar deploy/.env de prueba
+        run: |
+          sudo apt-get install -y age >/dev/null
+          age-keygen -o respaldo.agekey 2>/dev/null
+          cat > deploy/.env <<VARS
+          DOMAIN=localhost
+          POSTGRES_PASSWORD=ci-clave-postgres
+          JWT_SECRET=ci-secret-solo-para-pruebas-de-32-caracteres
+          SEED_CLINIC_NAME=Veterinaria CI
+          SEED_ADMIN_EMAIL=admin@uywa.pe
+          SEED_ADMIN_PASSWORD=CambiaEstaClave123
+          DEMO_PASSWORD=DemoClinica2026
+          BACKUP_AGE_RECIPIENT=$(age-keygen -y respaldo.agekey)
+          VARS
+      - name: Construir y levantar
+        run: |
+          $COMPOSE up -d --build
+          for i in $(seq 1 60); do curl -skf https://localhost/api/health && break; sleep 3; done
+          curl -skf https://localhost/api/health
+          curl -skf https://localhost/clientes | grep -q '<app-root'
+      - name: Seed, datos de demostración y respaldo
+        run: |
+          $COMPOSE exec -T api npx prisma db seed
+          $COMPOSE exec -T api node scripts/demo-data.mjs
+          $COMPOSE exec -T backup backup.sh
+          $COMPOSE run --rm -v "$PWD/respaldo.agekey:/key:ro" backup verify.sh /key
+      - name: Logs si falla
+        if: failure()
+        run: $COMPOSE logs --no-color | tail -200
+      - name: Apagar
+        if: always()
+        run: $COMPOSE down -v

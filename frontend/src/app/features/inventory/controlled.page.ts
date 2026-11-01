@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -8,11 +7,12 @@ import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { limaDate } from '../../shared/utils/records';
 import { formatQty, unitLabel } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 
 /** Libro de medicamentos controlados: qué se usó, en quién, quién lo indicó y con qué receta. */
 @Component({
   selector: 'app-controlled-page',
-  imports: [ReactiveFormsModule, RouterLink, DatePipe, IconComponent],
+  imports: [FechaPipe, ReactiveFormsModule, RouterLink, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './controlled.page.html',
 })

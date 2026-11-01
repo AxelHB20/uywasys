@@ -1,0 +1,348 @@
+<section class="space-y-6">
+  <div class="no-print flex flex-wrap items-center justify-between gap-3">
+    <a
+      routerLink="/caja"
+      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+    >
+      <app-icon name="chevron-left" class="size-4" /> Caja
+    </a>
+    @if (ticket(); as t) {
+      <div class="flex flex-wrap items-center gap-2">
+        @if (t.document; as d) {
+          @if (d.status !== 'ACCEPTED') {
+            <a
+              routerLink="/comprobantes"
+              class="inline-flex min-h-11 items-center"
+              [attr.aria-label]="'Estado del comprobante: ' + docStatus[d.status]"
+            >
+              <app-badge [tone]="docTone[d.status]">{{ docStatus[d.status] }}</app-badge>
+            </a>
+          }
+          @if (d.pdfUrl) {
+            <a [href]="d.pdfUrl" target="_blank" rel="noopener" class="btn btn-ghost"
+              >PDF de SUNAT</a
+            >
+          }
+        }
+        @if (isAdmin() && t.status === 'ACTIVE') {
+          <button type="button" class="btn btn-ghost" (click)="askVoid()">Anular cobro</button>
+        }
+        <button type="button" class="btn btn-primary" (click)="print()">Imprimir</button>
+      </div>
+    }
+  </div>
+
+  @if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+    </div>
+  } @else if (ticket(); as t) {
+    <article
+      #paper
+      class="print-area relative mx-auto w-full max-w-[80mm] bg-white px-[4mm] pt-7 pb-6 text-[12px] leading-[1.4] text-black shadow-card ring-1 ring-slate-200"
+      [attr.aria-label]="'Ticket ' + t.code"
+    >
+      @if (t.status === 'VOID') {
+        <p
+          class="pointer-events-none absolute inset-x-6 top-[38%] -rotate-12 rounded border-4 border-black/25 py-1 text-center font-display text-3xl font-bold tracking-[0.2em] text-black/25"
+          aria-hidden="true"
+        >
+          ANULADO
+        </p>
+      }
+
+      <!-- Clínica: logo si lo tiene; si no, el nombre hace de logo -->
+      <header class="flex flex-col items-center text-center">
+        @if (logoUrl(); as logo) {
+          <img
+            #logo
+            [src]="logo"
+            alt="Logo de {{ t.clinic.name }}"
+            class="mb-2.5 max-h-[18mm] max-w-[50mm] object-contain grayscale contrast-125"
+            (error)="logoFailed.set(true)"
+          />
+        }
+        <p
+          class="font-display font-bold text-balance"
+          [class]="logoUrl() ? 'text-[14px] leading-tight' : 'text-[18px] leading-tight'"
+        >
+          {{ t.clinic.name }}
+        </p>
+        @if (t.document?.legalName; as legal) {
+          @if (legal !== t.clinic.name) {
+            <p class="mt-0.5 text-[11px] font-semibold uppercase">{{ legal }}</p>
+          }
+        }
+        @if (t.clinic.ruc) {
+          <p class="mt-1 font-semibold tabular-nums">RUC {{ t.clinic.ruc }}</p>
+        }
+        @if (t.clinic.address) {
+          <p class="text-pretty">{{ t.clinic.address }}</p>
+        }
+        @if (t.clinic.phone) {
+          <p class="tabular-nums">Tel. {{ t.clinic.phone }}</p>
+        }
+      </header>
+
+      <div class="mt-4 border-y-2 border-black py-2 text-center">
+        <p class="text-[11px] font-semibold uppercase">
+          {{ t.document ? docTitle[t.document.type] : 'Nota de venta interna' }}
+        </p>
+        <p class="font-display text-[18px] leading-tight font-bold tracking-wide tabular-nums">
+          {{ t.document?.code ?? t.code }}
+        </p>
+      </div>
+      @if (t.document?.simulated) {
+        <p class="mt-2 border-2 border-black py-1 text-center text-[11px] font-bold uppercase">
+          Simulación · sin valor tributario
+        </p>
+      }
+
+      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+        <dt class="text-black/70 print:text-black">Fecha</dt>
+        <dd class="text-right tabular-nums">
+          {{ t.createdAt | fecha: 'datetime' }}
+        </dd>
+        @if (t.document; as d) {
+          <dt class="text-black/70 print:text-black">Cliente</dt>
+          <dd class="text-right font-semibold">{{ d.customer.name }}</dd>
+          @if (customerDoc[d.customer.docType]; as label) {
+            <dt class="text-black/70 print:text-black">{{ label }}</dt>
+            <dd class="text-right tabular-nums">{{ d.customer.docNumber }}</dd>
+          }
+          @if (d.type === 'FACTURA' && d.customer.address) {
+            <dt class="text-black/70 print:text-black">Dirección</dt>
+            <dd class="text-right">{{ d.customer.address }}</dd>
+          }
+        } @else {
+          <dt class="text-black/70 print:text-black">Cliente</dt>
+          <dd class="text-right font-semibold">{{ t.client.name }}</dd>
+          @if (t.client.docType) {
+            <dt class="text-black/70 print:text-black">
+              {{ docShort[t.client.docType] ?? t.client.docType }}
+            </dt>
+            <dd class="text-right tabular-nums">{{ t.client.docNumber }}</dd>
+          }
+        }
+        <dt class="text-black/70 print:text-black">Atendió</dt>
+        <dd class="text-right">{{ t.cashier }} · {{ t.register }}</dd>
+      </dl>
+
+      <table class="mt-3 w-full border-collapse">
+        <thead>
+          <tr class="border-b border-black text-[11px]">
+            <th class="pb-1 text-left font-semibold">Descripción</th>
+            <th class="pb-1 text-right font-semibold">Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (t.document; as d) {
+            @for (l of d.lines; track $index) {
+              <tr class="align-top">
+                <td class="pt-1.5 pr-2">
+                  <span class="font-medium">{{ l.description }}</span>
+                  <span class="block text-[11px] text-black/70 tabular-nums print:text-black">
+                    {{ formatQty(l.quantity) }} × {{ money(l.unitPrice) }}
+                  </span>
+                </td>
+                <td class="pt-1.5 text-right font-medium whitespace-nowrap tabular-nums">
+                  {{ money(l.total) }}
+                </td>
+              </tr>
+            }
+          } @else {
+            @for (l of t.lines; track l.chargeId) {
+              <tr class="align-top">
+                <td class="pt-1.5 pr-2">
+                  <span class="font-medium">{{ l.description }}</span>
+                  <span class="block text-[11px] text-black/70 tabular-nums print:text-black">
+                    {{ formatQty(l.quantity) }} × {{ money(l.unitPrice) }}
+                    @if (l.discount) {
+                      · Dscto. {{ money(l.discount) }}
+                    }
+                    @if (l.paid !== l.total) {
+                      · Abona {{ money(l.paid) }}
+                    }
+                  </span>
+                </td>
+                <td class="pt-1.5 text-right font-medium whitespace-nowrap tabular-nums">
+                  {{ money(l.total) }}
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+
+      @if (t.document; as d) {
+        <dl
+          class="mt-2.5 space-y-0.5 border-t border-dashed border-black/50 pt-2 tabular-nums print:border-black"
+        >
+          @if (d.totals.taxed) {
+            <div class="flex justify-between">
+              <dt>Op. gravada</dt>
+              <dd>{{ money(d.totals.taxed) }}</dd>
+            </div>
+          }
+          @if (d.totals.exempt) {
+            <div class="flex justify-between">
+              <dt>Op. exonerada</dt>
+              <dd>{{ money(d.totals.exempt) }}</dd>
+            </div>
+          }
+          @if (d.totals.unaffected) {
+            <div class="flex justify-between">
+              <dt>Op. inafecta</dt>
+              <dd>{{ money(d.totals.unaffected) }}</dd>
+            </div>
+          }
+          <div class="flex justify-between">
+            <dt>IGV 18 %</dt>
+            <dd>{{ money(d.totals.igv) }}</dd>
+          </div>
+          <div
+            class="!mt-1.5 flex items-baseline justify-between border-t-2 border-black pt-1.5 font-display font-bold"
+          >
+            <dt class="text-[13px]">Importe total</dt>
+            <dd class="text-[17px]">{{ money(d.totals.total) }}</dd>
+          </div>
+        </dl>
+        <p class="mt-1.5 text-[10.5px] font-semibold">{{ d.amountInWords }}</p>
+      } @else {
+        <dl
+          class="mt-2.5 space-y-0.5 border-t border-dashed border-black/50 pt-2 tabular-nums print:border-black"
+        >
+          @if (t.totals.taxed) {
+            <div class="flex justify-between">
+              <dt>Op. gravada</dt>
+              <dd>{{ money(t.totals.taxed) }}</dd>
+            </div>
+          }
+          @if (t.totals.exempt) {
+            <div class="flex justify-between">
+              <dt>Op. exonerada</dt>
+              <dd>{{ money(t.totals.exempt) }}</dd>
+            </div>
+          }
+          @if (t.totals.unaffected) {
+            <div class="flex justify-between">
+              <dt>Op. inafecta</dt>
+              <dd>{{ money(t.totals.unaffected) }}</dd>
+            </div>
+          }
+          <div class="flex justify-between">
+            <dt>IGV 18 %</dt>
+            <dd>{{ money(t.totals.igv) }}</dd>
+          </div>
+          <div
+            class="!mt-1.5 flex items-baseline justify-between border-t-2 border-black pt-1.5 font-display font-bold"
+          >
+            <dt class="text-[13px]">Total</dt>
+            <dd class="text-[17px]">{{ money(t.totals.lines) }}</dd>
+          </div>
+        </dl>
+      }
+
+      <div class="mt-3">
+        <p class="mb-0.5 text-[11px] font-semibold">Forma de pago</p>
+        <ul class="space-y-0.5 tabular-nums">
+          @for (p of t.payments; track p.method) {
+            <li class="flex justify-between gap-2">
+              <span
+                >{{ p.label }}
+                @if (p.operationCode) {
+                  <span class="text-[11px]">· Op. {{ p.operationCode }}</span>
+                }
+              </span>
+              <span>{{ money(p.amount) }}</span>
+            </li>
+            @if (p.tendered && p.tendered !== p.amount) {
+              <li class="flex justify-between text-black/70 print:text-black">
+                <span>Recibido</span><span>{{ money(p.tendered) }}</span>
+              </li>
+            }
+          }
+          @if (t.totals.change) {
+            <li class="flex justify-between font-semibold">
+              <span>Vuelto</span><span>{{ money(t.totals.change) }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+
+      @if (t.totals.balance) {
+        <p
+          class="mt-3 flex justify-between rounded-sm bg-black px-2 py-1.5 font-bold text-white tabular-nums"
+        >
+          <span>Saldo pendiente</span><span>{{ money(t.totals.balance) }}</span>
+        </p>
+      }
+      @if (t.status === 'VOID') {
+        <p class="mt-3 border-2 border-black px-2 py-1.5 font-semibold">
+          Anulado: {{ t.voidReason }}
+          @if (t.document?.creditNote; as nc) {
+            <span class="block text-[11px]">Con nota de crédito {{ nc.code }}</span>
+          }
+        </p>
+      }
+
+      <footer
+        class="mt-5 border-t border-dashed border-black/50 pt-3 text-center print:border-black"
+      >
+        @if (t.document; as d) {
+          @if (qr(); as src) {
+            <img [src]="src" alt="Código QR del comprobante" class="mx-auto mb-2 size-[26mm]" />
+          }
+          <p class="text-[10.5px] text-balance">
+            Representación impresa de la {{ docTitle[d.type].toLowerCase() }}
+          </p>
+          @if (d.hash) {
+            <p class="mt-0.5 text-[9.5px] break-all">Resumen: {{ d.hash }}</p>
+          }
+          <p class="mt-1 text-[9.5px]">Cobro interno {{ t.code }}</p>
+        } @else {
+          <p class="text-[11px] font-semibold text-balance">{{ t.legend }}</p>
+        }
+        <p class="mt-2 font-display text-[13px] font-semibold">¡Gracias por su preferencia!</p>
+        @if (schedule(); as s) {
+          <p class="mt-1.5 text-[10.5px] text-balance">Atendemos: {{ s }}</p>
+        }
+        <p class="mt-3 text-[9px] tracking-wide text-black/60 print:text-black">Emitido con Uywa</p>
+      </footer>
+    </article>
+  } @else {
+    <div
+      class="mx-auto h-96 w-full max-w-[22rem] animate-pulse rounded bg-slate-100"
+      aria-busy="true"
+    ></div>
+  }
+</section>
+
+<app-modal
+  [open]="voiding()"
+  title="Anular cobro"
+  description="Los cargos vuelven a quedar pendientes y el dinero sale como devolución de la caja abierta."
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  <label for="t-reason" class="field-label"
+    >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+  >
+  <input
+    id="t-reason"
+    [formControl]="reason"
+    class="field-input"
+    maxlength="200"
+    [attr.aria-invalid]="reason.invalid && reason.touched"
+  />
+  @if (reason.invalid && reason.touched) {
+    <p class="field-error">Escribe el motivo</p>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button type="button" class="btn btn-danger" [disabled]="saving()" (click)="confirmVoid()">
+      Anular cobro
+    </button>
+  </ng-container>
+</app-modal>

@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { MedicalModule } from './medical/medical.module.js';
+import { ActivityModule } from './activity/activity.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CareServicesModule } from './care-services/care-services.module.js';
 import { CashModule } from './cash/cash.module.js';
@@ -8,6 +12,7 @@ import { ClinicModule } from './clinic/clinic.module.js';
 import { AuditModule } from './common/audit/audit.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { GroomingModule } from './grooming/grooming.module.js';
 import { HealthModule } from './health/health.module.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { PetsModule } from './pets/pets.module.js';
@@ -19,6 +24,18 @@ import { VisitsModule } from './visits/visits.module.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    // Límite de peticiones por conexión: frena robots y pruebas de contraseñas en masa.
+    // El login tiene su propio límite, más bajo (ver AuthController).
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          { ttl: 60_000, limit: config.get<number>('API_RATE_LIMIT', 600) },
+        ],
+        errorMessage:
+          'Demasiados intentos seguidos. Espera un minuto y vuelve a intentarlo',
+      }),
+    }),
     PrismaModule,
     AuditModule,
     AuthModule,
@@ -32,7 +49,11 @@ import { VisitsModule } from './visits/visits.module.js';
     CareServicesModule,
     VisitsModule,
     CashModule,
+    ActivityModule,
+    MedicalModule,
+    GroomingModule,
     HealthModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

@@ -66,6 +66,61 @@ describe('Clínica y usuarios (e2e)', () => {
     await app?.close();
   });
 
+  it('horario de atención: por defecto L-S 9 a 19, y el administrador lo cambia validado', async () => {
+    const profile = await http()
+      .get('/api/clinic')
+      .set('Cookie', adminCookie)
+      .expect(200);
+    expect(profile.body.openingHours).toHaveLength(7);
+    expect(profile.body.openingHours[0]).toEqual({
+      day: 1,
+      open: '09:00',
+      close: '19:00',
+    });
+    expect(profile.body.openingHours[6]).toEqual({
+      day: 7,
+      open: null,
+      close: null,
+    });
+
+    const days = [1, 2, 3, 4, 5, 6, 7].map((day) =>
+      day === 6
+        ? { day, open: '09:00', close: '13:00' }
+        : day === 7
+          ? { day, open: null, close: null }
+          : { day, open: '08:30', close: '20:00' },
+    );
+    const bad = await http()
+      .put('/api/clinic/hours')
+      .set('Cookie', adminCookie)
+      .send({
+        days: days.map((d) => (d.day === 2 ? { ...d, close: '08:00' } : d)),
+      })
+      .expect(400);
+    expect(bad.body.message).toBe(
+      'Martes: la hora de cierre debe ser después de la apertura',
+    );
+    await http()
+      .put('/api/clinic/hours')
+      .set('Cookie', adminCookie)
+      .send({ days: days.slice(0, 6) })
+      .expect(400);
+
+    const saved = await http()
+      .put('/api/clinic/hours')
+      .set('Cookie', adminCookie)
+      .send({ days: [...days].reverse() })
+      .expect(200);
+    expect(saved.body.openingHours.map((d: { day: number }) => d.day)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+    expect(saved.body.openingHours[5]).toEqual({
+      day: 6,
+      open: '09:00',
+      close: '13:00',
+    });
+  });
+
   it('rechaza un RUC con dígito verificador incorrecto', async () => {
     const res = await http()
       .patch('/api/clinic')
@@ -156,23 +211,29 @@ describe('Clínica y usuarios (e2e)', () => {
       'Cambia tu contraseña temporal para continuar',
     );
 
-    await http()
+    const changed = await http()
       .patch('/api/auth/password')
       .set('Cookie', rosa.cookie)
       .send({ currentPassword: temporary, newPassword: 'Recepcion2026' })
       .expect(200);
+    // Al cambiar la clave, la sesión sigue con una cookie nueva
+    const rosaCookie = String(changed.headers['set-cookie']).split(';')[0];
 
-    await http()
-      .get('/api/clinic/setup')
-      .set('Cookie', rosa.cookie)
-      .expect(200);
+    await http().get('/api/clinic/setup').set('Cookie', rosaCookie).expect(200);
     const forbidden = await http()
       .get('/api/users')
-      .set('Cookie', rosa.cookie)
+      .set('Cookie', rosaCookie)
       .expect(403);
     expect(forbidden.body.message).toBe(
       'Tu rol no tiene permiso para esta acción',
     );
+
+    // Si el administrador le restablece la clave, la sesión abierta de Rosa se cierra
+    await http()
+      .post(`/api/users/${created.body.user.id}/reset-password`)
+      .set('Cookie', adminCookie)
+      .expect(200);
+    await http().get('/api/auth/me').set('Cookie', rosaCookie).expect(401);
   });
 
   it('rechaza un correo repetido y exige la colegiatura a los veterinarios', async () => {

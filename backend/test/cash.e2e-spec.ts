@@ -312,6 +312,27 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
     expect((await account()).pendingTotal).toBe(65);
   });
 
+  it('lista de "por cobrar": clientes con saldo', async () => {
+    const res = await http()
+      .get('/api/cash/pending')
+      .set('Cookie', cookies.cashier)
+      .expect(200);
+    expect(res.body).toEqual([
+      expect.objectContaining({
+        client: expect.objectContaining({
+          id: ids.client,
+          name: 'Rosa Quispe',
+        }),
+        balance: 65,
+        charges: 2,
+      }),
+    ]);
+    await http()
+      .get('/api/cash/pending')
+      .set('Cookie', cookies.vet)
+      .expect(403);
+  });
+
   it('un cargo con pagos no se quita: primero se anula el cobro', async () => {
     const pipette = (await account()).pending[0];
     const res = await http()
@@ -476,6 +497,30 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
       ['CASH', 50],
       ['YAPE', 30],
     ]);
+  });
+
+  it('la campana avisa a la caja si quedó abierta desde otro día', async () => {
+    const kinds = async (cookie: string) =>
+      (
+        await http()
+          .get('/api/dashboard/alerts')
+          .set('Cookie', cookie)
+          .expect(200)
+      ).body.map((a: { kind: string }) => a.kind);
+    expect(await kinds(cookies.cashier)).not.toContain('staleCash');
+    const session = await prisma.cashSession.findUniqueOrThrow({
+      where: { id: ids.session },
+    });
+    await prisma.cashSession.update({
+      where: { id: ids.session },
+      data: { openedAt: new Date(Date.now() - 2 * 86_400_000) },
+    });
+    expect(await kinds(cookies.cashier)).toContain('staleCash');
+    expect(await kinds(cookies.vet)).not.toContain('staleCash');
+    await prisma.cashSession.update({
+      where: { id: ids.session },
+      data: { openedAt: session.openedAt },
+    });
   });
 
   it('cierre con arqueo: esperado = inicial + efectivo − egresos − devoluciones', async () => {

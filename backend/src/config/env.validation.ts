@@ -44,6 +44,34 @@ class EnvironmentVariables {
   @IsBoolean()
   COOKIE_SECURE: boolean = false;
 
+  /** Peticiones por minuto que acepta cada conexión (IP) en una misma ruta. */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  API_RATE_LIMIT: number = 600;
+
+  /** Intentos de inicio de sesión por minuto desde una misma conexión (IP). */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  LOGIN_RATE_LIMIT: number = 10;
+
+  /** Clave para cifrar el token del PSE; si falta se deriva de JWT_SECRET */
+  @IsOptional()
+  @IsString()
+  BILLING_SECRET?: string;
+
+  /** Cada cuántos segundos revisa la cola de comprobantes por enviar */
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  BILLING_POLL_SECONDS: number = 30;
+
+  /** true detrás de Caddy o Nginx: la IP real del usuario llega en X-Forwarded-For. */
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  TRUST_PROXY: boolean = false;
+
   /** Origen del frontend permitido por CORS (por ejemplo http://localhost:4200) */
   @IsOptional()
   @IsString()

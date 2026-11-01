@@ -1,24 +1,84 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   inject,
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { catchError, filter, interval, merge, of, startWith, switchMap, throttleTime } from 'rxjs';
+import { DashboardService, HeaderAlert } from '../../services/dashboard.service';
 import { IconComponent } from '../../../shared/ui/icon/icon.component';
 import { AuthService } from '../../auth/auth.service';
 import { SessionService } from '../../auth/session.service';
 import { LayoutService } from '../layout.service';
 
 export interface HeaderNotification {
-  id: number;
+  id: string;
   title: string;
   detail: string;
-  time: string;
+  link: string;
+  query?: Record<string, string>;
+  tone: 'danger' | 'warning' | 'info';
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Texto de cada aviso; el número y el enlace vienen del backend */
+export function toNotification(a: HeaderAlert): HeaderNotification {
+  const base = { id: a.kind, link: a.link, query: a.query };
+  switch (a.kind) {
+    case 'urgent':
+      return {
+        ...base,
+        tone: 'danger',
+        title: `${plural(a.count, 'urgencia', 'urgencias')} en la cola`,
+        detail: 'Pasan antes que los demás',
+      };
+    case 'billing':
+      return {
+        ...base,
+        tone: 'danger',
+        title: `${plural(a.count, 'comprobante', 'comprobantes')} con problemas`,
+        detail: 'SUNAT los rechazó o no salen: revisa el motivo',
+      };
+    case 'staleCash':
+      return {
+        ...base,
+        tone: 'danger',
+        title: 'Caja abierta desde otro día',
+        detail: 'Ciérrala con arqueo antes de seguir cobrando',
+      };
+    case 'expiring':
+      return {
+        ...base,
+        tone: 'warning',
+        title: `${plural(a.count, 'lote vencido o por vencer', 'lotes vencidos o por vencer')}`,
+        detail: 'Vencidos o dentro de los próximos 30 días',
+      };
+    case 'shortage':
+      return {
+        ...base,
+        tone: 'warning',
+        title: `${plural(a.count, 'insumo usado', 'insumos usados')} sin stock`,
+        detail: 'Registra la compra o haz un conteo',
+      };
+    case 'lowStock':
+      return {
+        ...base,
+        tone: 'info',
+        title: `${plural(a.count, 'producto', 'productos')} con stock bajo`,
+        detail: 'Están en el mínimo o por debajo',
+      };
+  }
+}
+
+/** Cada cuánto se revisan los avisos aunque nadie navegue (ms) */
+const ALERTS_EVERY = 120_000;
 
 type OpenMenu = 'notifications' | 'profile' | null;
 
@@ -48,8 +108,32 @@ export class HeaderComponent {
   protected readonly session = inject(SessionService);
   private readonly auth = inject(AuthService);
 
-  // TODO: alimentar desde NotificationService (stock bajo, vacunas por vencer, citas del día).
+  private readonly dashboard = inject(DashboardService);
   protected readonly notifications = signal<HeaderNotification[]>([]);
+
+  constructor() {
+    // Al entrar, al cambiar de pantalla (como mucho una vez cada 20 s) y cada 2 minutos.
+    merge(
+      this.router.events.pipe(
+        filter((e) => e instanceof NavigationEnd),
+        throttleTime(20_000),
+      ),
+      interval(ALERTS_EVERY),
+    )
+      .pipe(
+        startWith(null),
+        switchMap(() => this.dashboard.alerts().pipe(catchError(() => of(null)))),
+        takeUntilDestroyed(inject(DestroyRef)),
+      )
+      .subscribe((alerts) => {
+        if (alerts) this.notifications.set(alerts.map(toNotification));
+      });
+  }
+
+  protected openNotification(n: HeaderNotification): void {
+    this.openMenu.set(null);
+    this.router.navigate([n.link], { queryParams: n.query ?? {} });
+  }
 
   submitSearch(): void {
     if (this.search.invalid) return;

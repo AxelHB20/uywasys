@@ -13,13 +13,14 @@ import { ClinicProfile, ClinicService } from '../../core/services/clinic.service
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage, rucValidator } from '../../shared/utils/validators';
+import { OpeningHoursComponent } from './opening-hours.component';
 
 const MAX_LOGO_BYTES = 1024 * 1024;
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 @Component({
   selector: 'app-clinic-settings-page',
-  imports: [ReactiveFormsModule, IconComponent],
+  imports: [ReactiveFormsModule, IconComponent, OpeningHoursComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './clinic-settings.page.html',
 })

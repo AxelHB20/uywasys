@@ -19,6 +19,7 @@ import {
 } from '../common/sequence/clinic-sequence.js';
 import type { PetView } from '../pets/pet.mapper.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { anonymizedError } from './anonymized.js';
 import { CONSENT_VERSION } from './consent.js';
 import type {
   CreateAuthorizedPersonDto,
@@ -82,6 +83,8 @@ export interface ClientDetail {
   consentVersion: string;
   consentChannel: string;
   marketingConsent: boolean;
+  /** Fecha en que se anonimizó (derecho de cancelación); null si no */
+  anonymizedAt: Date | null;
   createdAt: Date;
   pets: (PetView & { lastVisit: string | null })[];
   authorized: AuthorizedPersonView[];
@@ -103,6 +106,7 @@ const DETAIL_SELECT = {
   consentVersion: true,
   consentChannel: true,
   marketingConsent: true,
+  anonymizedAt: true,
   createdAt: true,
   pets: {
     select: PET_SELECT,
@@ -309,11 +313,13 @@ export class ClientsService {
         name: true,
         phone: true,
         walkIn: true,
+        anonymizedAt: true,
       },
     });
     if (!current) throw new NotFoundException('El cliente no existe');
     if (current.walkIn)
       throw new BadRequestException('"Cliente varios" no se edita');
+    if (current.anonymizedAt) throw anonymizedError();
 
     const docType = dto.docType === undefined ? current.docType : dto.docType;
     const docNumber = docType
@@ -451,9 +457,10 @@ export class ClientsService {
   private async ensureClient(clinicId: number, id: number): Promise<void> {
     const found = await this.prisma.client.findFirst({
       where: { id, clinicId },
-      select: { id: true },
+      select: { id: true, anonymizedAt: true },
     });
     if (!found) throw new NotFoundException('El cliente no existe');
+    if (found.anonymizedAt) throw anonymizedError();
   }
 }
 

@@ -35,13 +35,22 @@ import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { IconName } from '../../shared/ui/icon/icons';
 import { EXPIRY_BADGE, expiryText, money, readableStock } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { FechaPipe } from '../../shared/pipes/fecha.pipe';
+import { ShortagesPanelComponent } from './shortages-panel.component';
 
 type LoadState =
   { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; data: ProductPage };
 
 @Component({
   selector: 'app-inventory-page',
-  imports: [ReactiveFormsModule, RouterLink, IconComponent, BadgeComponent],
+  imports: [
+    FechaPipe,
+    ShortagesPanelComponent,
+    ReactiveFormsModule,
+    RouterLink,
+    IconComponent,
+    BadgeComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './inventory.page.html',
 })

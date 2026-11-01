@@ -95,6 +95,87 @@
 @utility field-error {
   @apply mt-1.5 text-sm text-rose-700;
 }
+/* Encabezados S/O/A/P de la consulta */
+@utility soap-legend {
+  @apply flex items-center gap-2 text-sm font-semibold text-slate-900;
+}
+@utility soap-letter {
+  @apply grid size-6 place-items-center rounded-lg bg-anil-600 font-display text-xs font-bold text-white;
+}
 @utility card {
   @apply rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70;
+}
+
+/* Ticket de 80 mm: al imprimir solo sale el ticket. El tamaño de la hoja lo pone
+   TicketPage justo antes de imprimir (80 mm de ancho y el largo exacto del ticket). */
+@media print {
+  /* Lo oculto sigue ocupando ancho; si pasa de la hoja, el navegador achica el ticket */
+  html:has(.print-area),
+  body:has(.print-area) {
+    width: 74mm;
+    min-width: 0;
+    overflow: hidden;
+    background: #fff;
+  }
+  body:has(.print-area) * {
+    visibility: hidden;
+  }
+  body:has(.print-area) .print-area,
+  body:has(.print-area) .print-area * {
+    visibility: visible;
+  }
+  body:has(.print-area) .print-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 74mm;
+    max-width: none;
+    padding: 0;
+    box-shadow: none !important;
+    /* Sin esto el navegador no imprime fondos (el recuadro negro del saldo) */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Hojas A4/A5 (carnet de vacunas, receta): solo sale la hoja, sin menú ni sombras */
+@media print {
+  body:has(.print-sheet) {
+    background: #fff;
+  }
+  body:has(.print-sheet) * {
+    visibility: hidden;
+  }
+  body:has(.print-sheet) .print-sheet,
+  body:has(.print-sheet) .print-sheet * {
+    visibility: visible;
+  }
+  body:has(.print-sheet) .print-sheet {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Tablero de grooming (Angular CDK drag & drop) */
+.cdk-drag-preview {
+  @apply rounded-xl bg-white shadow-xl ring-2 ring-anil-400;
+  rotate: 1.5deg;
+}
+.cdk-drag-animating,
+.cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-placeholder) {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdk-drag-animating,
+  .cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-placeholder) {
+    transition: none;
+  }
 }

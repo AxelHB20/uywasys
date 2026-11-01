@@ -18,6 +18,8 @@ import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { IconName } from '../../shared/ui/icon/icons';
 import { SPECIES_ICONS, initials, relativeDay } from '../../shared/utils/records';
+import { CASH_ROLES } from '../../core/services/cash.models';
+import { money } from '../../shared/utils/stock';
 
 interface SetupStep {
   title: string;
@@ -54,6 +56,11 @@ export class DashboardPage {
   protected readonly status = STATUS;
   protected readonly initials = initials;
   protected readonly relativeDay = relativeDay;
+  protected readonly money = money;
+  /** Las ventas las ve quien maneja la caja */
+  protected readonly showSales = computed(() =>
+    CASH_ROLES.includes(this.session.role() ?? 'GROOMER'),
+  );
   protected readonly canRegister = computed(() =>
     FRONT_DESK_ROLES.includes(this.session.role() ?? 'CASHIER'),
   );

@@ -20,13 +20,13 @@ import { IconName } from '../../shared/ui/icon/icons';
         <h1 class="mt-5 font-display text-2xl font-semibold text-slate-900">{{ title() }}</h1>
         <p class="mt-2 max-w-md text-slate-500">{{ description() }}</p>
         <p class="mt-5 rounded-full bg-maiz-100 px-3 py-1 text-sm font-medium text-amber-800">
-          Llega en la {{ phase() }}
+          Próximamente
         </p>
         <a
           routerLink="/dashboard"
           class="mt-8 inline-flex h-11 items-center gap-2 rounded-full bg-anil-600 px-5 text-sm font-semibold text-white shadow-sm shadow-anil-600/30 hover:bg-anil-700"
         >
-          <app-icon name="chevron-left" class="size-4" /> Volver al dashboard
+          <app-icon name="chevron-left" class="size-4" /> Volver al inicio
         </a>
       </div>
     </section>
@@ -35,6 +35,5 @@ import { IconName } from '../../shared/ui/icon/icons';
 export class ComingSoonPage {
   readonly title = input('Módulo en construcción');
   readonly description = input('');
-  readonly phase = input('próxima fase');
   readonly icon = input<IconName>('hammer');
 }

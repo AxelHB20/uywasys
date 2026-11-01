@@ -1,3 +1,4 @@
+import { PetSize } from './grooming.models';
 import { Role } from '../auth/auth.models';
 
 export type ProductCategory =
@@ -256,7 +257,16 @@ export interface CareService {
   igv: IgvAffectation;
   durationMin: number | null;
   active: boolean;
-  supplies: { productId: number; name: string; baseUnit: BaseUnit; quantity: number }[];
+  /** Grooming: precio según el tamaño de la mascota (si falta, rige `price`) */
+  sizePrices: { size: PetSize; price: number }[];
+  supplies: {
+    productId: number;
+    name: string;
+    baseUnit: BaseUnit;
+    quantity: number;
+    /** Controlado: el cargo exige receta y veterinario con colegiatura */
+    controlled: boolean;
+  }[];
 }
 
 export interface CareServiceInput {
@@ -267,4 +277,21 @@ export interface CareServiceInput {
   durationMin: number | null;
   active?: boolean;
   supplies: { productId: number; quantity: number }[];
+  sizePrices: { size: PetSize; price: number }[];
+}
+
+/** Insumo usado sin stock registrado: hay que regularizarlo (compra o conteo) */
+export interface Shortage {
+  id: number;
+  product: { id: number; name: string; baseUnit: BaseUnit };
+  quantity: number;
+  createdAt: string;
+  charge: {
+    id: number;
+    description: string;
+    visitId: number | null;
+    pet: { id: number; name: string } | null;
+  };
+  resolvedAt: string | null;
+  resolution: string | null;
 }

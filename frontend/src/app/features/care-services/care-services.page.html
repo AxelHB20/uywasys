@@ -116,9 +116,14 @@
                   </ul>
                 }
               </div>
-              <p class="font-display text-lg font-semibold text-slate-900 tabular-nums">
-                {{ money(s.price) }}
-              </p>
+              <div class="text-right">
+                <p class="font-display text-lg font-semibold text-slate-900 tabular-nums">
+                  {{ money(s.price) }}
+                </p>
+                @if (sizeLine(s); as line) {
+                  <p class="max-w-56 text-xs text-slate-500 tabular-nums">{{ line }}</p>
+                }
+              </div>
               @if (isAdmin()) {
                 <button
                   type="button"
@@ -235,6 +240,37 @@
         }
       </div>
     </div>
+
+    @if (form.controls.category.value === 'GROOMING') {
+      <fieldset formGroupName="sizePrices">
+        <legend class="field-label">Precio por tamaño (S/)</legend>
+        <p class="text-sm text-slate-500">
+          Opcional. El tamaño se elige al ingresar la mascota; si lo dejas vacío, rige el precio de
+          arriba.
+        </p>
+        <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          @for (size of sizes; track size) {
+            <div>
+              <label [for]="'svc-size-' + size" class="text-sm font-medium text-slate-700">
+                {{ sizeLabels[size] }}
+                <span class="block text-xs font-normal text-slate-500">{{ sizeHints[size] }}</span>
+              </label>
+              <input
+                [id]="'svc-size-' + size"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                [formControlName]="size"
+                class="field-input mt-1 tabular-nums"
+                [placeholder]="form.controls.price.value ?? ''"
+                [attr.aria-invalid]="invalid(form.controls.sizePrices.controls[size])"
+              />
+            </div>
+          }
+        </div>
+      </fieldset>
+    }
 
     <fieldset>
       <legend class="field-label">Insumos que usa</legend>

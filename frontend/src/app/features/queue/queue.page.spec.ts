@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { SessionService } from '../../core/auth/session.service';
 import { QueueItem } from '../../core/services/queue.service';
 import { stubDialog, tick } from '../../shared/testing';
@@ -28,6 +28,7 @@ function item(id: number, overrides: Partial<QueueItem> = {}): QueueItem {
     },
     client: { id: id * 100, number: id, name: `Cliente ${id}`, phone: '987654321' },
     attendedBy: null,
+    visit: null,
     ...overrides,
   };
 }
@@ -78,17 +79,44 @@ describe('QueuePage (cola de hoy)', () => {
     );
   });
 
-  it('al atender, cambia el estado y mueve la tarjeta', () => {
+  it('"Atender" abre la atención y lleva a su pantalla', () => {
     const fixture = render('RECEPTION', [item(1)]);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const el: HTMLElement = fixture.nativeElement;
     [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Atender')!.click();
-    const req = http.expectOne('/api/queue/1');
-    expect(req.request.body).toEqual({ status: 'IN_PROGRESS' });
-    req.flush(item(1, { status: 'IN_PROGRESS', startedAt: '2026-10-27T14:20:00Z' }));
-    fixture.detectChanges();
-    expect(el.querySelector('[aria-labelledby="col-IN_PROGRESS"]')!.textContent).toContain(
-      'Mascota 1',
-    );
+    const req = http.expectOne('/api/visits');
+    expect(req.request.body).toEqual({ petId: 10, queueEntryId: 1 });
+    req.flush({ id: 55 });
+    expect(navigate).toHaveBeenCalledWith(['/atenciones', 55]);
+  });
+
+  it('si ya tenía una atención abierta, lleva a esa', () => {
+    const fixture = render('RECEPTION', [item(1)]);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const el: HTMLElement = fixture.nativeElement;
+    [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Atender')!.click();
+    http
+      .expectOne('/api/visits')
+      .flush(
+        { message: 'Mascota 1 ya tiene una atención abierta', details: { visitId: 9 } },
+        { status: 409, statusText: 'Conflict' },
+      );
+    expect(navigate).toHaveBeenCalledWith(['/atenciones', 9]);
+  });
+
+  it('en atención con una atención abierta: "Continuar atención" y no se mueve por fuera', () => {
+    const fixture = render('RECEPTION', [
+      item(1, {
+        status: 'IN_PROGRESS',
+        startedAt: '2026-10-27T14:10:00Z',
+        visit: { id: 7, status: 'OPEN' },
+      }),
+    ]);
+    const el: HTMLElement = fixture.nativeElement;
+    const link = el.querySelector<HTMLAnchorElement>('a[href="/atenciones/7"]');
+    expect(link?.textContent).toContain('Continuar atención');
+    const labels = [...el.querySelectorAll('article button')].map((b) => b.textContent?.trim());
+    expect(labels).not.toContain('Terminar');
   });
 
   it('el groomer ve la cola pero sin botones de acción', () => {

@@ -12,6 +12,8 @@ export interface SessionPayload {
   sub: number;
   clinicId: number;
   role: Role;
+  /** Versión de sesión del usuario al firmar; si ya no coincide, la sesión se cerró */
+  sv: number;
 }
 
 export const SESSION_COOKIE = 'uywa_session';

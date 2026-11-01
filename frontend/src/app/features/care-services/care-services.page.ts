@@ -22,6 +22,12 @@ import {
   SERVICE_CATEGORIES,
   SERVICE_CATEGORY_LABELS,
 } from '../../core/services/inventory.models';
+import {
+  PET_SIZES,
+  PET_SIZE_HINTS,
+  PET_SIZE_LABELS,
+  PetSize,
+} from '../../core/services/grooming.models';
 import { InventoryService } from '../../core/services/inventory.service';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
@@ -38,6 +44,13 @@ type SupplyGroup = FormGroup<{
 }>;
 
 const MAX_SUPPLIES = 20;
+const PRICE = /^\d+(\.\d{1,2})?$/;
+const sizePrice = () =>
+  new FormControl<number | null>(null, [
+    Validators.min(0),
+    Validators.max(99_999),
+    Validators.pattern(PRICE),
+  ]);
 
 /**
  * Catálogo de servicios (consulta, vacunación, cirugías…) con su precio y los insumos
@@ -62,6 +75,9 @@ export class CareServicesPage {
   protected readonly igvTypes = Object.keys(IGV_LABELS) as IgvAffectation[];
   protected readonly money = money;
   protected readonly isAdmin = this.session.isAdmin;
+  protected readonly sizes = PET_SIZES;
+  protected readonly sizeLabels = PET_SIZE_LABELS;
+  protected readonly sizeHints = PET_SIZE_HINTS;
 
   protected readonly search = new FormControl('', { nonNullable: true });
   protected readonly showInactive = new FormControl(false, { nonNullable: true });
@@ -121,6 +137,13 @@ export class CareServicesPage {
     ]),
     active: [true],
     supplies: this.fb.array<SupplyGroup>([]),
+    /** Solo baño y grooming: precio por tamaño (vacío = precio base) */
+    sizePrices: new FormGroup({
+      SMALL: sizePrice(),
+      MEDIUM: sizePrice(),
+      LARGE: sizePrice(),
+      GIANT: sizePrice(),
+    }),
   });
 
   /** Buscador de insumos: productos activos del inventario. */
@@ -152,6 +175,15 @@ export class CareServicesPage {
     return unitLabel(group.controls.baseUnit.value, qty);
   }
 
+  /** "P S/ 40 · M S/ 55 · G S/ 70" para la lista */
+  protected sizeLine(s: CareService): string | null {
+    if (!s.sizePrices.length) return null;
+    return PET_SIZES.map((size) => {
+      const price = s.sizePrices.find((p) => p.size === size)?.price ?? s.price;
+      return `${PET_SIZE_LABELS[size]} ${money(price)}`;
+    }).join(' · ');
+  }
+
   protected durationText(min: number | null): string | null {
     if (!min) return null;
     if (min < 60) return `${min} min`;
@@ -170,6 +202,7 @@ export class CareServicesPage {
       durationMin: null,
       active: true,
       supplies: [],
+      sizePrices: [],
     });
   }
 
@@ -183,6 +216,7 @@ export class CareServicesPage {
       durationMin: service.durationMin,
       active: service.active,
       supplies: service.supplies,
+      sizePrices: service.sizePrices,
     });
   }
 
@@ -231,6 +265,15 @@ export class CareServicesPage {
       igv: v.igv,
       durationMin: v.durationMin ? Number(v.durationMin) : null,
       supplies: v.supplies.map((s) => ({ productId: s.productId, quantity: Number(s.quantity) })),
+      sizePrices:
+        v.category === 'GROOMING'
+          ? PET_SIZES.flatMap((size) => {
+              const price = v.sizePrices[size];
+              return price === null || (price as unknown) === ''
+                ? []
+                : [{ size, price: Number(price) }];
+            })
+          : [],
     };
     const current = this.editing();
     const request = current
@@ -263,12 +306,16 @@ export class CareServicesPage {
     durationMin: number | null;
     active: boolean;
     supplies: CareService['supplies'];
+    sizePrices: CareService['sizePrices'];
   }): void {
     this.supplies.clear();
     for (const s of value.supplies)
       this.supplies.push(this.supplyGroup(s.productId, s.name, s.baseUnit, s.quantity));
-    const { supplies: _, ...rest } = value;
-    this.form.reset({ ...rest, supplies: this.supplies.getRawValue() });
+    const { supplies: _, sizePrices, ...rest } = value;
+    const bySize = Object.fromEntries(
+      PET_SIZES.map((size) => [size, sizePrices.find((p) => p.size === size)?.price ?? null]),
+    ) as Record<PetSize, number | null>;
+    this.form.reset({ ...rest, supplies: this.supplies.getRawValue(), sizePrices: bySize });
     this.supplySearch.setValue('');
     this.open.set(true);
   }

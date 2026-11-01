@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -43,6 +42,7 @@ import {
   unitLabel,
 } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 
 type Modal = 'purchase' | 'outflow' | 'count' | 'presentation' | 'edit' | null;
 
@@ -58,9 +58,9 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
 @Component({
   selector: 'app-product-detail-page',
   imports: [
+    FechaPipe,
     ReactiveFormsModule,
     RouterLink,
-    DatePipe,
     IconComponent,
     BadgeComponent,
     ModalComponent,

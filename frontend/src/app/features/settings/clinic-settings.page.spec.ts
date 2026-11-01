@@ -13,6 +13,9 @@ const profile = {
   phone: null,
   email: null,
   logoUrl: null,
+  openingHours: [1, 2, 3, 4, 5, 6, 7].map((day) =>
+    day === 7 ? { day, open: null, close: null } : { day, open: '09:00', close: '19:00' },
+  ),
 };
 
 describe('ClinicSettingsPage', () => {
@@ -86,5 +89,39 @@ describe('ClinicSettingsPage', () => {
     });
     await tick();
     expect(TestBed.inject(SessionService).clinicName()).toBe('Clínica Uywa Chosica');
+  });
+
+  it('horario: muestra el resumen, valida que el cierre sea después y guarda los 7 días', async () => {
+    const { fixture, el } = await render();
+    expect(el.textContent).toContain('Lun a Sáb 09:00–19:00 · Dom cerrado');
+    const time = (id: string, value: string) => {
+      const input = el.querySelector<HTMLInputElement>(`#${id}`)!;
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new Event('blur'));
+      fixture.detectChanges();
+    };
+    const saveHours = () => {
+      el.querySelectorAll('form')[1].dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+    };
+    // Sábado de 9 a 8: no se envía
+    time('close-5', '08:00');
+    saveHours();
+    expect(el.textContent).toContain('El cierre debe ser después de la apertura');
+    http.expectNone('/api/clinic/hours');
+
+    time('close-5', '13:00');
+    saveHours();
+    const req = http.expectOne({ method: 'PUT', url: '/api/clinic/hours' });
+    expect(req.request.body.days[5]).toEqual({ day: 6, open: '09:00', close: '13:00' });
+    expect(req.request.body.days[6]).toEqual({ day: 7, open: null, close: null });
+    req.flush({
+      ...profile,
+      openingHours: req.request.body.days,
+    });
+    await tick();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Lun a Vie 09:00–19:00 · Sáb 09:00–13:00 · Dom cerrado');
   });
 });

@@ -8,7 +8,10 @@ import {
 import { Prisma } from '../../generated/prisma/client.js';
 import { AllExceptionsFilter, ApiError } from './all-exceptions.filter.js';
 
-function run(exception: unknown): { status: number; body: ApiError } {
+function run(
+  exception: unknown,
+  extra: Record<string, unknown> = {},
+): { status: number; body: ApiError } {
   let status = 0;
   let body = {} as ApiError;
   const res = {
@@ -27,6 +30,7 @@ function run(exception: unknown): { status: number; body: ApiError } {
         method: 'GET',
         url: '/test',
         originalUrl: '/api/test',
+        ...extra,
       }),
     }),
   } as unknown as ArgumentsHost;
@@ -80,5 +84,17 @@ describe('AllExceptionsFilter', () => {
     const { status, body } = run(new Error('password=1234 leaked'));
     expect(status).toBe(500);
     expect(body.message).toBe('Error interno del servidor');
+  });
+
+  it('devuelve el código de la petición y lo registra junto al error para encontrarlo', () => {
+    const log = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const { body } = run(new Error('se cayó'), {
+      id: '7F3A09C2',
+      user: { id: 5 },
+    });
+    expect(body.reference).toBe('7F3A09C2');
+    expect(log.mock.lastCall?.[0]).toBe('[7F3A09C2] GET /api/test · usuario 5');
   });
 });

@@ -71,10 +71,25 @@
           @if (notifications().length) {
             <ul class="max-h-80 divide-y divide-slate-100 overflow-y-auto">
               @for (n of notifications(); track n.id) {
-                <li class="px-4 py-3">
-                  <p class="text-sm font-medium text-slate-800">{{ n.title }}</p>
-                  <p class="text-sm text-slate-500">{{ n.detail }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ n.time }}</p>
+                <li>
+                  <button
+                    type="button"
+                    class="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                    (click)="openNotification(n)"
+                  >
+                    <span
+                      class="mt-1.5 size-2 shrink-0 rounded-full"
+                      [class.bg-rose-500]="n.tone === 'danger'"
+                      [class.bg-maiz-400]="n.tone === 'warning'"
+                      [class.bg-anil-400]="n.tone === 'info'"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-sm font-medium text-slate-800">{{ n.title }}</span>
+                      <span class="block text-sm text-slate-500">{{ n.detail }}</span>
+                    </span>
+                    <app-icon name="chevron-right" class="mt-0.5 size-4 shrink-0 text-slate-400" />
+                  </button>
                 </li>
               }
             </ul>
@@ -87,7 +102,7 @@
               </span>
               <p class="mt-3 text-sm font-medium text-slate-800">Todo al día</p>
               <p class="mt-1 text-sm text-slate-500">
-                Aquí verás el stock bajo, las vacunas por vencer y las citas del día.
+                Aquí verás urgencias, vencimientos, stock bajo y si la caja quedó abierta.
               </p>
             </div>
           }

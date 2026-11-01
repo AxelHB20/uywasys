@@ -1,0 +1,219 @@
+<section class="space-y-6">
+  <a
+    routerLink="/comprobantes"
+    class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+  >
+    <app-icon name="chevron-left" class="size-4" /> Comprobantes
+  </a>
+  <div>
+    <h1 class="font-display text-2xl font-semibold text-slate-900">Facturación electrónica</h1>
+    <p class="mt-1 max-w-3xl text-slate-600">
+      Boletas y facturas que se envían a SUNAT por medio de un PSE (proveedor autorizado). Mientras
+      no lo contrates, la simulación te deja probar y mostrar todo el circuito sin valor tributario.
+    </p>
+  </div>
+
+  @if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (!settings()) {
+    <div class="card h-64 animate-pulse" aria-busy="true"></div>
+  } @else {
+    <form
+      [formGroup]="form"
+      (ngSubmit)="save()"
+      class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"
+    >
+      <div class="space-y-6">
+        <section class="card space-y-5 p-6" aria-labelledby="pse-title">
+          <h2 id="pse-title" class="text-sm font-semibold text-slate-900">Proveedor</h2>
+          <fieldset>
+            <legend class="sr-only">Proveedor</legend>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label
+                class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
+              >
+                <input
+                  type="radio"
+                  formControlName="provider"
+                  value="SIMULATED"
+                  class="mt-0.5 size-5 accent-anil-600"
+                />
+                <span>
+                  <span class="block font-medium text-slate-900">Simulación</span>
+                  <span class="block text-sm text-slate-600"
+                    >Numera e imprime sin enviar a SUNAT. Para la demo.</span
+                  >
+                </span>
+              </label>
+              <label
+                class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
+              >
+                <input
+                  type="radio"
+                  formControlName="provider"
+                  value="NUBEFACT"
+                  class="mt-0.5 size-5 accent-anil-600"
+                />
+                <span>
+                  <span class="block font-medium text-slate-900">Nubefact</span>
+                  <span class="block text-sm text-slate-600">PSE/OSE autorizado por SUNAT.</span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
+          @if (provider() === 'NUBEFACT') {
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="sm:col-span-2">
+                <label for="bill-url" class="field-label">Ruta (URL de la API)</label>
+                <input
+                  id="bill-url"
+                  formControlName="apiUrl"
+                  class="field-input"
+                  placeholder="https://api.nubefact.com/api/v1/…"
+                  autocomplete="off"
+                  [attr.aria-invalid]="invalid('apiUrl')"
+                />
+                @if (invalid('apiUrl')) {
+                  <p class="field-error">Debe empezar con https://</p>
+                }
+              </div>
+              <div class="sm:col-span-2">
+                <label for="bill-token" class="field-label">Token</label>
+                <input
+                  id="bill-token"
+                  type="password"
+                  formControlName="apiToken"
+                  class="field-input"
+                  autocomplete="new-password"
+                  [placeholder]="
+                    settings()?.hasToken
+                      ? 'Guardado. Escribe uno nuevo solo para cambiarlo'
+                      : 'Cópialo del panel del PSE'
+                  "
+                />
+                <p class="mt-1.5 text-xs text-slate-500">
+                  Se guarda cifrado y nunca vuelve a mostrarse.
+                </p>
+              </div>
+              <label
+                class="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-slate-800 sm:col-span-2"
+              >
+                <input
+                  type="checkbox"
+                  formControlName="production"
+                  class="size-5 rounded accent-anil-600"
+                />
+                Producción (desmárcalo mientras uses la cuenta de pruebas del PSE)
+              </label>
+            </div>
+          }
+
+          <div>
+            <label for="bill-legal" class="field-label">Razón social</label>
+            <input
+              id="bill-legal"
+              formControlName="legalName"
+              class="field-input"
+              placeholder="Tal como figura en la ficha RUC"
+            />
+            <p class="mt-1.5 text-xs text-slate-500">Sale en la boleta y la factura impresas.</p>
+          </div>
+        </section>
+
+        <section class="card p-6" aria-labelledby="series-title">
+          <h2 id="series-title" class="text-sm font-semibold text-slate-900">Series</h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Las mismas que registraste en el PSE. Cada serie lleva su propia numeración, sin huecos.
+          </p>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            @for (
+              f of [
+                ['boletaSeries', 'Boletas'],
+                ['facturaSeries', 'Facturas'],
+                ['boletaCreditSeries', 'N. crédito de boletas'],
+                ['facturaCreditSeries', 'N. crédito de facturas'],
+              ];
+              track f[0]
+            ) {
+              <div>
+                <label [for]="'s-' + f[0]" class="field-label">{{ f[1] }}</label>
+                <input
+                  [id]="'s-' + f[0]"
+                  [formControlName]="f[0]"
+                  class="field-input uppercase tabular-nums"
+                  maxlength="4"
+                  [attr.aria-invalid]="invalid($any(f[0]))"
+                />
+                @if (invalid($any(f[0]))) {
+                  <p class="field-error">
+                    4 caracteres, empieza con {{ f[0].startsWith('boleta') ? 'B' : 'F' }}
+                  </p>
+                }
+              </div>
+            }
+          </div>
+        </section>
+      </div>
+
+      <aside class="space-y-4 lg:sticky lg:top-24 lg:self-start">
+        <section class="card space-y-4 p-6">
+          <label class="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              formControlName="enabled"
+              class="mt-0.5 size-5 rounded accent-anil-600"
+            />
+            <span>
+              <span class="block font-medium text-slate-900">Emitir boletas y facturas</span>
+              <span class="block text-sm text-slate-600"
+                >Si está apagado, cada cobro emite una nota de venta interna.</span
+              >
+            </span>
+          </label>
+          @if (settings()?.missing?.length) {
+            <div
+              class="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+            >
+              <p class="font-semibold">Para activar con el PSE falta:</p>
+              <ul class="mt-1 list-disc pl-5">
+                @for (m of settings()!.missing; track m) {
+                  <li>{{ m }}</li>
+                }
+              </ul>
+            </div>
+          }
+          <div class="flex flex-col gap-2">
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">Guardar</button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              [disabled]="testing() || form.dirty"
+              (click)="test()"
+            >
+              Probar conexión
+            </button>
+            @if (form.dirty) {
+              <p class="text-xs text-slate-500">Guarda antes de probar la conexión.</p>
+            }
+          </div>
+        </section>
+        <section class="rounded-2xl bg-slate-100 p-5 text-sm text-slate-700">
+          <p class="font-semibold text-slate-900">Al contratar Nubefact</p>
+          <ol class="mt-2 list-decimal space-y-1 pl-5">
+            <li>En su panel, copia la ruta y el token de la cuenta de pruebas.</li>
+            <li>Pégalos aquí, deja "Producción" sin marcar, guarda y prueba la conexión.</li>
+            <li>Emite boletas, facturas y una nota de crédito de prueba.</li>
+            <li>
+              Cuando el PSE te pase a producción, cambia la ruta y el token y marca "Producción".
+            </li>
+          </ol>
+        </section>
+      </aside>
+    </form>
+  }
+</section>

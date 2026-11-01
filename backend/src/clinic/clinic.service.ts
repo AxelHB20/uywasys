@@ -7,6 +7,18 @@ import { clinicLogoUrl } from '../auth/session-user.js';
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { OpeningHours, readOpeningHours } from './opening-hours.js';
+
+const DAY_NAMES = [
+  'Lunes',
+  'Martes',
+  'Miércoles',
+  'Jueves',
+  'Viernes',
+  'Sábado',
+  'Domingo',
+];
+import type { DayHoursDto } from './dto/opening-hours.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { UpdateClinicDto } from './dto/update-clinic.dto.js';
 
@@ -22,6 +34,7 @@ export interface ClinicProfile {
   logoUrl: string | null;
   /** Descuento máximo por línea (%) sin autorización del administrador */
   maxDiscountPercent: number;
+  openingHours: OpeningHours;
 }
 
 export interface SetupStatus {
@@ -41,6 +54,7 @@ const PROFILE_SELECT = {
   logoMime: true,
   logoUpdatedAt: true,
   maxDiscountPercent: true,
+  openingHours: true,
 } as const;
 
 @Injectable()
@@ -54,6 +68,48 @@ export class ClinicService {
     const clinic = await this.prisma.clinic.findUniqueOrThrow({
       where: { id: clinicId },
       select: PROFILE_SELECT,
+    });
+    return toProfile(clinic);
+  }
+
+  /** Horario de atención (lo ve el cliente en el ticket y lo usará la agenda). */
+  async updateHours(
+    actor: AuthUser,
+    days: DayHoursDto[],
+    ip?: string,
+  ): Promise<ClinicProfile> {
+    const sorted = [...days].sort((a, b) => a.day - b.day);
+    if (new Set(sorted.map((d) => d.day)).size !== 7)
+      throw new BadRequestException(
+        'Indica el horario de cada día una sola vez',
+      );
+    for (const d of sorted) {
+      if ((d.open === null) !== (d.close === null))
+        throw new BadRequestException(
+          `${DAY_NAMES[d.day - 1]}: indica la hora de apertura y la de cierre`,
+        );
+      if (d.open && d.close && d.open >= d.close)
+        throw new BadRequestException(
+          `${DAY_NAMES[d.day - 1]}: la hora de cierre debe ser después de la apertura`,
+        );
+    }
+    const openingHours: OpeningHours = sorted.map((d) => ({
+      day: d.day,
+      open: d.open,
+      close: d.close,
+    }));
+    const clinic = await this.prisma.clinic.update({
+      where: { id: actor.clinicId },
+      data: { openingHours: openingHours as unknown as Prisma.InputJsonValue },
+      select: PROFILE_SELECT,
+    });
+    await this.audit.log({
+      clinicId: actor.clinicId,
+      userId: actor.id,
+      entity: 'clinic',
+      entityId: actor.clinicId,
+      ip,
+      action: 'clinic.hours_update',
     });
     return toProfile(clinic);
   }
@@ -202,12 +258,14 @@ function toProfile(clinic: {
   logoMime: string | null;
   logoUpdatedAt: Date | null;
   maxDiscountPercent: Prisma.Decimal;
+  openingHours: unknown;
 }): ClinicProfile {
   const { logoMime: _mime, logoUpdatedAt: _updated, ...rest } = clinic;
   return {
     ...rest,
     logoUrl: clinicLogoUrl(clinic),
     maxDiscountPercent: Number(clinic.maxDiscountPercent),
+    openingHours: readOpeningHours(clinic.openingHours),
   };
 }
 

@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { SessionService, withClinic } from '../auth/session.service';
+import { DayHours } from '../../shared/utils/opening-hours';
 
 export interface ClinicProfile {
   id: number;
@@ -11,9 +12,10 @@ export interface ClinicProfile {
   phone: string | null;
   email: string | null;
   logoUrl: string | null;
+  openingHours: DayHours[];
 }
 
-export type ClinicProfileUpdate = Omit<ClinicProfile, 'id' | 'logoUrl'>;
+export type ClinicProfileUpdate = Omit<ClinicProfile, 'id' | 'logoUrl' | 'openingHours'>;
 
 export interface SetupStatus {
   profileComplete: boolean;
@@ -34,6 +36,10 @@ export class ClinicService {
     return this.http
       .patch<ClinicProfile>('/api/clinic', data)
       .pipe(tap((clinic) => this.syncSession(clinic)));
+  }
+
+  updateHours(days: DayHours[]): Observable<ClinicProfile> {
+    return this.http.put<ClinicProfile>('/api/clinic/hours', { days });
   }
 
   uploadLogo(file: File): Observable<ClinicProfile> {

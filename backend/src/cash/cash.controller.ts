@@ -37,6 +37,11 @@ export class CashController {
     return this.cash.registers(user.clinicId);
   }
 
+  @Get('pending')
+  pending(@CurrentUser() user: AuthUser) {
+    return this.cash.pending(user.clinicId);
+  }
+
   @Get('sessions/current')
   current(
     @CurrentUser() user: AuthUser,

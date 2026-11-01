@@ -125,6 +125,8 @@ export interface ClientDetail {
   consentVersion: string;
   consentChannel: string;
   marketingConsent: boolean;
+  /** Ley 29733 (cancelación): sus datos personales se borraron en esta fecha */
+  anonymizedAt: string | null;
   createdAt: string;
   pets: Pet[];
   authorized: AuthorizedPerson[];

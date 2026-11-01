@@ -33,6 +33,8 @@ model Clinic {
   timezone           String    @default("America/Lima") @db.VarChar(40)
   /// Descuento máximo por línea (%) que puede dar el personal; por encima, solo el administrador
   maxDiscountPercent Decimal   @default(10) @map("max_discount_percent") @db.Decimal(5, 2)
+  /// Horario de atención: [{ day: 1..7, open: "09:00", close: "19:00" }]; null = el de por defecto
+  openingHours       Json?     @map("opening_hours")
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -58,6 +60,15 @@ model Clinic {
   receipts         Receipt[]
   payments         Payment[]
   cashMovements    CashMovement[]
+  billingSettings  BillingSettings?
+  documents        ElectronicDocument[]
+  immunizations    Immunization[]
+  prescriptions    Prescription[]
+  appointments     Appointment[]
+  estimates        Estimate[]
+  attachments      Attachment[]
+  consents         Consent[]
+  groomingSessions GroomingSession[]
 
   @@map("clinics")
 }
@@ -71,35 +82,57 @@ model User {
   role                Role
   /// Número de colegiatura (CMVP) para veterinarios: se imprime en recetas
   licenseNumber       String?   @map("license_number") @db.VarChar(20)
+  /// Groomers: porcentaje de comisión sobre lo cobrado de sus servicios entregados
+  commissionPercent   Decimal?  @map("commission_percent") @db.Decimal(5, 2)
   active              Boolean   @default(true)
   /// true cuando el usuario entra con una clave temporal: debe cambiarla antes de usar el sistema
   mustChangePassword  Boolean   @default(false) @map("must_change_password")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until") @db.Timestamptz(3)
   lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(3)
+  /// Sube al cambiar o restablecer la contraseña: las sesiones con una versión anterior dejan de valer
+  sessionVersion      Int       @default(0) @map("session_version")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic          Clinic          @relation(fields: [clinicId], references: [id])
-  auditLogs       AuditLog[]
-  queueCreated    QueueEntry[]    @relation("QueueCreatedBy")
-  queueAttended   QueueEntry[]    @relation("QueueAttendedBy")
-  batchesReceived ProductBatch[]
-  stockMovements  StockMovement[] @relation("MovementUser")
-  movementsAsVet  StockMovement[] @relation("MovementVet")
-  visitsAttended  Visit[]         @relation("VisitAttendedBy")
-  visitsClosed    Visit[]         @relation("VisitClosedBy")
-  visitAddenda    VisitAddendum[]
-  chargesCreated  Charge[]        @relation("ChargeCreatedBy")
-  chargesVoided   Charge[]        @relation("ChargeVoidedBy")
-  chargesAsVet    Charge[]        @relation("ChargeVet")
-  shortagesClosed StockShortage[]
-  sessionsOpened  CashSession[]   @relation("SessionOpenedBy")
-  sessionsClosed  CashSession[]   @relation("SessionClosedBy")
-  receiptsCreated Receipt[]       @relation("ReceiptCreatedBy")
-  receiptsVoided  Receipt[]       @relation("ReceiptVoidedBy")
-  cashMovements   CashMovement[]  @relation("CashMovementBy")
-  cashVoided      CashMovement[]  @relation("CashMovementVoidedBy")
+  clinic               Clinic               @relation(fields: [clinicId], references: [id])
+  auditLogs            AuditLog[]
+  queueCreated         QueueEntry[]         @relation("QueueCreatedBy")
+  queueAttended        QueueEntry[]         @relation("QueueAttendedBy")
+  batchesReceived      ProductBatch[]
+  stockMovements       StockMovement[]      @relation("MovementUser")
+  movementsAsVet       StockMovement[]      @relation("MovementVet")
+  visitsAttended       Visit[]              @relation("VisitAttendedBy")
+  visitsClosed         Visit[]              @relation("VisitClosedBy")
+  visitAddenda         VisitAddendum[]
+  chargesCreated       Charge[]             @relation("ChargeCreatedBy")
+  chargesVoided        Charge[]             @relation("ChargeVoidedBy")
+  chargesAsVet         Charge[]             @relation("ChargeVet")
+  shortagesClosed      StockShortage[]
+  sessionsOpened       CashSession[]        @relation("SessionOpenedBy")
+  sessionsClosed       CashSession[]        @relation("SessionClosedBy")
+  receiptsCreated      Receipt[]            @relation("ReceiptCreatedBy")
+  receiptsVoided       Receipt[]            @relation("ReceiptVoidedBy")
+  cashMovements        CashMovement[]       @relation("CashMovementBy")
+  cashVoided           CashMovement[]       @relation("CashMovementVoidedBy")
+  documentsIssued      ElectronicDocument[] @relation("DocumentCreatedBy")
+  immunizationsApplied Immunization[]       @relation("ImmunizationAppliedBy")
+  immunizationsVoided  Immunization[]       @relation("ImmunizationVoidedBy")
+  prescriptionsIssued  Prescription[]       @relation("PrescriptionVet")
+  prescriptionsVoided  Prescription[]       @relation("PrescriptionVoidedBy")
+  appointmentsAssigned Appointment[]        @relation("AppointmentVet")
+  appointmentsCreated  Appointment[]        @relation("AppointmentCreatedBy")
+  estimatesCreated     Estimate[]           @relation("EstimateCreatedBy")
+  estimatesDecided     Estimate[]           @relation("EstimateDecidedBy")
+  estimatesConverted   Estimate[]           @relation("EstimateConvertedBy")
+  attachmentsAdded     Attachment[]         @relation("AttachmentCreatedBy")
+  attachmentsVoided    Attachment[]         @relation("AttachmentVoidedBy")
+  consentsWitnessed    Consent[]            @relation("ConsentVet")
+  consentsVoided       Consent[]            @relation("ConsentVoidedBy")
+  groomingAssigned     GroomingSession[]    @relation("GroomingGroomer")
+  groomingCreated      GroomingSession[]    @relation("GroomingCreatedBy")
+  groomingDelivered    GroomingSession[]    @relation("GroomingDeliveredBy")
+  groomingCancelled    GroomingSession[]    @relation("GroomingCancelledBy")
 
   @@index([clinicId])
   @@map("users")
@@ -204,15 +237,22 @@ model Client {
   active           Boolean       @default(true)
   /// "Cliente varios" (C-00000) para ventas de mostrador anónimas: no aparece en listas ni cifras
   walkIn           Boolean       @default(false) @map("walk_in")
+  /// Ley 29733 (cancelación): se borraron sus datos personales; los cobros se conservan sin ellos
+  anonymizedAt     DateTime?     @map("anonymized_at") @db.Timestamptz(3)
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic     Clinic             @relation(fields: [clinicId], references: [id])
-  pets       Pet[]
-  authorized AuthorizedPerson[]
-  visits     Visit[]
-  charges    Charge[]
-  receipts   Receipt[]
+  clinic        Clinic             @relation(fields: [clinicId], references: [id])
+  pets          Pet[]
+  authorized    AuthorizedPerson[]
+  visits        Visit[]
+  charges       Charge[]
+  receipts      Receipt[]
+  prescriptions Prescription[]
+  appointments  Appointment[]
+  estimates     Estimate[]
+  consents      Consent[]
+  grooming      GroomingSession[]
 
   @@unique([clinicId, docType, docNumber])
   @@unique([clinicId, number])
@@ -266,12 +306,19 @@ model Pet {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic         Clinic          @relation(fields: [clinicId], references: [id])
-  client         Client          @relation(fields: [clientId], references: [id])
+  clinic         Clinic            @relation(fields: [clinicId], references: [id])
+  client         Client            @relation(fields: [clientId], references: [id])
   queueEntries   QueueEntry[]
   stockMovements StockMovement[]
   visits         Visit[]
   charges        Charge[]
+  immunizations  Immunization[]
+  prescriptions  Prescription[]
+  appointments   Appointment[]
+  estimates      Estimate[]
+  attachments    Attachment[]
+  consents       Consent[]
+  grooming       GroomingSession[]
 
   @@unique([clinicId, number])
   /// clientId: cargar las mascotas de un cliente (ficha y lista) · clinicId+clientId: búsqueda por nombre de mascota
@@ -298,11 +345,12 @@ model QueueEntry {
   attendedById Int?        @map("attended_by_id")
   updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic     Clinic  @relation(fields: [clinicId], references: [id])
-  pet        Pet     @relation(fields: [petId], references: [id])
-  createdBy  User    @relation("QueueCreatedBy", fields: [createdById], references: [id])
-  attendedBy User?   @relation("QueueAttendedBy", fields: [attendedById], references: [id])
-  visits     Visit[]
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  pet         Pet          @relation(fields: [petId], references: [id])
+  createdBy   User         @relation("QueueCreatedBy", fields: [createdById], references: [id])
+  attendedBy  User?        @relation("QueueAttendedBy", fields: [attendedById], references: [id])
+  visits      Visit[]
+  appointment Appointment?
 
   @@index([clinicId, day])
   @@index([petId])
@@ -387,6 +435,8 @@ model Product {
   usedIn        CareServiceSupply[]
   charges       Charge[]
   shortages     StockShortage[]
+  prescribed    PrescriptionItem[]
+  estimated     EstimateItem[]
 
   @@unique([clinicId, code])
   @@index([clinicId, name])
@@ -407,9 +457,11 @@ model ProductPresentation {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic  Clinic   @relation(fields: [clinicId], references: [id])
-  product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  charges Charge[]
+  clinic     Clinic             @relation(fields: [clinicId], references: [id])
+  product    Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  charges    Charge[]
+  prescribed PrescriptionItem[]
+  estimated  EstimateItem[]
 
   @@unique([productId, name])
   @@map("product_presentations")
@@ -493,9 +545,11 @@ model CareService {
   createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic   Clinic              @relation(fields: [clinicId], references: [id])
-  supplies CareServiceSupply[]
-  charges  Charge[]
+  clinic     Clinic                 @relation(fields: [clinicId], references: [id])
+  supplies   CareServiceSupply[]
+  charges    Charge[]
+  estimated  EstimateItem[]
+  sizePrices CareServiceSizePrice[]
 
   @@unique([clinicId, name])
   @@map("care_services")
@@ -537,34 +591,56 @@ enum ChargeStatus {
 
 /// Atención: todo lo que recibe una mascota en una visita. Cerrada, ya no se edita (solo adendas).
 model Visit {
-  id           Int         @id @default(autoincrement())
-  clinicId     Int         @map("clinic_id")
-  petId        Int         @map("pet_id")
-  clientId     Int         @map("client_id")
+  id                  Int         @id @default(autoincrement())
+  clinicId            Int         @map("clinic_id")
+  petId               Int         @map("pet_id")
+  clientId            Int         @map("client_id")
   /// Entrada de la cola de la que salió, si vino por ahí
-  queueEntryId Int?        @map("queue_entry_id")
-  type         VisitType   @default(CONSULTATION)
-  status       VisitStatus @default(OPEN)
-  reason       String?     @db.VarChar(200)
+  queueEntryId        Int?        @map("queue_entry_id")
+  type                VisitType   @default(CONSULTATION)
+  status              VisitStatus @default(OPEN)
+  reason              String?     @db.VarChar(200)
   /// Peso de esa visita: forma el historial de peso y actualiza la ficha
-  weightKg     Decimal?    @map("weight_kg") @db.Decimal(5, 2)
-  temperatureC Decimal?    @map("temperature_c") @db.Decimal(4, 1)
-  notes        String?     @db.Text
-  attendedById Int         @map("attended_by_id")
-  openedAt     DateTime    @default(now()) @map("opened_at") @db.Timestamptz(3)
-  closedAt     DateTime?   @map("closed_at") @db.Timestamptz(3)
-  closedById   Int?        @map("closed_by_id")
-  cancelReason String?     @map("cancel_reason") @db.VarChar(200)
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  weightKg            Decimal?    @map("weight_kg") @db.Decimal(5, 2)
+  temperatureC        Decimal?    @map("temperature_c") @db.Decimal(4, 1)
+  /// En consulta: el Plan (P) del SOAP. En grooming: notas del servicio
+  notes               String?     @db.Text
+  // ── Consulta SOAP (Fase 5) ──
+  /// S: lo que cuenta el dueño (anamnesis)
+  anamnesis           String?     @db.Text
+  /// O: constantes y examen físico
+  heartRate           Int?        @map("heart_rate") @db.SmallInt
+  respiratoryRate     Int?        @map("respiratory_rate") @db.SmallInt
+  capillaryRefillS    Decimal?    @map("capillary_refill_s") @db.Decimal(3, 1)
+  mucosa              String?     @db.VarChar(40)
+  hydration           String?     @db.VarChar(40)
+  /// Condición corporal, escala 1 a 9
+  bodyCondition       Int?        @map("body_condition") @db.SmallInt
+  physicalExam        String?     @map("physical_exam") @db.Text
+  /// A: diagnóstico (presuntivo mientras no se confirme)
+  diagnosis           String?     @db.VarChar(300)
+  diagnosisDefinitive Boolean     @default(false) @map("diagnosis_definitive")
+  attendedById        Int         @map("attended_by_id")
+  openedAt            DateTime    @default(now()) @map("opened_at") @db.Timestamptz(3)
+  closedAt            DateTime?   @map("closed_at") @db.Timestamptz(3)
+  closedById          Int?        @map("closed_by_id")
+  cancelReason        String?     @map("cancel_reason") @db.VarChar(200)
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  clinic     Clinic          @relation(fields: [clinicId], references: [id])
-  pet        Pet             @relation(fields: [petId], references: [id])
-  client     Client          @relation(fields: [clientId], references: [id])
-  queueEntry QueueEntry?     @relation(fields: [queueEntryId], references: [id])
-  attendedBy User            @relation("VisitAttendedBy", fields: [attendedById], references: [id])
-  closedBy   User?           @relation("VisitClosedBy", fields: [closedById], references: [id])
-  charges    Charge[]
-  addenda    VisitAddendum[]
+  clinic        Clinic           @relation(fields: [clinicId], references: [id])
+  pet           Pet              @relation(fields: [petId], references: [id])
+  client        Client           @relation(fields: [clientId], references: [id])
+  queueEntry    QueueEntry?      @relation(fields: [queueEntryId], references: [id])
+  attendedBy    User             @relation("VisitAttendedBy", fields: [attendedById], references: [id])
+  closedBy      User?            @relation("VisitClosedBy", fields: [closedById], references: [id])
+  charges       Charge[]
+  addenda       VisitAddendum[]
+  immunizations Immunization[]
+  prescriptions Prescription[]
+  estimates     Estimate[]
+  attachments   Attachment[]
+  consents      Consent[]
+  grooming      GroomingSession?
 
   @@index([clinicId, status])
   @@index([petId, openedAt])
@@ -629,18 +705,19 @@ model Charge {
   voidedAt        DateTime?      @map("voided_at") @db.Timestamptz(3)
   voidReason      String?        @map("void_reason") @db.VarChar(200)
 
-  clinic       Clinic               @relation(fields: [clinicId], references: [id])
-  client       Client               @relation(fields: [clientId], references: [id])
-  visit        Visit?               @relation(fields: [visitId], references: [id])
-  pet          Pet?                 @relation(fields: [petId], references: [id])
-  careService  CareService?         @relation(fields: [careServiceId], references: [id])
-  product      Product?             @relation(fields: [productId], references: [id])
-  presentation ProductPresentation? @relation(fields: [presentationId], references: [id])
-  vet          User?                @relation("ChargeVet", fields: [vetId], references: [id])
-  createdBy    User                 @relation("ChargeCreatedBy", fields: [createdById], references: [id])
-  voidedBy     User?                @relation("ChargeVoidedBy", fields: [voidedById], references: [id])
-  shortages    StockShortage[]
-  allocations  PaymentAllocation[]
+  clinic           Clinic               @relation(fields: [clinicId], references: [id])
+  client           Client               @relation(fields: [clientId], references: [id])
+  visit            Visit?               @relation(fields: [visitId], references: [id])
+  pet              Pet?                 @relation(fields: [petId], references: [id])
+  careService      CareService?         @relation(fields: [careServiceId], references: [id])
+  product          Product?             @relation(fields: [productId], references: [id])
+  presentation     ProductPresentation? @relation(fields: [presentationId], references: [id])
+  vet              User?                @relation("ChargeVet", fields: [vetId], references: [id])
+  createdBy        User                 @relation("ChargeCreatedBy", fields: [createdById], references: [id])
+  voidedBy         User?                @relation("ChargeVoidedBy", fields: [voidedById], references: [id])
+  prescriptionItem PrescriptionItem?
+  shortages        StockShortage[]
+  allocations      PaymentAllocation[]
 
   @@index([clinicId, clientId, status])
   @@index([clinicId, createdAt])
@@ -765,14 +842,15 @@ model Receipt {
   voidedAt    DateTime?     @map("voided_at") @db.Timestamptz(3)
   voidReason  String?       @map("void_reason") @db.VarChar(200)
 
-  clinic      Clinic              @relation(fields: [clinicId], references: [id])
-  client      Client              @relation(fields: [clientId], references: [id])
-  session     CashSession         @relation(fields: [sessionId], references: [id])
-  createdBy   User                @relation("ReceiptCreatedBy", fields: [createdById], references: [id])
-  voidedBy    User?               @relation("ReceiptVoidedBy", fields: [voidedById], references: [id])
+  clinic      Clinic               @relation(fields: [clinicId], references: [id])
+  client      Client               @relation(fields: [clientId], references: [id])
+  session     CashSession          @relation(fields: [sessionId], references: [id])
+  createdBy   User                 @relation("ReceiptCreatedBy", fields: [createdById], references: [id])
+  voidedBy    User?                @relation("ReceiptVoidedBy", fields: [voidedById], references: [id])
   payments    Payment[]
   allocations PaymentAllocation[]
   refunds     CashMovement[]
+  documents   ElectronicDocument[]
 
   @@unique([clinicId, number])
   @@unique([clinicId, requestKey])
@@ -843,4 +921,538 @@ model CashMovement {
   @@index([sessionId])
   @@index([receiptId])
   @@map("cash_movements")
+}
+
+// ─── Fase 4: comprobantes electrónicos (SUNAT por medio de un PSE/OSE) ─────────
+
+/// Proveedor que envía los comprobantes a SUNAT. SIMULATED no envía nada: sirve para la demo y las pruebas
+enum BillingProvider {
+  SIMULATED
+  NUBEFACT
+}
+
+/// Catálogo 01 de SUNAT: 03 boleta, 01 factura, 07 nota de crédito
+enum ElectronicDocumentType {
+  BOLETA
+  FACTURA
+  CREDIT_NOTE
+}
+
+/// PENDING por enviar · SENT recibido por el PSE, esperando a SUNAT · ACCEPTED aceptado por SUNAT
+/// REJECTED rechazado por SUNAT · ERROR no se pudo enviar (se reintenta solo)
+enum ElectronicDocumentStatus {
+  PENDING
+  SENT
+  ACCEPTED
+  REJECTED
+  ERROR
+}
+
+/// Configuración de facturación electrónica de la clínica (una por clínica)
+model BillingSettings {
+  clinicId            Int             @id @map("clinic_id")
+  /// Mientras sea false, el sistema solo emite notas de venta internas
+  enabled             Boolean         @default(false)
+  provider            BillingProvider @default(SIMULATED)
+  /// false = ambiente de pruebas (beta) del PSE; true = producción ante SUNAT
+  production          Boolean         @default(false)
+  /// Razón social tal como figura en SUNAT: va en la representación impresa
+  legalName           String?         @map("legal_name") @db.VarChar(150)
+  /// Ruta de la API que entrega el PSE (Nubefact la muestra en su panel)
+  apiUrl              String?         @map("api_url") @db.VarChar(300)
+  /// Token del PSE cifrado con AES-256-GCM: nunca se devuelve al navegador
+  apiTokenEnc         String?         @map("api_token_enc")
+  boletaSeries        String          @default("B001") @map("boleta_series") @db.Char(4)
+  facturaSeries       String          @default("F001") @map("factura_series") @db.Char(4)
+  boletaCreditSeries  String          @default("BC01") @map("boleta_credit_series") @db.Char(4)
+  facturaCreditSeries String          @default("FC01") @map("factura_credit_series") @db.Char(4)
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@map("billing_settings")
+}
+
+/// Boleta, factura o nota de crédito electrónica. Guarda una foto de lo emitido (cliente, líneas y
+/// montos) y el estado del envío a SUNAT, que se reintenta solo si el PSE no responde.
+model ElectronicDocument {
+  id                Int                      @id @default(autoincrement())
+  clinicId          Int                      @map("clinic_id")
+  receiptId         Int?                     @map("receipt_id")
+  type              ElectronicDocumentType
+  series            String                   @db.Char(4)
+  /// Correlativo por clínica y serie (ClinicSequence "cpe:B001"): sin huecos ni repetidos
+  number            Int
+  issueDate         DateTime                 @map("issue_date") @db.Date
+  /// Catálogo 06 de SUNAT: 1 DNI, 4 carné de extranjería, 6 RUC, 7 pasaporte, - sin documento
+  customerDocType   String                   @map("customer_doc_type") @db.VarChar(1)
+  customerDocNumber String                   @map("customer_doc_number") @db.VarChar(15)
+  customerName      String                   @map("customer_name") @db.VarChar(150)
+  customerAddress   String?                  @map("customer_address") @db.VarChar(200)
+  taxedAmount       Decimal                  @map("taxed_amount") @db.Decimal(12, 2)
+  exemptAmount      Decimal                  @map("exempt_amount") @db.Decimal(12, 2)
+  unaffectedAmount  Decimal                  @map("unaffected_amount") @db.Decimal(12, 2)
+  igvAmount         Decimal                  @map("igv_amount") @db.Decimal(12, 2)
+  total             Decimal                  @db.Decimal(12, 2)
+  /// Líneas tal como se emitieron (descripción, unidad SUNAT, cantidad, valor, IGV, total)
+  items             Json
+  /// Nota de crédito: el comprobante que modifica, y su motivo
+  relatedId         Int?                     @map("related_id")
+  reason            String?                  @db.VarChar(200)
+  provider          BillingProvider
+  status            ElectronicDocumentStatus @default(PENDING)
+  attempts          Int                      @default(0)
+  /// Próximo intento de envío o de consulta; null = no hay nada programado
+  nextAttemptAt     DateTime?                @map("next_attempt_at") @db.Timestamptz(3)
+  lastError         String?                  @map("last_error") @db.VarChar(500)
+  sunatDescription  String?                  @map("sunat_description") @db.VarChar(500)
+  hash              String?                  @db.VarChar(100)
+  qrText            String?                  @map("qr_text") @db.VarChar(500)
+  pdfUrl            String?                  @map("pdf_url") @db.VarChar(500)
+  xmlUrl            String?                  @map("xml_url") @db.VarChar(500)
+  cdrUrl            String?                  @map("cdr_url") @db.VarChar(500)
+  sentAt            DateTime?                @map("sent_at") @db.Timestamptz(3)
+  acceptedAt        DateTime?                @map("accepted_at") @db.Timestamptz(3)
+  createdById       Int                      @map("created_by_id")
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic      Clinic               @relation(fields: [clinicId], references: [id])
+  receipt     Receipt?             @relation(fields: [receiptId], references: [id])
+  related     ElectronicDocument?  @relation("CreditNotes", fields: [relatedId], references: [id])
+  creditNotes ElectronicDocument[] @relation("CreditNotes")
+  createdBy   User                 @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([clinicId, series, number])
+  @@index([clinicId, issueDate])
+  @@index([status, nextAttemptAt])
+  @@index([receiptId])
+  @@index([relatedId])
+  @@map("electronic_documents")
+}
+
+// ── Fase 5: módulo médico ──
+
+enum ImmunizationKind {
+  VACCINE
+  /// Antiparasitario interno (pastilla, jarabe)
+  DEWORMING_INTERNAL
+  /// Antipulgas y garrapatas (pipeta, masticable, collar)
+  DEWORMING_EXTERNAL
+}
+
+/// Vacunas y desparasitaciones: forman el carnet. No se borran; un error se anula con motivo.
+model Immunization {
+  id             Int              @id @default(autoincrement())
+  clinicId       Int              @map("clinic_id")
+  petId          Int              @map("pet_id")
+  /// Atención en la que se aplicó; null si se registra una aplicada antes o en otra clínica
+  visitId        Int?             @map("visit_id")
+  kind           ImmunizationKind
+  /// Vacuna o producto: "Séxtuple", "Antirrábica", "Bravecto 20-40 kg"
+  name           String           @db.VarChar(100)
+  laboratory     String?          @db.VarChar(60)
+  batchNumber    String?          @map("batch_number") @db.VarChar(40)
+  appliedAt      DateTime         @map("applied_at") @db.Date
+  /// Próximo refuerzo o dosis: alimenta los recordatorios
+  nextDueAt      DateTime?        @map("next_due_at") @db.Date
+  /// true = se aplicó en otra clínica (se anota con lo que trae el dueño)
+  external       Boolean          @default(false)
+  externalClinic String?          @map("external_clinic") @db.VarChar(120)
+  notes          String?          @db.VarChar(300)
+  appliedById    Int              @map("applied_by_id")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  voidedAt       DateTime?        @map("voided_at") @db.Timestamptz(3)
+  voidedById     Int?             @map("voided_by_id")
+  voidReason     String?          @map("void_reason") @db.VarChar(200)
+
+  clinic    Clinic @relation(fields: [clinicId], references: [id])
+  pet       Pet    @relation(fields: [petId], references: [id])
+  visit     Visit? @relation(fields: [visitId], references: [id])
+  appliedBy User   @relation("ImmunizationAppliedBy", fields: [appliedById], references: [id])
+  voidedBy  User?  @relation("ImmunizationVoidedBy", fields: [voidedById], references: [id])
+
+  @@index([petId, appliedAt])
+  @@index([clinicId, nextDueAt])
+  @@index([visitId])
+  @@map("immunizations")
+}
+
+/// Receta médica veterinaria: la emite un veterinario con colegiatura dentro de una atención.
+/// No se edita; un error se anula con motivo (antes hay que quitar lo entregado).
+model Prescription {
+  id         Int       @id @default(autoincrement())
+  clinicId   Int       @map("clinic_id")
+  /// Correlativo de la clínica (RX-00012): es el N.º de receta retenida de los controlados
+  number     Int
+  visitId    Int       @map("visit_id")
+  petId      Int       @map("pet_id")
+  clientId   Int       @map("client_id")
+  vetId      Int       @map("vet_id")
+  /// Indicaciones generales para el dueño
+  notes      String?   @db.VarChar(1000)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  voidedAt   DateTime? @map("voided_at") @db.Timestamptz(3)
+  voidedById Int?      @map("voided_by_id")
+  voidReason String?   @map("void_reason") @db.VarChar(200)
+
+  clinic   Clinic             @relation(fields: [clinicId], references: [id])
+  visit    Visit              @relation(fields: [visitId], references: [id])
+  pet      Pet                @relation(fields: [petId], references: [id])
+  client   Client             @relation(fields: [clientId], references: [id])
+  vet      User               @relation("PrescriptionVet", fields: [vetId], references: [id])
+  voidedBy User?              @relation("PrescriptionVoidedBy", fields: [voidedById], references: [id])
+  items    PrescriptionItem[]
+
+  @@unique([clinicId, number])
+  @@index([visitId])
+  @@index([petId, createdAt])
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id                Int      @id @default(autoincrement())
+  prescriptionId    Int      @map("prescription_id")
+  position          Int      @db.SmallInt
+  /// Producto del inventario, si se eligió de ahí
+  productId         Int?     @map("product_id")
+  presentationId    Int?     @map("presentation_id")
+  /// Medicamento tal como sale impreso (copia: no cambia si se renombra el producto)
+  drug              String   @db.VarChar(150)
+  dose              String   @db.VarChar(80)
+  route             String?  @db.VarChar(40)
+  frequency         String   @db.VarChar(60)
+  duration          String   @db.VarChar(60)
+  instructions      String?  @db.VarChar(300)
+  /// Copia del producto al emitir: los controlados se imprimen como receta retenida
+  controlled        Boolean  @default(false)
+  /// Lo que se entregó en la clínica (presentaciones); genera un cargo
+  dispensedQuantity Decimal? @map("dispensed_quantity") @db.Decimal(10, 3)
+  chargeId          Int?     @unique @map("charge_id")
+
+  prescription Prescription         @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  product      Product?             @relation(fields: [productId], references: [id])
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id])
+  charge       Charge?              @relation(fields: [chargeId], references: [id])
+
+  @@index([prescriptionId])
+  @@map("prescription_items")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  /// Llegó: pasó a la cola de hoy
+  ARRIVED
+  NO_SHOW
+  CANCELLED
+}
+
+/// Cita en la agenda. Al llegar pasa a la cola del día y sigue el circuito normal.
+model Appointment {
+  id           Int               @id @default(autoincrement())
+  clinicId     Int               @map("clinic_id")
+  petId        Int               @map("pet_id")
+  clientId     Int               @map("client_id")
+  /// Quién atiende; null = el veterinario que esté libre
+  vetId        Int?              @map("vet_id")
+  startsAt     DateTime          @map("starts_at") @db.Timestamptz(3)
+  durationMin  Int               @default(30) @map("duration_min") @db.SmallInt
+  type         VisitType         @default(CONSULTATION)
+  reason       String?           @db.VarChar(200)
+  notes        String?           @db.VarChar(300)
+  status       AppointmentStatus @default(SCHEDULED)
+  queueEntryId Int?              @unique @map("queue_entry_id")
+  cancelReason String?           @map("cancel_reason") @db.VarChar(200)
+  createdById  Int               @map("created_by_id")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic     Clinic      @relation(fields: [clinicId], references: [id])
+  pet        Pet         @relation(fields: [petId], references: [id])
+  client     Client      @relation(fields: [clientId], references: [id])
+  vet        User?       @relation("AppointmentVet", fields: [vetId], references: [id])
+  createdBy  User        @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  queueEntry QueueEntry? @relation(fields: [queueEntryId], references: [id])
+
+  @@index([clinicId, startsAt])
+  @@index([petId, startsAt])
+  @@map("appointments")
+}
+
+enum EstimateStatus {
+  /// Emitido, esperando la respuesta del dueño
+  PENDING
+  ACCEPTED
+  REJECTED
+  /// Sus líneas ya se cargaron a una atención
+  CONVERTED
+}
+
+/// Presupuesto para cirugías y tratamientos: el dueño lo acepta y se convierte en cargos.
+model Estimate {
+  id            Int            @id @default(autoincrement())
+  clinicId      Int            @map("clinic_id")
+  /// Correlativo de la clínica (PR-00012)
+  number        Int
+  clientId      Int            @map("client_id")
+  petId         Int            @map("pet_id")
+  title         String         @db.VarChar(150)
+  validUntil    DateTime       @map("valid_until") @db.Date
+  notes         String?        @db.VarChar(1000)
+  status        EstimateStatus @default(PENDING)
+  total         Decimal        @db.Decimal(12, 2)
+  createdById   Int            @map("created_by_id")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt     DateTime?      @map("decided_at") @db.Timestamptz(3)
+  decidedById   Int?           @map("decided_by_id")
+  /// Cómo aceptó o por qué no (p. ej. "Aceptó por WhatsApp")
+  decisionNote  String?        @map("decision_note") @db.VarChar(200)
+  visitId       Int?           @map("visit_id")
+  convertedAt   DateTime?      @map("converted_at") @db.Timestamptz(3)
+  convertedById Int?           @map("converted_by_id")
+
+  clinic      Clinic         @relation(fields: [clinicId], references: [id])
+  client      Client         @relation(fields: [clientId], references: [id])
+  pet         Pet            @relation(fields: [petId], references: [id])
+  createdBy   User           @relation("EstimateCreatedBy", fields: [createdById], references: [id])
+  decidedBy   User?          @relation("EstimateDecidedBy", fields: [decidedById], references: [id])
+  convertedBy User?          @relation("EstimateConvertedBy", fields: [convertedById], references: [id])
+  visit       Visit?         @relation(fields: [visitId], references: [id])
+  items       EstimateItem[]
+
+  @@unique([clinicId, number])
+  @@index([clinicId, status])
+  @@index([petId])
+  @@map("estimates")
+}
+
+model EstimateItem {
+  id             Int            @id @default(autoincrement())
+  estimateId     Int            @map("estimate_id")
+  position       Int            @db.SmallInt
+  careServiceId  Int?           @map("care_service_id")
+  productId      Int?           @map("product_id")
+  presentationId Int?           @map("presentation_id")
+  description    String         @db.VarChar(200)
+  quantity       Decimal        @db.Decimal(10, 3)
+  /// Precio con IGV al emitir el presupuesto: se respeta al convertir
+  unitPrice      Decimal        @map("unit_price") @db.Decimal(10, 2)
+  discount       Decimal        @default(0) @db.Decimal(10, 2)
+  total          Decimal        @db.Decimal(12, 2)
+  igvAffectation IgvAffectation @map("igv_affectation")
+  /// Lleva un controlado: al convertir pide el N.º de receta
+  controlled     Boolean        @default(false)
+
+  estimate     Estimate             @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  careService  CareService?         @relation(fields: [careServiceId], references: [id])
+  product      Product?             @relation(fields: [productId], references: [id])
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id])
+
+  @@index([estimateId])
+  @@map("estimate_items")
+}
+
+// ── Fase 5, paso 5: adjuntos y consentimientos ──
+
+enum AttachmentKind {
+  PHOTO
+  LAB
+  IMAGING
+  DOCUMENT
+}
+
+/// Archivo de la historia clínica (foto, análisis, radiografía, documento). No se borra: se anula.
+model Attachment {
+  id          Int            @id @default(autoincrement())
+  clinicId    Int            @map("clinic_id")
+  petId       Int            @map("pet_id")
+  visitId     Int?           @map("visit_id")
+  kind        AttachmentKind
+  title       String         @db.VarChar(150)
+  fileName    String         @map("file_name") @db.VarChar(200)
+  mime        String         @db.VarChar(40)
+  size        Int
+  createdById Int            @map("created_by_id")
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  voidedAt    DateTime?      @map("voided_at") @db.Timestamptz(3)
+  voidedById  Int?           @map("voided_by_id")
+  voidReason  String?        @map("void_reason") @db.VarChar(200)
+
+  clinic    Clinic          @relation(fields: [clinicId], references: [id])
+  pet       Pet             @relation(fields: [petId], references: [id])
+  visit     Visit?          @relation(fields: [visitId], references: [id])
+  createdBy User            @relation("AttachmentCreatedBy", fields: [createdById], references: [id])
+  voidedBy  User?           @relation("AttachmentVoidedBy", fields: [voidedById], references: [id])
+  file      AttachmentFile?
+
+  @@index([petId, createdAt])
+  @@index([visitId])
+  @@map("attachments")
+}
+
+/// El contenido va aparte para que listar adjuntos no cargue los archivos.
+/// Se guarda en la base: entra en el respaldo cifrado de cada día.
+model AttachmentFile {
+  attachmentId Int        @id @map("attachment_id")
+  data         Bytes
+  attachment   Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@map("attachment_files")
+}
+
+enum ConsentType {
+  SURGERY
+  ANESTHESIA
+  EUTHANASIA
+  HOSPITALIZATION
+  OTHER
+}
+
+/// Consentimiento informado firmado en pantalla. Guarda el texto exacto que se firmó, la firma
+/// y un hash de todo: si algo cambiara después, no coincidiría.
+model Consent {
+  id             Int         @id @default(autoincrement())
+  clinicId       Int         @map("clinic_id")
+  /// Correlativo de la clínica (CI-00012)
+  number         Int
+  petId          Int         @map("pet_id")
+  clientId       Int         @map("client_id")
+  visitId        Int?        @map("visit_id")
+  type           ConsentType
+  procedure      String      @db.VarChar(200)
+  text           String      @db.Text
+  signerName     String      @map("signer_name") @db.VarChar(150)
+  signerDocument String?     @map("signer_document") @db.VarChar(20)
+  /// Propietario, persona autorizada…
+  signerRelation String      @map("signer_relation") @db.VarChar(40)
+  /// Firma dibujada en pantalla (PNG)
+  signature      Bytes
+  signedAt       DateTime    @default(now()) @map("signed_at") @db.Timestamptz(3)
+  vetId          Int         @map("vet_id")
+  /// SHA-256 del texto, firmante, firma y fecha
+  hash           String      @db.Char(64)
+  voidedAt       DateTime?   @map("voided_at") @db.Timestamptz(3)
+  voidedById     Int?        @map("voided_by_id")
+  voidReason     String?     @map("void_reason") @db.VarChar(200)
+
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+  pet      Pet    @relation(fields: [petId], references: [id])
+  client   Client @relation(fields: [clientId], references: [id])
+  visit    Visit? @relation(fields: [visitId], references: [id])
+  vet      User   @relation("ConsentVet", fields: [vetId], references: [id])
+  voidedBy User?  @relation("ConsentVoidedBy", fields: [voidedById], references: [id])
+
+  @@unique([clinicId, number])
+  @@index([petId, signedAt])
+  @@map("consents")
+}
+
+// ─── Fase 6: grooming ────────────────────────────────────────────────────────
+
+/// Tamaño de la mascota para el precio del baño y el corte
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+  GIANT
+}
+
+/// Avanza en este orden; se puede saltar un paso (baño sin corte) o volver uno atrás para corregir
+enum GroomingStatus {
+  WAITING
+  BATHING
+  CUTTING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum GroomingTransport {
+  NONE
+  PICKUP
+  DROPOFF
+  ROUND_TRIP
+}
+
+/// Precio de un servicio según el tamaño de la mascota (si falta, rige el precio base)
+model CareServiceSizePrice {
+  serviceId Int         @map("service_id")
+  size      PetSize
+  /// Con IGV incluido
+  price     Decimal     @db.Decimal(10, 2)
+  service   CareService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, size])
+  @@map("care_service_size_prices")
+}
+
+/// Servicio de baño y peluquería: del ingreso con su checklist a la entrega. Sus servicios son
+/// cargos de una atención de tipo GROOMING, que se cierra al entregar la mascota.
+model GroomingSession {
+  id                Int               @id @default(autoincrement())
+  clinicId          Int               @map("clinic_id")
+  /// Correlativo de la clínica (GR-00012): número de la constancia
+  number            Int
+  /// Día de la clínica del ingreso (tablero)
+  day               DateTime          @db.Date
+  petId             Int               @map("pet_id")
+  clientId          Int               @map("client_id")
+  visitId           Int               @unique @map("visit_id")
+  size              PetSize
+  status            GroomingStatus    @default(WAITING)
+  groomerId         Int?              @map("groomer_id")
+  /// Hora de recojo acordada con el dueño
+  promisedAt        DateTime?         @map("promised_at") @db.Timestamptz(3)
+  // ── Checklist de ingreso: no se edita después (respaldo ante reclamos) ──
+  fleas             Boolean           @default(false)
+  ticks             Boolean           @default(false)
+  /// Nudos o pelo apelmazado
+  matting           Boolean           @default(false)
+  aggressive        Boolean           @default(false)
+  /// Heridas, irritación u otras observaciones de piel y orejas
+  skinNotes         String?           @map("skin_notes") @db.VarChar(300)
+  /// Collar, correa, ropa…
+  belongings        String?           @db.VarChar(200)
+  /// Lo que pide el dueño: tipo de corte, perfume, moño…
+  instructions      String?           @db.VarChar(300)
+  transport         GroomingTransport @default(NONE)
+  transportAddress  String?           @map("transport_address") @db.VarChar(200)
+  /// Firma del dueño al dejar la mascota (PNG), opcional
+  signerName        String?           @map("signer_name") @db.VarChar(150)
+  signature         Bytes?
+  checkInAt         DateTime          @default(now()) @map("check_in_at") @db.Timestamptz(3)
+  bathingAt         DateTime?         @map("bathing_at") @db.Timestamptz(3)
+  cuttingAt         DateTime?         @map("cutting_at") @db.Timestamptz(3)
+  readyAt           DateTime?         @map("ready_at") @db.Timestamptz(3)
+  /// Cuándo se avisó al dueño por WhatsApp
+  notifiedAt        DateTime?         @map("notified_at") @db.Timestamptz(3)
+  deliveredAt       DateTime?         @map("delivered_at") @db.Timestamptz(3)
+  pickedUpBy        String?           @map("picked_up_by") @db.VarChar(150)
+  pickedUpDocument  String?           @map("picked_up_document") @db.VarChar(20)
+  pickedUpRelation  String?           @map("picked_up_relation") @db.VarChar(40)
+  /// Comisión del groomer congelada al entregar (su porcentaje de ese momento)
+  commissionPercent Decimal?          @map("commission_percent") @db.Decimal(5, 2)
+  cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason      String?           @map("cancel_reason") @db.VarChar(200)
+  createdById       Int               @map("created_by_id")
+  deliveredById     Int?              @map("delivered_by_id")
+  cancelledById     Int?              @map("cancelled_by_id")
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic      Clinic @relation(fields: [clinicId], references: [id])
+  pet         Pet    @relation(fields: [petId], references: [id])
+  client      Client @relation(fields: [clientId], references: [id])
+  visit       Visit  @relation(fields: [visitId], references: [id])
+  groomer     User?  @relation("GroomingGroomer", fields: [groomerId], references: [id])
+  createdBy   User   @relation("GroomingCreatedBy", fields: [createdById], references: [id])
+  deliveredBy User?  @relation("GroomingDeliveredBy", fields: [deliveredById], references: [id])
+  cancelledBy User?  @relation("GroomingCancelledBy", fields: [cancelledById], references: [id])
+
+  @@unique([clinicId, number])
+  @@index([clinicId, day])
+  @@index([clinicId, status])
+  @@index([petId, checkInAt])
+  @@index([groomerId, deliveredAt])
+  @@map("grooming_sessions")
 }

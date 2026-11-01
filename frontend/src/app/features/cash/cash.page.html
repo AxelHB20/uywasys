@@ -1,0 +1,687 @@
+<section class="space-y-6">
+  @if (loading() && !current()) {
+    <div class="card space-y-3 p-6" aria-busy="true" aria-label="Cargando caja">
+      <div class="h-6 w-48 animate-pulse rounded bg-slate-100"></div>
+      <div class="h-4 w-64 animate-pulse rounded bg-slate-100"></div>
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (current(); as s) {
+    <!-- Caja abierta -->
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="font-display text-2xl font-semibold text-slate-900">Caja</h1>
+        <p class="mt-1 text-slate-600">
+          {{ s.register.name }} · abierta {{ relativeDay(s.openedAt).toLowerCase() }} a las
+          {{ s.openedAt | fecha: 'time' }} por {{ s.openedBy.fullName }}
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-secondary" (click)="openExpense()">Egreso</button>
+        <button type="button" class="btn btn-secondary" (click)="openClose()">Cerrar caja</button>
+        <button type="button" class="btn btn-primary" (click)="openCounter()">
+          <app-icon name="plus" class="size-4" /> Venta de mostrador
+        </button>
+      </div>
+    </div>
+
+    <ul class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label="Resumen de la caja">
+      <li class="card p-4 sm:p-5">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Efectivo en caja</p>
+        <p class="mt-2 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+          {{ money(s.expectedCash) }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">Inicial {{ money(s.openingAmount) }}</p>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cobrado</p>
+        <p class="mt-2 font-display text-2xl font-semibold text-emerald-700 tabular-nums">
+          {{ money(s.totals.net) }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">
+          {{ s.totals.receipts }} {{ s.totals.receipts === 1 ? 'cobro' : 'cobros' }}
+        </p>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Egresos</p>
+        <p class="mt-2 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+          {{ money(s.expenses) }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">Caja chica</p>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Por medio</p>
+        @if (methodsWithMoney().length) {
+          <ul class="mt-2 space-y-1 text-sm">
+            @for (m of methodsWithMoney(); track m.method) {
+              <li class="flex justify-between gap-2">
+                <span class="text-slate-600">{{ m.label }}</span>
+                <span class="font-medium text-slate-900 tabular-nums">{{ money(m.net) }}</span>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="mt-2 text-sm text-slate-500">Aún sin cobros</p>
+        }
+      </li>
+    </ul>
+
+    <div class="grid gap-6 xl:grid-cols-2 xl:items-start">
+      <!-- Por cobrar -->
+      <section class="card overflow-hidden" aria-labelledby="pending-title">
+        <div class="flex items-center justify-between px-5 pt-5">
+          <h2 id="pending-title" class="font-display text-lg font-semibold text-slate-900">
+            Por cobrar
+          </h2>
+          <span class="text-sm text-slate-500 tabular-nums">{{ pending().length }}</span>
+        </div>
+        @if (pending().length) {
+          <ul class="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+            @for (p of pending(); track p.client.id) {
+              <li class="flex items-center gap-3 px-5 py-3.5">
+                <div class="min-w-0 flex-1">
+                  <a
+                    [routerLink]="['/clientes', p.client.id]"
+                    class="font-medium text-slate-900 hover:text-anil-700"
+                    >{{ p.client.name }}</a
+                  >
+                  <p class="text-sm text-slate-500">
+                    {{ p.charges }} {{ p.charges === 1 ? 'cargo' : 'cargos' }} · desde
+                    {{ relativeDay(p.since).toLowerCase() }}
+                  </p>
+                </div>
+                <p class="font-semibold text-slate-900 tabular-nums">{{ money(p.balance) }}</p>
+                <button
+                  type="button"
+                  class="btn btn-primary h-10 px-4"
+                  [attr.aria-label]="'Cobrar a ' + p.client.name"
+                  (click)="openCollect(p.client.id)"
+                >
+                  Cobrar
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="px-5 pt-2 pb-6 text-sm text-slate-500">
+            Nadie tiene cuentas por cobrar. Lo que se registra en las atenciones aparece aquí.
+          </p>
+        }
+      </section>
+
+      <!-- Movimientos de la sesión -->
+      <section class="card overflow-hidden" aria-labelledby="receipts-title">
+        <h2 id="receipts-title" class="px-5 pt-5 font-display text-lg font-semibold text-slate-900">
+          Cobros de esta caja
+        </h2>
+        @if (s.receipts.length) {
+          <ul class="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+            @for (r of s.receipts.slice().reverse(); track r.id) {
+              <li>
+                <a
+                  [routerLink]="['/caja/tickets', r.id]"
+                  class="flex items-center gap-3 px-5 py-3 hover:bg-slate-50"
+                >
+                  <span class="w-14 shrink-0 text-sm text-slate-500 tabular-nums">{{
+                    r.createdAt | fecha: 'time'
+                  }}</span>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate font-medium text-slate-900">{{ r.client }}</p>
+                    <p class="text-xs text-slate-500">{{ r.code }} · {{ r.createdBy }}</p>
+                  </div>
+                  @if (r.status === 'VOID') {
+                    <app-badge tone="neutral">Anulado</app-badge>
+                  }
+                  <span
+                    class="font-semibold tabular-nums"
+                    [class]="r.status === 'VOID' ? 'text-slate-400 line-through' : 'text-slate-900'"
+                    >{{ money(r.total) }}</span
+                  >
+                </a>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="px-5 pt-2 pb-5 text-sm text-slate-500">Aún no hay cobros en esta caja.</p>
+        }
+
+        @if (s.movements.length) {
+          <h3 class="border-t border-slate-100 px-5 pt-4 text-sm font-semibold text-slate-900">
+            Egresos y devoluciones
+          </h3>
+          <ul class="mt-2 divide-y divide-slate-100 pb-2">
+            @for (m of s.movements; track m.id) {
+              <li class="flex items-center gap-3 px-5 py-2.5 text-sm">
+                <span class="w-14 shrink-0 text-slate-500 tabular-nums">{{
+                  m.createdAt | fecha: 'time'
+                }}</span>
+                <span
+                  class="min-w-0 flex-1"
+                  [class]="m.voided ? 'text-slate-400 line-through' : 'text-slate-700'"
+                >
+                  {{ m.kind === 'EXPENSE' ? 'Egreso' : 'Devolución' }}: {{ m.reason }}
+                </span>
+                <span
+                  class="font-medium tabular-nums"
+                  [class]="m.voided ? 'text-slate-400' : 'text-rose-700'"
+                  >−{{ money(m.amount) }}</span
+                >
+                @if (isAdmin() && m.kind === 'EXPENSE' && !m.voided) {
+                  <button
+                    type="button"
+                    class="btn btn-ghost size-9 shrink-0 px-0 text-slate-500"
+                    [attr.aria-label]="'Anular egreso ' + m.reason"
+                    (click)="askVoidExpense(m)"
+                  >
+                    <app-icon name="x" class="size-4" />
+                  </button>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  } @else {
+    <!-- Caja cerrada -->
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Caja</h1>
+      <p class="mt-1 text-slate-600">Abre la caja para cobrar, vender y registrar egresos.</p>
+    </div>
+
+    @if (lastClosed(); as c) {
+      <section class="card p-5 sm:p-6" aria-labelledby="closed-title">
+        <h2 id="closed-title" class="font-display text-lg font-semibold text-slate-900">
+          Caja cerrada · {{ c.closedAt | fecha: 'time' }}
+        </h2>
+        <dl class="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+          <div>
+            <dt class="text-slate-500">Esperado</dt>
+            <dd class="font-semibold text-slate-900 tabular-nums">{{ money(c.expectedCash) }}</dd>
+          </div>
+          <div>
+            <dt class="text-slate-500">Contado</dt>
+            <dd class="font-semibold text-slate-900 tabular-nums">{{ money(c.countedCash) }}</dd>
+          </div>
+          <div>
+            <dt class="text-slate-500">Diferencia</dt>
+            <dd
+              class="font-semibold tabular-nums"
+              [class]="c.difference ? 'text-rose-700' : 'text-emerald-700'"
+            >
+              {{ c.difference ? money(c.difference) : 'Cuadra' }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-slate-500">Cobrado</dt>
+            <dd class="font-semibold text-slate-900 tabular-nums">{{ money(c.totals.net) }}</dd>
+          </div>
+        </dl>
+        @if (c.closingNote) {
+          <p class="mt-3 text-sm text-slate-600">{{ c.closingNote }}</p>
+        }
+      </section>
+    }
+
+    <form
+      class="card max-w-md space-y-4 p-5 sm:p-6"
+      [formGroup]="openForm"
+      (ngSubmit)="openSession()"
+      novalidate
+    >
+      <div class="flex items-center gap-3">
+        <span class="grid size-11 place-items-center rounded-xl bg-anil-50 text-anil-700"
+          ><app-icon name="lock" class="size-5"
+        /></span>
+        <p class="font-medium text-slate-900">La caja está cerrada</p>
+      </div>
+      <div>
+        <label for="open-amount" class="field-label"
+          >Monto inicial (sencillo) <span class="text-rose-600" aria-hidden="true">*</span></label
+        >
+        <input
+          id="open-amount"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          formControlName="openingAmount"
+          class="field-input tabular-nums"
+          placeholder="Ej.: 100"
+          [attr.aria-invalid]="invalid(openForm.controls.openingAmount)"
+        />
+        @if (invalid(openForm.controls.openingAmount)) {
+          <p class="field-error">Ingresa el monto con el que empieza la caja (puede ser 0)</p>
+        }
+      </div>
+      <button type="submit" class="btn btn-primary w-full" [disabled]="saving()">Abrir caja</button>
+    </form>
+  }
+</section>
+
+<!-- Cobrar -->
+<app-modal
+  [open]="modal() === 'collect'"
+  [title]="account() ? 'Cobrar a ' + account()!.client.name : 'Cobrar'"
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  @if (account(); as acc) {
+    @if (!acc.pending.length) {
+      <p class="text-slate-700">No tiene nada por cobrar.</p>
+    } @else {
+      <fieldset>
+        <legend class="field-label">Qué paga</legend>
+        <ul class="mt-1.5 space-y-1.5">
+          @for (c of acc.pending; track c.id) {
+            <li>
+              <label
+                class="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-slate-200 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  class="size-5 rounded accent-anil-600"
+                  [checked]="selected().has(c.id)"
+                  (change)="toggleCharge(c)"
+                />
+                <span class="min-w-0 flex-1 text-sm">
+                  <span class="block truncate text-slate-900">{{ c.description }}</span>
+                  <span class="text-xs text-slate-500">
+                    @if (c.pet) {
+                      {{ c.pet.name }} ·
+                    }
+                    {{ c.createdAt | fecha: 'date' }}
+                    @if (c.paidAmount) {
+                      · abonó {{ money(c.paidAmount) }}
+                    }
+                  </span>
+                </span>
+                <span class="text-sm font-semibold text-slate-900 tabular-nums">{{
+                  money(c.balance)
+                }}</span>
+              </label>
+            </li>
+          }
+        </ul>
+      </fieldset>
+
+      <div class="mt-4">
+        <label for="collect-amount" class="field-label">Monto a cobrar (S/)</label>
+        <input
+          id="collect-amount"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          [formControl]="amount"
+          class="field-input text-lg font-semibold tabular-nums"
+          [attr.aria-invalid]="invalid(amount)"
+        />
+        <p class="field-hint">
+          Seleccionado {{ money(selectedTotal()) }}. Si paga menos, el resto queda como saldo.
+        </p>
+      </div>
+
+      <div class="mt-4">
+        <app-document-choice
+          [options]="collectDocuments()"
+          [control]="documentChoice"
+          [simulated]="billingStatus()?.simulated ?? false"
+          [setupLink]="isAdmin() ? '/comprobantes/configuracion' : null"
+        />
+      </div>
+
+      <div class="mt-4">
+        <app-payment-lines [form]="payments" [total]="collectTotal()" idPrefix="collect" />
+      </div>
+    }
+  } @else {
+    <div class="h-24 animate-pulse rounded-xl bg-slate-100" aria-busy="true"></div>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      [disabled]="saving() || !account()?.pending?.length"
+      (click)="collect()"
+    >
+      Cobrar {{ money(collectTotal()) }}
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Venta de mostrador -->
+<app-modal
+  [open]="modal() === 'counter'"
+  title="Venta de mostrador"
+  description="Productos o servicios que se venden y se pagan en el momento."
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  <div class="space-y-5">
+    <div>
+      <p class="field-label">Cliente</p>
+      @if (saleClient(); as c) {
+        <div
+          class="mt-1.5 flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200"
+        >
+          <span class="font-medium text-slate-900">{{ c.name }}</span>
+          <button
+            type="button"
+            class="text-sm font-medium text-anil-700 hover:underline"
+            (click)="saleClient.set(null)"
+          >
+            Cambiar
+          </button>
+        </div>
+      } @else {
+        <p class="mt-1 text-sm text-slate-600">
+          <strong>Cliente varios</strong> (sin registrar). Para identificarlo, búscalo:
+        </p>
+        <label for="sale-client" class="sr-only">Buscar cliente</label>
+        <input
+          id="sale-client"
+          type="search"
+          [formControl]="clientSearch"
+          class="field-input"
+          placeholder="Nombre, DNI o celular"
+          autocomplete="off"
+        />
+        @if (clientResults().length) {
+          <ul class="mt-1 rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
+            @for (c of clientResults(); track c.id) {
+              <li>
+                <button
+                  type="button"
+                  class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-anil-50"
+                  (click)="pickClient(c)"
+                >
+                  {{ c.name }}
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      }
+    </div>
+
+    <div>
+      <label for="sale-search" class="field-label">Productos y servicios</label>
+      <input
+        id="sale-search"
+        type="search"
+        [formControl]="itemSearch"
+        class="field-input"
+        placeholder="Busca por nombre"
+        autocomplete="off"
+      />
+      @if (serviceOptions().length || productOptions().length) {
+        <ul
+          class="mt-1 max-h-60 overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200"
+        >
+          @for (o of serviceOptions().concat(productOptions()); track o.key) {
+            <li>
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-anil-50"
+                (click)="addSaleLine(o)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate font-medium text-slate-900">{{ o.description }}</span>
+                  @if (o.detail) {
+                    <span class="block truncate text-xs text-slate-500">{{ o.detail }}</span>
+                  }
+                </span>
+                <span class="shrink-0 font-semibold tabular-nums">{{ money(o.unitPrice) }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+      @if (saleLines.length) {
+        <ul class="mt-3 space-y-2">
+          @for (g of saleLines.controls; track g; let i = $index) {
+            <li
+              [formGroup]="g"
+              class="flex items-center gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70"
+            >
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{{
+                g.controls.option.value.description
+              }}</span>
+              <label [for]="'sale-qty-' + i" class="sr-only">Cantidad</label>
+              <input
+                [id]="'sale-qty-' + i"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="any"
+                formControlName="quantity"
+                class="field-input mt-0 w-20 bg-white tabular-nums"
+              />
+              <span class="w-20 text-right text-sm font-semibold tabular-nums">{{
+                money(lineTotal(g))
+              }}</span>
+              <button
+                type="button"
+                class="btn btn-ghost size-9 shrink-0 px-0 text-slate-500"
+                [attr.aria-label]="'Quitar ' + g.controls.option.value.description"
+                (click)="removeSaleLine(i)"
+              >
+                <app-icon name="x" class="size-4" />
+              </button>
+            </li>
+          }
+        </ul>
+        <p class="mt-2 text-right font-display text-lg font-semibold text-slate-900 tabular-nums">
+          Total {{ money(saleTotal()) }}
+        </p>
+      }
+      @if (anonymousTooBig()) {
+        <p
+          class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200"
+        >
+          Desde S/ 700 el comprobante exige identificar al cliente: búscalo o regístralo.
+        </p>
+      }
+    </div>
+
+    @if (saleLines.length) {
+      <app-document-choice
+        [options]="saleDocuments()"
+        [control]="documentChoice"
+        [simulated]="billingStatus()?.simulated ?? false"
+        [setupLink]="isAdmin() ? '/comprobantes/configuracion' : null"
+      />
+      <app-payment-lines [form]="payments" [total]="saleTotal()" idPrefix="sale" />
+    }
+  </div>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      [disabled]="saving() || !saleLines.length || anonymousTooBig()"
+      (click)="sell()"
+    >
+      Cobrar {{ money(saleTotal()) }}
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Egreso -->
+<app-modal
+  [open]="modal() === 'expense'"
+  title="Egreso de caja chica"
+  description="Dinero que sale del cajón: agua, movilidad, compras menores."
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  <form
+    id="expense-form"
+    [formGroup]="expenseForm"
+    (ngSubmit)="saveExpense()"
+    novalidate
+    class="space-y-4"
+  >
+    <div>
+      <label for="exp-amount" class="field-label"
+        >Monto (S/) <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="exp-amount"
+        type="number"
+        inputmode="decimal"
+        min="0"
+        step="0.01"
+        formControlName="amount"
+        class="field-input tabular-nums"
+        [attr.aria-invalid]="invalid(expenseForm.controls.amount)"
+      />
+      @if (invalid(expenseForm.controls.amount)) {
+        <p class="field-error">Monto mayor a 0, hasta 2 decimales</p>
+      }
+    </div>
+    <div>
+      <label for="exp-reason" class="field-label"
+        >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+      >
+      <input
+        id="exp-reason"
+        formControlName="reason"
+        class="field-input"
+        placeholder="Ej.: bidón de agua"
+        maxlength="200"
+        [attr.aria-invalid]="invalid(expenseForm.controls.reason)"
+      />
+      @if (invalid(expenseForm.controls.reason)) {
+        <p class="field-error">Escribe el motivo</p>
+      }
+    </div>
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button type="submit" form="expense-form" class="btn btn-primary" [disabled]="saving()">
+      Registrar egreso
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Anular egreso -->
+<app-modal
+  [open]="modal() === 'void-expense'"
+  title="Anular egreso"
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  @if (voidingExpense(); as m) {
+    <p class="mb-4 text-slate-700">
+      {{ m.reason }} · <span class="tabular-nums">{{ money(m.amount) }}</span>
+    </p>
+  }
+  <label for="void-reason" class="field-label"
+    >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+  >
+  <input
+    id="void-reason"
+    [formControl]="voidReason"
+    class="field-input"
+    maxlength="200"
+    [attr.aria-invalid]="invalid(voidReason)"
+  />
+  @if (invalid(voidReason)) {
+    <p class="field-error">Escribe el motivo</p>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button
+      type="button"
+      class="btn btn-danger"
+      [disabled]="saving()"
+      (click)="confirmVoidExpense()"
+    >
+      Anular
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Cerrar caja -->
+<app-modal
+  [open]="modal() === 'close'"
+  title="Cerrar caja"
+  description="Cuenta el efectivo del cajón. Yape, Plin, tarjeta y transferencias no pasan por el cajón."
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  @if (current(); as s) {
+    <form
+      id="close-form"
+      [formGroup]="closeForm"
+      (ngSubmit)="closeSession()"
+      novalidate
+      class="space-y-4"
+    >
+      <div class="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
+        <p class="text-sm text-slate-600">Debe haber en efectivo</p>
+        <p class="font-display text-2xl font-semibold text-slate-900 tabular-nums">
+          {{ money(s.expectedCash) }}
+        </p>
+        <p class="mt-1 text-xs text-slate-500">
+          Inicial {{ money(s.openingAmount) }} + efectivo cobrado − egresos − devoluciones
+        </p>
+      </div>
+      <div>
+        <label for="close-counted" class="field-label"
+          >Efectivo contado (S/) <span class="text-rose-600" aria-hidden="true">*</span></label
+        >
+        <input
+          id="close-counted"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          formControlName="countedCash"
+          class="field-input text-lg font-semibold tabular-nums"
+          [attr.aria-invalid]="invalid(closeForm.controls.countedCash)"
+        />
+        @if (difference(); as d) {
+          <p
+            class="mt-1.5 text-sm font-medium"
+            [class]="d > 0 ? 'text-amber-700' : 'text-rose-700'"
+          >
+            {{ d > 0 ? 'Sobran' : 'Faltan' }} {{ money(d > 0 ? d : -d) }}
+          </p>
+        } @else if (difference() === 0) {
+          <p class="mt-1.5 text-sm font-medium text-emerald-700">Cuadra exacto</p>
+        }
+      </div>
+      @if (difference()) {
+        <div>
+          <label for="close-note" class="field-label"
+            >Motivo de la diferencia <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="close-note"
+            formControlName="note"
+            class="field-input"
+            maxlength="200"
+            [attr.aria-invalid]="invalid(closeForm.controls.note)"
+          />
+          @if (invalid(closeForm.controls.note)) {
+            <p class="field-error">Explica la diferencia: queda en la bitácora</p>
+          }
+        </div>
+      }
+    </form>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+    <button type="submit" form="close-form" class="btn btn-primary" [disabled]="saving()">
+      Cerrar caja
+    </button>
+  </ng-container>
+</app-modal>

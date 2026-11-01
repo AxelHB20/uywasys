@@ -58,11 +58,18 @@ export class AuthGuard implements CanActivate {
         role: true,
         active: true,
         mustChangePassword: true,
+        sessionVersion: true,
         clinic: { select: { active: true } },
       },
     });
     if (!user || !user.active || !user.clinic.active) {
       throw new UnauthorizedException('Tu cuenta no está activa');
+    }
+    // Tokens firmados antes de existir la versión cuentan como versión 0
+    if ((payload.sv ?? 0) !== user.sessionVersion) {
+      throw new UnauthorizedException(
+        'Tu contraseña cambió. Inicia sesión de nuevo',
+      );
     }
 
     if (user.mustChangePassword) {

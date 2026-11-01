@@ -21,6 +21,8 @@ export interface TeamMember {
   email: string;
   role: Role;
   licenseNumber: string | null;
+  /** % de comisión (groomers) */
+  commissionPercent: number | null;
   active: boolean;
   mustChangePassword: boolean;
   locked: boolean;
@@ -33,6 +35,7 @@ const MEMBER_SELECT = {
   email: true,
   role: true,
   licenseNumber: true,
+  commissionPercent: true,
   active: true,
   mustChangePassword: true,
   lockedUntil: true,
@@ -75,6 +78,7 @@ export class UsersService {
           email: dto.email,
           role: dto.role,
           licenseNumber: dto.licenseNumber ?? null,
+          commissionPercent: dto.commissionPercent ?? null,
           passwordHash: await hashPassword(temporaryPassword),
           mustChangePassword: true,
         },
@@ -116,6 +120,10 @@ export class UsersService {
         dto.licenseNumber === undefined
           ? target.licenseNumber
           : dto.licenseNumber,
+      commissionPercent:
+        dto.commissionPercent === undefined
+          ? num(target.commissionPercent)
+          : dto.commissionPercent,
       active: dto.active ?? target.active,
     };
 
@@ -130,8 +138,12 @@ export class UsersService {
       await this.ensureAnotherActiveAdmin(actor.clinicId, id);
     }
 
+    const before = {
+      ...target,
+      commissionPercent: num(target.commissionPercent),
+    };
     const changed = (Object.keys(next) as (keyof typeof next)[]).filter(
-      (key) => target[key] !== next[key],
+      (key) => before[key] !== next[key],
     );
     if (!changed.length) return toMember(target);
 
@@ -151,7 +163,7 @@ export class UsersService {
           ? 'user.deactivate'
           : 'user.update',
       data: Object.fromEntries(
-        changed.map((key) => [key, { antes: target[key], ahora: next[key] }]),
+        changed.map((key) => [key, { antes: before[key], ahora: next[key] }]),
       ),
     });
     return toMember(user);
@@ -177,6 +189,8 @@ export class UsersService {
         mustChangePassword: true,
         failedLoginAttempts: 0,
         lockedUntil: null,
+        // Quien tenga la sesión abierta con la clave anterior queda fuera
+        sessionVersion: { increment: 1 },
       },
     });
     await this.audit.log({
@@ -226,6 +240,14 @@ function requireLicenseForVet(
 }
 
 function toMember(user: MemberRow): TeamMember {
-  const { lockedUntil, ...rest } = user;
-  return { ...rest, locked: Boolean(lockedUntil && lockedUntil > new Date()) };
+  const { lockedUntil, commissionPercent, ...rest } = user;
+  return {
+    ...rest,
+    commissionPercent: num(commissionPercent),
+    locked: Boolean(lockedUntil && lockedUntil > new Date()),
+  };
+}
+
+function num(value: { toNumber(): number } | null | undefined): number | null {
+  return value == null ? null : value.toNumber();
 }

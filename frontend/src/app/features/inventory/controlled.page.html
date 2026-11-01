@@ -68,7 +68,7 @@
           @for (m of rows(); track m.id) {
             <tr class="align-top">
               <td class="px-4 py-3 whitespace-nowrap text-slate-700 tabular-nums">
-                {{ m.createdAt | date: 'dd/MM/yy HH:mm' : '-0500' }}
+                {{ m.createdAt | fecha: 'datetime' }}
               </td>
               <td class="px-4 py-3">
                 <a

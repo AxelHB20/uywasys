@@ -27,21 +27,53 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Atención',
     items: [
       { label: 'Cola de hoy', icon: 'clock', route: '/cola' },
+      { label: 'Citas', icon: 'calendar', route: '/citas' },
+      { label: 'Atenciones', icon: 'stethoscope', route: '/atenciones' },
+      { label: 'Vacunas', icon: 'syringe', route: '/vacunas' },
       { label: 'Clientes', icon: 'clients', route: '/clientes' },
+    ],
+  },
+  {
+    label: 'Ventas',
+    items: [
+      { label: 'Presupuestos', icon: 'clipboard-list', route: '/presupuestos' },
+      {
+        label: 'Caja',
+        icon: 'receipt',
+        route: '/caja',
+        roles: ['ADMIN', 'RECEPTION', 'CASHIER'],
+      },
+      {
+        label: 'Comprobantes',
+        icon: 'file-text',
+        route: '/comprobantes',
+        roles: ['ADMIN', 'RECEPTION', 'CASHIER'],
+      },
     ],
   },
   {
     label: 'Farmacia',
     items: [{ label: 'Inventario', icon: 'package', route: '/inventario' }],
   },
-  // Grooming, citas, consultas, vacunas y caja se agregan aquí cuando estén listos:
-  // el menú solo muestra módulos que funcionan.
+  {
+    label: 'Baño y peluquería',
+    items: [
+      { label: 'Grooming', icon: 'scissors', route: '/grooming', exact: true },
+      {
+        label: 'Comisiones',
+        icon: 'activity',
+        route: '/grooming/comisiones',
+        roles: ['ADMIN', 'GROOMER'],
+      },
+    ],
+  },
   {
     label: 'Configuración',
     items: [
       { label: 'Servicios y precios', icon: 'receipt', route: '/servicios' },
       { label: 'Clínica', icon: 'building', route: '/configuracion', roles: ['ADMIN'] },
       { label: 'Usuarios', icon: 'user-cog', route: '/usuarios', roles: ['ADMIN'] },
+      { label: 'Actividad', icon: 'history', route: '/actividad', roles: ['ADMIN'] },
     ],
   },
 ];

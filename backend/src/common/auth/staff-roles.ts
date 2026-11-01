@@ -5,3 +5,6 @@ export const FRONT_DESK_ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION'];
 
 /** Quienes manejan la caja: abrir y cerrar, cobrar, vender en mostrador y registrar egresos. */
 export const CASH_ROLES: Role[] = ['ADMIN', 'RECEPTION', 'CASHIER'];
+
+/** Quienes ingresan, mueven en el tablero y entregan los servicios de grooming. */
+export const GROOMING_ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION', 'GROOMER'];

@@ -9,6 +9,6 @@ import { VisitsService } from './visits.service.js';
   imports: [InventoryModule],
   controllers: [VisitsController, ChargesController],
   providers: [VisitsService, ChargesService],
-  exports: [ChargesService],
+  exports: [ChargesService, VisitsService],
 })
 export class VisitsModule {}

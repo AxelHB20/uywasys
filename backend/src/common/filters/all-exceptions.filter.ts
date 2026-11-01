@@ -6,8 +6,9 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client.js';
+import type { RequestWithId } from '../http/request-id.js';
 
 /** Forma única de los errores que recibe el frontend. */
 export interface ApiError {
@@ -16,6 +17,8 @@ export interface ApiError {
   errors?: string[];
   /** Datos extra para la pantalla, por ejemplo { visitId } o { available } en un 409 */
   details?: Record<string, unknown>;
+  /** Código de la petición: el usuario lo dicta a soporte y se busca en los registros */
+  reference?: string;
   path: string;
   timestamp: string;
 }
@@ -31,7 +34,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
-    const req = ctx.getRequest<Request>();
+    const req = ctx.getRequest<RequestWithId>();
     const apiError = this.toApiError(exception);
     const { statusCode, errors, details } = apiError;
     let { message } = apiError;
@@ -42,10 +45,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     ) {
       message = 'El archivo pesa más de lo permitido (2 MB)';
     }
+    if (
+      statusCode === HttpStatus.PAYLOAD_TOO_LARGE &&
+      /\/attachments/.test(req.originalUrl ?? '')
+    ) {
+      message = 'El archivo pesa más de lo permitido (10 MB)';
+    }
 
     if (statusCode >= 500) {
       this.logger.error(
-        `${req.method} ${req.originalUrl}`,
+        `[${req.id ?? '-'}] ${req.method} ${req.originalUrl} · usuario ${req.user?.id ?? '-'}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -56,6 +65,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       path: req.originalUrl ?? req.url,
       timestamp: new Date().toISOString(),
     };
+    if (req.id) body.reference = req.id;
     if (errors?.length) body.errors = errors;
     if (details) body.details = details;
     res.status(statusCode).json(body);

@@ -5,6 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { clinicLogoUrl } from '../auth/session-user.js';
+import { BillingSender } from '../billing/billing.sender.js';
+import { BillingService, TicketDocument } from '../billing/billing.service.js';
+import { OpeningHours, readOpeningHours } from '../clinic/opening-hours.js';
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { reserveNumbers } from '../common/sequence/clinic-sequence.js';
@@ -58,6 +61,7 @@ export interface ReceiptTicket {
     address: string | null;
     phone: string | null;
     logoUrl: string | null;
+    openingHours: OpeningHours;
   };
   client: {
     id: number;
@@ -67,6 +71,8 @@ export interface ReceiptTicket {
     docNumber: string | null;
     walkIn: boolean;
   };
+  /** Boleta o factura electrónica del cobro; null = nota de venta interna */
+  document: TicketDocument | null;
   cashier: string;
   register: string;
   lines: {
@@ -161,6 +167,8 @@ export class CashService {
     private readonly prisma: PrismaService,
     private readonly charges: ChargesService,
     private readonly audit: AuditService,
+    private readonly billing: BillingService,
+    private readonly sender: BillingSender,
   ) {}
 
   // ── Cajas y sesiones ──
@@ -506,15 +514,20 @@ export class CashService {
     let receiptId: number;
     try {
       receiptId = await this.prisma.$transaction(
-        (tx) =>
-          this.collectInTx(tx, actor, {
+        async (tx) => {
+          const id = await this.collectInTx(tx, actor, {
             requestKey: dto.requestKey,
             clientId: dto.clientId,
             chargeIds: dto.chargeIds ?? null,
             amount: dto.amount ?? null,
             registerId: dto.registerId,
             payments: dto.payments,
-          }),
+          });
+          // El comprobante se numera en la misma transacción: si algo falla, no queda cobro sin él
+          if (dto.document && dto.document !== 'NOTE')
+            await this.billing.issueInTx(tx, actor, id, dto.document);
+          return id;
+        },
         { timeout: 20_000 },
       );
     } catch (error) {
@@ -523,6 +536,7 @@ export class CashService {
       if (retry) return retry;
       throw error;
     }
+    if (dto.document && dto.document !== 'NOTE') this.sender.dispatch();
     const ticket = await this.ticket(actor.clinicId, receiptId);
     await this.logCollect(actor, ticket, ip);
     return ticket;
@@ -569,6 +583,8 @@ export class CashService {
             registerId: dto.registerId,
             payments: dto.payments,
           });
+          if (dto.document && dto.document !== 'NOTE')
+            await this.billing.issueInTx(tx, actor, receiptId, dto.document);
           return { receiptId, charges, clientId };
         },
         { timeout: 20_000 },
@@ -579,6 +595,7 @@ export class CashService {
       throw error;
     }
     await this.charges.logCreated(actor, null, created.charges, ip);
+    if (dto.document && dto.document !== 'NOTE') this.sender.dispatch();
     const ticket = await this.ticket(actor.clinicId, created.receiptId);
     await this.logCollect(actor, ticket, ip);
     return { receipt: ticket, shortages: created.charges.shortages };
@@ -594,7 +611,7 @@ export class CashService {
     dto: CashVoidDto,
     ip?: string,
   ): Promise<ReceiptTicket> {
-    await this.prisma.$transaction(async (tx) => {
+    const creditNote = await this.prisma.$transaction(async (tx) => {
       const [receipt] = await tx.$queryRaw<
         { status: string; number: number }[]
       >`
@@ -651,7 +668,10 @@ export class CashService {
           voidReason: dto.reason,
         },
       });
+      // Si el cobro tenía boleta o factura, se anula con su nota de crédito
+      return this.billing.creditNoteInTx(tx, actor, id, dto.reason);
     });
+    if (creditNote) this.sender.dispatch();
     const ticket = await this.ticket(actor.clinicId, id);
     await this.audit.log({
       clinicId: actor.clinicId,
@@ -769,6 +789,7 @@ export class CashService {
             phone: true,
             logoMime: true,
             logoUpdatedAt: true,
+            openingHours: true,
           },
         },
         client: {
@@ -829,7 +850,7 @@ export class CashService {
     const balance = pending
       .reduce((acc, c) => acc.plus(c.total).minus(c.paidAmount), new D(0))
       .toNumber();
-    const { logoMime, logoUpdatedAt, ...clinic } = r.clinic;
+    const { logoMime, logoUpdatedAt, openingHours, ...clinic } = r.clinic;
 
     return {
       id: r.id,
@@ -840,9 +861,11 @@ export class CashService {
       voidedAt: r.voidedAt,
       voidReason: r.voidReason,
       legend: LEGEND,
+      document: await this.billing.forTicket(clinicId, r.id),
       clinic: {
         ...clinic,
         logoUrl: clinicLogoUrl({ logoMime, logoUpdatedAt }),
+        openingHours: readOpeningHours(openingHours),
       },
       client: r.client,
       cashier: r.createdBy.fullName,
@@ -953,6 +976,33 @@ export class CashService {
       })),
       net: list.reduce((acc, d) => acc.plus(d.net), new D(0)).toNumber(),
     };
+  }
+
+  /** Clientes con algo por cobrar, del que espera hace más tiempo al más reciente. */
+  async pending(clinicId: number) {
+    const rows = await this.prisma.$queryRaw<
+      { client_id: number; balance: Decimal; charges: bigint; since: Date }[]
+    >`
+      SELECT client_id, SUM(total - paid_amount) AS balance, COUNT(*) AS charges,
+             MIN(created_at) AS since
+      FROM charges
+      WHERE clinic_id = ${clinicId} AND status = 'PENDING'
+      GROUP BY client_id
+      HAVING SUM(total - paid_amount) > 0
+      ORDER BY since
+      LIMIT 100`;
+    const clients = rows.length
+      ? await this.prisma.client.findMany({
+          where: { clinicId, id: { in: rows.map((r) => r.client_id) } },
+          select: { id: true, number: true, name: true, phone: true },
+        })
+      : [];
+    return rows.map((r) => ({
+      client: clients.find((c) => c.id === r.client_id)!,
+      balance: Number(r.balance),
+      charges: Number(r.charges),
+      since: r.since,
+    }));
   }
 
   /** Para el dashboard: lo cobrado hoy (menos devoluciones) y cuántos cobros. */

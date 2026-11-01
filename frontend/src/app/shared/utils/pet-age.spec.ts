@@ -9,6 +9,8 @@ describe('edad de la mascota', () => {
     expect(petAge('2026-05-01', today)).toBe('5 meses');
     expect(petAge('2026-10-06', today)).toBe('3 semanas');
     expect(petAge(null, today)).toBeNull();
+    // Fecha ISO completa: el día cuenta igual (un día antes del cumpleaños sigue en 2 años)
+    expect(petAge('2023-10-28T00:00:00.000Z', today)).toBe('2 años y 11 meses');
   });
 
   it('calcula una fecha estimada desde la edad y la recupera para editar', () => {

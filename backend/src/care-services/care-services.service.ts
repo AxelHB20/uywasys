@@ -11,6 +11,7 @@ import type {
   BaseUnit,
   CareServiceCategory,
   IgvAffectation,
+  PetSize,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -27,11 +28,15 @@ export interface CareServiceView {
   igv: IgvAffectation;
   durationMin: number | null;
   active: boolean;
+  /** Precio según el tamaño de la mascota (grooming); si falta un tamaño, rige `price` */
+  sizePrices: { size: PetSize; price: number }[];
   supplies: {
     productId: number;
     name: string;
     baseUnit: BaseUnit;
     quantity: number;
+    /** Si es controlado, el cargo exige receta y veterinario con colegiatura */
+    controlled: boolean;
   }[];
 }
 
@@ -43,17 +48,20 @@ const SELECT = {
   igv: true,
   durationMin: true,
   active: true,
+  sizePrices: { select: { size: true, price: true }, orderBy: { size: 'asc' } },
   supplies: {
     select: {
       quantity: true,
-      product: { select: { id: true, name: true, baseUnit: true } },
+      product: {
+        select: { id: true, name: true, baseUnit: true, controlled: true },
+      },
     },
   },
 } satisfies Prisma.CareServiceSelect;
 
 type Row = Prisma.CareServiceGetPayload<{ select: typeof SELECT }>;
 
-/** Catálogo de servicios. Los insumos se descuentan del inventario al cobrar (Fase 4). */
+/** Catálogo de servicios. Sus insumos se descuentan del inventario al registrar el cargo. */
 @Injectable()
 export class CareServicesService {
   constructor(
@@ -82,6 +90,7 @@ export class CareServicesService {
     ip?: string,
   ): Promise<CareServiceView> {
     await this.checkSupplies(actor.clinicId, dto.supplies);
+    checkSizes(dto.sizePrices);
     let row: Row;
     try {
       row = await this.prisma.careService.create({
@@ -97,6 +106,14 @@ export class CareServicesService {
                 create: dto.supplies.map((s) => ({
                   productId: s.productId,
                   quantity: s.quantity,
+                })),
+              }
+            : undefined,
+          sizePrices: dto.sizePrices?.length
+            ? {
+                create: dto.sizePrices.map((p) => ({
+                  size: p.size,
+                  price: p.price,
                 })),
               }
             : undefined,
@@ -130,6 +147,7 @@ export class CareServicesService {
     });
     if (!current) throw new NotFoundException('El servicio no existe');
     await this.checkSupplies(actor.clinicId, dto.supplies);
+    checkSizes(dto.sizePrices);
 
     let row: Row;
     try {
@@ -143,6 +161,19 @@ export class CareServicesService {
                 serviceId: id,
                 productId: s.productId,
                 quantity: s.quantity,
+              })),
+            });
+        }
+        if (dto.sizePrices) {
+          await tx.careServiceSizePrice.deleteMany({
+            where: { serviceId: id },
+          });
+          if (dto.sizePrices.length)
+            await tx.careServiceSizePrice.createMany({
+              data: dto.sizePrices.map((p) => ({
+                serviceId: id,
+                size: p.size,
+                price: p.price,
               })),
             });
         }
@@ -210,13 +241,24 @@ function toView(row: Row): CareServiceView {
     igv: row.igv,
     durationMin: row.durationMin,
     active: row.active,
+    sizePrices: row.sizePrices.map((p) => ({
+      size: p.size,
+      price: Number(p.price),
+    })),
     supplies: row.supplies.map((s) => ({
       productId: s.product.id,
       name: s.product.name,
       baseUnit: s.product.baseUnit,
       quantity: Number(s.quantity),
+      controlled: s.product.controlled,
     })),
   };
+}
+
+function checkSizes(sizes?: { size: PetSize }[]): void {
+  if (!sizes?.length) return;
+  if (new Set(sizes.map((s) => s.size)).size !== sizes.length)
+    throw new BadRequestException('Un tamaño aparece dos veces en los precios');
 }
 
 function duplicate(error: unknown): unknown {

@@ -3,10 +3,23 @@ import type {
   BaseUnit,
   ChargeKind,
   ChargeStatus,
+  GroomingStatus,
+  PetSize,
   Species,
   VisitStatus,
   VisitType,
 } from '../generated/prisma/enums.js';
+
+import {
+  IMMUNIZATION_SELECT,
+  toImmunizationView,
+} from '../medical/immunization.views.js';
+import type { ImmunizationView } from '../medical/immunization.views.js';
+import {
+  PRESCRIPTION_SUMMARY_SELECT,
+  toPrescriptionSummary,
+} from '../medical/prescription.views.js';
+import type { PrescriptionSummary } from '../medical/prescription.views.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -132,6 +145,8 @@ export const VISIT_SUMMARY_SELECT = {
   status: true,
   reason: true,
   weightKg: true,
+  diagnosis: true,
+  diagnosisDefinitive: true,
   openedAt: true,
   closedAt: true,
   queueEntryId: true,
@@ -146,6 +161,14 @@ export const VISIT_DETAIL_SELECT = {
   ...VISIT_SUMMARY_SELECT,
   temperatureC: true,
   notes: true,
+  anamnesis: true,
+  heartRate: true,
+  respiratoryRate: true,
+  capillaryRefillS: true,
+  mucosa: true,
+  hydration: true,
+  bodyCondition: true,
+  physicalExam: true,
   cancelReason: true,
   closedBy: { select: { id: true, fullName: true } },
   pet: {
@@ -176,6 +199,12 @@ export const VISIT_DETAIL_SELECT = {
     },
     orderBy: { id: 'asc' },
   },
+  immunizations: { select: IMMUNIZATION_SELECT, orderBy: { id: 'asc' } },
+  prescriptions: {
+    select: PRESCRIPTION_SUMMARY_SELECT,
+    orderBy: { id: 'asc' },
+  },
+  grooming: { select: { id: true, number: true, status: true, size: true } },
 } satisfies Prisma.VisitSelect;
 
 type SummaryRow = Prisma.VisitGetPayload<{
@@ -191,6 +220,9 @@ export interface VisitSummary {
   status: VisitStatus;
   reason: string | null;
   weightKg: number | null;
+  /** A del SOAP: lo que se ve en el historial */
+  diagnosis: string | null;
+  diagnosisDefinitive: boolean;
   openedAt: Date;
   closedAt: Date | null;
   queueEntryId: number | null;
@@ -204,6 +236,14 @@ export interface VisitSummary {
 export interface VisitDetail extends Omit<VisitSummary, 'pet' | 'client'> {
   temperatureC: number | null;
   notes: string | null;
+  anamnesis: string | null;
+  heartRate: number | null;
+  respiratoryRate: number | null;
+  capillaryRefillS: number | null;
+  mucosa: string | null;
+  hydration: string | null;
+  bodyCondition: number | null;
+  physicalExam: string | null;
   cancelReason: string | null;
   closedBy: { id: number; fullName: string } | null;
   pet: SummaryRow['pet'] & {
@@ -223,6 +263,17 @@ export interface VisitDetail extends Omit<VisitSummary, 'pet' | 'client'> {
     createdAt: Date;
     author: { id: number; fullName: string };
   }[];
+  /** Vacunas y desparasitaciones aplicadas en esta atención (incluidas las anuladas) */
+  immunizations: ImmunizationView[];
+  /** Recetas emitidas en esta atención (incluidas las anuladas) */
+  prescriptions: PrescriptionSummary[];
+  /** Si es un servicio de grooming: se maneja desde el tablero y se cierra al entregar */
+  grooming: {
+    id: number;
+    number: number;
+    status: GroomingStatus;
+    size: PetSize;
+  } | null;
 }
 
 export function toVisitSummary(row: SummaryRow, total: number): VisitSummary {
@@ -235,8 +286,11 @@ export function toVisitDetail(row: DetailRow): VisitDetail {
     ...row,
     weightKg: num(row.weightKg),
     temperatureC: num(row.temperatureC),
+    capillaryRefillS: num(row.capillaryRefillS),
     pet: { ...row.pet, weightKg: num(row.pet.weightKg) },
     charges,
+    immunizations: row.immunizations.map(toImmunizationView),
+    prescriptions: row.prescriptions.map(toPrescriptionSummary),
     total: sumActive(charges),
   };
 }

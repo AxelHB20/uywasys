@@ -269,7 +269,8 @@
                         @if (r.stock; as st) {
                           <p class="tabular-nums">{{ st.quantity }} × {{ r.presentation.name }}</p>
                           <p class="text-xs text-slate-500">
-                            Lote {{ st.lotNumber ?? '—' }} · {{ st.expiresAt ?? 'no vence' }}
+                            Lote {{ st.lotNumber ?? '—' }} ·
+                            {{ (st.expiresAt | fecha: 'calendar') || 'no vence' }}
                           </p>
                         } @else {
                           <span class="text-slate-400">—</span>

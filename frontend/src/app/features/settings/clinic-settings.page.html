@@ -125,15 +125,16 @@
       <div class="card self-start p-6">
         <h2 class="text-sm font-semibold text-slate-900">Logo</h2>
         <p class="mt-1 text-sm text-slate-600">
-          PNG, JPG o WebP de hasta 1 MB. Mejor si es cuadrado.
+          PNG, JPG o WebP de hasta 1 MB, cuadrado u horizontal. Con fondo blanco o transparente se
+          ve mejor en el ticket.
         </p>
 
-        <div class="mt-5 flex items-center gap-4">
+        <div class="mt-5 flex flex-wrap items-center gap-4">
           @if (profile()?.logoUrl; as logo) {
             <img
               [src]="logo"
               alt="Logo actual de la clínica"
-              class="size-20 rounded-2xl object-cover ring-1 ring-slate-200"
+              class="h-20 w-36 shrink-0 rounded-2xl bg-white object-contain p-2 ring-1 ring-slate-200"
             />
           } @else {
             <span
@@ -181,5 +182,8 @@
         }
       </div>
     </div>
+    @if (profile(); as p) {
+      <app-opening-hours [hours]="p.openingHours" (saved)="profile.set($event)" />
+    }
   }
 </section>

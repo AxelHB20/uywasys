@@ -1,0 +1,587 @@
+<section class="space-y-5">
+  <!-- Encabezado -->
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Grooming</h1>
+      <p class="mt-1 text-sm text-slate-500">
+        @if (isToday()) {
+          {{ counts().active }} en el tablero · {{ counts().delivered }} entregados hoy
+        } @else {
+          {{ counts().delivered }} entregados el {{ dayLabel() }}
+        }
+        @if (counts().revenue > 0) {
+          · <span class="tabular-nums">{{ money(counts().revenue) }}</span>
+        }
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center rounded-xl bg-white ring-1 ring-slate-200">
+        <button
+          type="button"
+          class="grid size-10 place-items-center rounded-l-xl text-slate-600 hover:bg-slate-50"
+          aria-label="Día anterior"
+          (click)="goDay(-1)"
+        >
+          <app-icon name="chevron-left" class="size-4" />
+        </button>
+        <span class="min-w-24 px-2 text-center text-sm font-medium text-slate-900">{{
+          dayLabel()
+        }}</span>
+        <button
+          type="button"
+          class="grid size-10 place-items-center rounded-r-xl text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          aria-label="Día siguiente"
+          [disabled]="isToday()"
+          (click)="goDay(1)"
+        >
+          <app-icon name="chevron-right" class="size-4" />
+        </button>
+      </div>
+      @if (canSeeCommissions()) {
+        <a routerLink="/grooming/comisiones" class="btn btn-secondary">Comisiones</a>
+      }
+      @if (canEdit() && isToday()) {
+        <a routerLink="/grooming/ingreso" class="btn btn-primary">
+          <app-icon name="plus" class="size-4" /> Nuevo ingreso
+        </a>
+      }
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="grid gap-4 lg:grid-cols-4" aria-busy="true" aria-label="Cargando tablero">
+      @for (s of statuses; track s) {
+        <div class="h-64 animate-pulse rounded-2xl bg-slate-100"></div>
+      }
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    @if (isToday()) {
+      <!-- Pestañas en el celular -->
+      <div class="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 lg:hidden" role="tablist">
+        @for (col of columns(); track col.status) {
+          <button
+            type="button"
+            role="tab"
+            [attr.aria-selected]="tab() === col.status"
+            class="flex min-h-10 flex-col items-center justify-center rounded-lg px-1 text-xs font-medium"
+            [class]="tab() === col.status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'"
+            (click)="tab.set(col.status)"
+          >
+            {{ statusLabels[col.status] }}
+            <span class="tabular-nums">{{ col.items.length }}</span>
+          </button>
+        }
+      </div>
+
+      <!-- Tablero -->
+      <div class="grid gap-4 lg:grid-cols-4" cdkDropListGroup>
+        @for (col of columns(); track col.status) {
+          <section
+            class="flex min-h-40 flex-col rounded-2xl bg-slate-50/80 p-3 ring-1 lg:min-h-[60vh]"
+            [class]="columnStyle[col.status].ring"
+            [class.max-lg:hidden]="tab() !== col.status"
+            [attr.aria-label]="statusLabels[col.status]"
+            cdkDropList
+            [cdkDropListData]="col.status"
+            [cdkDropListEnterPredicate]="enterPredicate"
+            [cdkDropListDisabled]="!canEdit()"
+            (cdkDropListDropped)="drop($event)"
+          >
+            <h2 class="mb-3 flex items-center gap-2 px-1 text-sm font-semibold text-slate-700">
+              <span class="size-2.5 rounded-full" [class]="columnStyle[col.status].dot"></span>
+              {{ statusLabels[col.status] }}
+              <span
+                class="ml-auto rounded-full bg-white px-2 text-xs tabular-nums ring-1 ring-slate-200"
+                >{{ col.items.length }}</span
+              >
+            </h2>
+            <ul class="flex flex-1 flex-col gap-2.5" role="list">
+              @for (c of col.items; track c.id) {
+                <li
+                  cdkDrag
+                  [cdkDragData]="c"
+                  [cdkDragDisabled]="!canEdit() || busyId() === c.id"
+                  class="cursor-grab rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200 active:cursor-grabbing"
+                  [class.opacity-60]="busyId() === c.id"
+                  [attr.aria-label]="c.pet.name + ', ' + statusLabels[c.status]"
+                >
+                  <div
+                    *cdkDragPlaceholder
+                    class="h-24 rounded-xl border-2 border-dashed border-anil-300 bg-anil-50/50"
+                  ></div>
+                  <button
+                    type="button"
+                    class="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600"
+                    (click)="open(c)"
+                  >
+                    <span class="flex items-start gap-2">
+                      <app-icon
+                        [name]="speciesIcons[c.pet.species]"
+                        class="mt-0.5 size-4 shrink-0 text-slate-400"
+                      />
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate font-semibold text-slate-900">{{
+                          c.pet.name
+                        }}</span>
+                        <span class="block truncate text-xs text-slate-500">
+                          {{ sizeLabels[c.size] }}{{ c.pet.breed ? ' · ' + c.pet.breed : '' }} ·
+                          {{ c.client.name }}
+                        </span>
+                      </span>
+                      <span
+                        class="shrink-0 text-xs text-slate-500 tabular-nums"
+                        title="Tiempo en este estado"
+                        >{{ elapsed(c) }}</span
+                      >
+                    </span>
+                    <span class="mt-2 line-clamp-2 block text-sm text-slate-700">{{
+                      servicesLine(c)
+                    }}</span>
+                    @if (flags(c).length || c.pet.allergies) {
+                      <span class="mt-2 flex flex-wrap gap-1">
+                        @for (f of flags(c); track f) {
+                          <span
+                            class="rounded-md px-1.5 py-0.5 text-[11px] font-semibold"
+                            [class]="
+                              f === 'Agresivo'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            "
+                            >{{ f }}</span
+                          >
+                        }
+                        @if (c.pet.allergies) {
+                          <span
+                            class="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                            >Alergias</span
+                          >
+                        }
+                      </span>
+                    }
+                    <span class="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                      <span class="inline-flex items-center gap-1 truncate">
+                        <app-icon name="user" class="size-3.5" />
+                        {{ c.groomer?.fullName ?? 'Sin asignar' }}
+                      </span>
+                      @if (c.promisedAt) {
+                        <span
+                          class="ml-auto inline-flex items-center gap-1 tabular-nums"
+                          [class]="late(c) ? 'font-semibold text-rose-700' : ''"
+                        >
+                          <app-icon name="clock" class="size-3.5" /> {{ clock(c.promisedAt) }}
+                        </span>
+                      }
+                    </span>
+                  </button>
+                  @if (canEdit()) {
+                    <div class="mt-3 flex gap-2">
+                      @if (nextStatus(c.status); as next) {
+                        <button
+                          type="button"
+                          class="btn btn-secondary h-9 flex-1 px-2 text-sm"
+                          [disabled]="busyId() === c.id"
+                          (click)="move(c, next)"
+                        >
+                          Pasar a {{ statusLabels[next] }}
+                        </button>
+                      } @else {
+                        @if (whatsapp(c); as link) {
+                          <a
+                            [href]="link"
+                            target="_blank"
+                            rel="noopener"
+                            class="btn h-9 flex-1 px-2 text-sm"
+                            [class]="c.notifiedAt ? 'btn-ghost text-emerald-700' : 'btn-secondary'"
+                            (click)="notified(c)"
+                            [attr.aria-label]="'Avisar por WhatsApp a ' + c.client.name"
+                          >
+                            <app-icon name="message-circle" class="size-4" />
+                            {{ c.notifiedAt ? 'Avisado' : 'Avisar' }}
+                          </a>
+                        }
+                        <button
+                          type="button"
+                          class="btn btn-primary h-9 flex-1 px-2 text-sm"
+                          [disabled]="busyId() === c.id"
+                          (click)="openDeliver(c)"
+                        >
+                          Entregar
+                        </button>
+                      }
+                    </div>
+                  }
+                </li>
+              } @empty {
+                <li
+                  class="grid flex-1 place-items-center rounded-xl border-2 border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-400"
+                >
+                  {{ columnStyle[col.status].empty }}
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </div>
+    }
+
+    <!-- Entregados y cancelados -->
+    @if (finished().length || !isToday()) {
+      <section class="card overflow-hidden" aria-labelledby="done-title">
+        <h2 id="done-title" class="px-5 pt-4 font-display text-base font-semibold text-slate-900">
+          {{ isToday() ? 'Entregados hoy' : 'Servicios del día' }}
+        </h2>
+        @if (finished().length) {
+          <ul class="mt-2 divide-y divide-slate-100" role="list">
+            @for (c of finished(); track c.id) {
+              <li>
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-slate-50"
+                  (click)="open(c)"
+                >
+                  <app-icon
+                    [name]="speciesIcons[c.pet.species]"
+                    class="size-4 shrink-0 text-slate-400"
+                  />
+                  <span class="min-w-0 flex-1">
+                    <span
+                      class="block truncate font-medium text-slate-900"
+                      [class.line-through]="c.status === 'CANCELLED'"
+                    >
+                      {{ c.pet.name }} · {{ servicesLine(c) }}
+                    </span>
+                    <span class="block truncate text-xs text-slate-500">
+                      {{ c.code }} · {{ c.client.name }} · {{ statusLabels[c.status] }}
+                      {{
+                        c.deliveredAt
+                          ? clock(c.deliveredAt)
+                          : c.cancelledAt
+                            ? clock(c.cancelledAt)
+                            : ''
+                      }}
+                    </span>
+                  </span>
+                  @if (c.pending > 0 && c.status === 'DELIVERED') {
+                    <span
+                      class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 tabular-nums"
+                    >
+                      Por cobrar {{ money(c.pending) }}
+                    </span>
+                  } @else if (c.status === 'DELIVERED') {
+                    <span class="text-sm font-medium text-slate-900 tabular-nums">{{
+                      money(c.total)
+                    }}</span>
+                  }
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="px-5 pt-1 pb-5 text-sm text-slate-500">No hubo servicios ese día.</p>
+        }
+      </section>
+    }
+  }
+</section>
+
+<!-- Detalle de la tarjeta -->
+<app-modal
+  [open]="!!selected()"
+  [title]="selected() ? selected()!.pet.name + ' · ' + selected()!.code : 'Servicio'"
+  (closed)="selectedId.set(null)"
+>
+  @if (selected(); as c) {
+    <div class="space-y-4">
+      <p class="text-sm text-slate-600">
+        {{ statusLabels[c.status] }} · {{ sizeLabels[c.size] }} · {{ c.client.name }}
+        @if (c.promisedAt) {
+          · recojo {{ clock(c.promisedAt) }}
+        }
+      </p>
+
+      @if (flags(c).length || c.pet.allergies) {
+        <div class="flex flex-wrap gap-1.5">
+          @for (f of flags(c); track f) {
+            <span
+              class="rounded-md px-2 py-0.5 text-xs font-semibold"
+              [class]="
+                f === 'Agresivo' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+              "
+              >{{ f }}</span
+            >
+          }
+          @if (c.pet.allergies) {
+            <span class="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+              >Alergias: {{ c.pet.allergies }}</span
+            >
+          }
+        </div>
+      }
+
+      @if (c.instructions) {
+        <div class="rounded-xl bg-anil-50 px-3 py-2 text-sm text-anil-900 ring-1 ring-anil-200">
+          <span class="font-semibold">Pide:</span> {{ c.instructions }}
+        </div>
+      }
+      @if (detail(); as d) {
+        <dl class="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+          @if (d.skinNotes) {
+            <div class="sm:col-span-2">
+              <dt class="text-xs text-slate-500">Piel, orejas, heridas</dt>
+              <dd class="text-slate-900">{{ d.skinNotes }}</dd>
+            </div>
+          }
+          @if (d.belongings) {
+            <div>
+              <dt class="text-xs text-slate-500">Pertenencias</dt>
+              <dd class="text-slate-900">{{ d.belongings }}</dd>
+            </div>
+          }
+          <div>
+            <dt class="text-xs text-slate-500">Movilidad</dt>
+            <dd class="text-slate-900">
+              {{ transportLabels[d.transport]
+              }}{{ d.transportAddress ? ': ' + d.transportAddress : '' }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-slate-500">Ingresó</dt>
+            <dd class="text-slate-900">
+              {{ d.checkInAt | fecha: 'datetime' }} · {{ d.createdBy.fullName }}
+            </dd>
+          </div>
+          @if (d.pickedUpBy) {
+            <div>
+              <dt class="text-xs text-slate-500">Recogió</dt>
+              <dd class="text-slate-900">
+                {{ d.pickedUpBy }} ({{ d.pickedUpRelation }}) · {{ d.deliveredAt | fecha: 'time' }}
+              </dd>
+            </div>
+          }
+          @if (d.cancelReason) {
+            <div class="sm:col-span-2">
+              <dt class="text-xs text-slate-500">Motivo de la cancelación</dt>
+              <dd class="text-slate-900">{{ d.cancelReason }}</dd>
+            </div>
+          }
+        </dl>
+      }
+
+      <div>
+        <h3 class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Servicios</h3>
+        <ul class="mt-1 divide-y divide-slate-100 text-sm" role="list">
+          @for (s of c.services; track s.id) {
+            <li class="flex justify-between gap-3 py-1.5">
+              <span class="text-slate-900"
+                >{{ s.quantity > 1 ? s.quantity + ' × ' : '' }}{{ s.description }}</span
+              >
+              <span class="tabular-nums">{{ money(s.total) }}</span>
+            </li>
+          }
+        </ul>
+        <p class="mt-1 flex justify-between border-t border-slate-200 pt-2 text-sm font-semibold">
+          <span>Total</span><span class="tabular-nums">{{ money(c.total) }}</span>
+        </p>
+        @if (c.pending > 0 && c.pending < c.total) {
+          <p class="flex justify-between text-sm text-amber-800">
+            <span>Por cobrar</span><span class="tabular-nums">{{ money(c.pending) }}</span>
+          </p>
+        }
+      </div>
+
+      @if (
+        canEdit() &&
+        (c.status === 'WAITING' ||
+          c.status === 'BATHING' ||
+          c.status === 'CUTTING' ||
+          c.status === 'READY')
+      ) {
+        <div>
+          <label for="gr-assign" class="field-label">Groomer</label>
+          <select id="gr-assign" class="field-input" [formControl]="groomerControl">
+            <option [ngValue]="null">Sin asignar</option>
+            @for (g of groomers(); track g.id) {
+              <option [ngValue]="g.id">{{ g.fullName }}</option>
+            }
+          </select>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          @for (s of statuses; track s) {
+            @if (s !== c.status) {
+              <button
+                type="button"
+                class="btn btn-secondary h-9 px-3 text-sm"
+                [disabled]="busyId() === c.id || !canMoveTo(c, s)"
+                (click)="move(c, s)"
+              >
+                Pasar a {{ statusLabels[s] }}
+              </button>
+            }
+          }
+        </div>
+      }
+    </div>
+  }
+  <ng-container modal-actions>
+    @if (selected(); as c) {
+      <a [routerLink]="['/grooming', c.id, 'constancia']" class="btn btn-ghost">Constancia</a>
+      <a [routerLink]="['/atenciones', c.visitId]" class="btn btn-ghost">Ver atención</a>
+      @if (canCancel() && c.status !== 'DELIVERED' && c.status !== 'CANCELLED') {
+        <button type="button" class="btn btn-ghost text-rose-700" (click)="openCancel(c)">
+          Cancelar servicio
+        </button>
+      }
+      @if (canEdit() && c.status === 'READY') {
+        <button type="button" class="btn btn-primary" (click)="openDeliver(c)">Entregar</button>
+      } @else {
+        <button type="button" class="btn btn-primary" (click)="selectedId.set(null)">Cerrar</button>
+      }
+    }
+  </ng-container>
+</app-modal>
+
+<!-- Entrega -->
+<app-modal
+  [open]="!!delivering()"
+  [title]="'Entregar a ' + (delivering()?.pet?.name ?? '')"
+  description="Queda registrado quién recogió a la mascota."
+  (closed)="delivering.set(null)"
+>
+  @if (delivering(); as c) {
+    <form
+      id="deliver-form"
+      class="space-y-4"
+      (submit)="$event.preventDefault(); confirmDeliver()"
+      novalidate
+    >
+      <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Quién recoge">
+        @for (p of pickups(); track p.key) {
+          <button
+            type="button"
+            role="radio"
+            [attr.aria-checked]="pickupKey() === p.key"
+            class="rounded-full px-3.5 py-2 text-sm font-medium ring-1"
+            [class]="
+              pickupKey() === p.key
+                ? 'bg-anil-600 text-white ring-anil-600'
+                : 'bg-white text-slate-700 ring-slate-300'
+            "
+            (click)="choosePickup(p)"
+          >
+            {{ p.name }} · {{ p.relation }}
+          </button>
+        }
+        <button
+          type="button"
+          role="radio"
+          [attr.aria-checked]="pickupKey() === 'other'"
+          class="rounded-full px-3.5 py-2 text-sm font-medium ring-1"
+          [class]="
+            pickupKey() === 'other'
+              ? 'bg-anil-600 text-white ring-anil-600'
+              : 'bg-white text-slate-700 ring-slate-300'
+          "
+          (click)="choosePickup(null)"
+        >
+          Otra persona
+        </button>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]" [formGroup]="deliverForm">
+        <div class="sm:col-span-2">
+          <label for="dl-name" class="field-label"
+            >Nombre <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="dl-name"
+            class="field-input"
+            formControlName="pickedUpBy"
+            maxlength="150"
+            autocomplete="off"
+          />
+        </div>
+        <div>
+          <label for="dl-rel" class="field-label"
+            >Relación <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="dl-rel"
+            class="field-input"
+            formControlName="pickedUpRelation"
+            maxlength="40"
+            autocomplete="off"
+          />
+        </div>
+        <div>
+          <label for="dl-doc" class="field-label">DNI / CE</label>
+          <input
+            id="dl-doc"
+            class="field-input tabular-nums"
+            formControlName="pickedUpDocument"
+            maxlength="20"
+            inputmode="numeric"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+      @if (deliverForm.invalid && deliverForm.touched) {
+        <p class="field-error">Escribe el nombre y la relación de quien recoge</p>
+      }
+      @if (c.pending > 0) {
+        <p class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+          Queda por cobrar <strong class="tabular-nums">{{ money(c.pending) }}</strong
+          >.
+          @if (canCollect()) {
+            Al entregar te llevamos a caja.
+          } @else {
+            Recuérdale que pase por caja.
+          }
+        </p>
+      }
+    </form>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="delivering.set(null)">Volver</button>
+    <button type="submit" form="deliver-form" class="btn btn-primary" [disabled]="!!busyId()">
+      Entregar
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Cancelar -->
+<app-modal
+  [open]="!!cancelling()"
+  title="Cancelar el servicio"
+  description="Se quitan sus cargos de la cuenta. Queda registrado quién lo canceló y por qué."
+  [dismissible]="false"
+  (closed)="cancelling.set(null)"
+>
+  <form id="cancel-gr-form" (submit)="$event.preventDefault(); confirmCancel()" novalidate>
+    <label for="cancel-gr-reason" class="field-label"
+      >Motivo <span class="text-rose-600" aria-hidden="true">*</span></label
+    >
+    <input
+      id="cancel-gr-reason"
+      class="field-input"
+      [formControl]="cancelReason"
+      maxlength="200"
+      autocomplete="off"
+      placeholder="Ej.: el dueño se lo llevó sin el servicio"
+      [attr.aria-invalid]="cancelReason.invalid && cancelReason.touched"
+    />
+    @if (cancelReason.invalid && cancelReason.touched) {
+      <p class="field-error">Escribe el motivo (mínimo 3 letras)</p>
+    }
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="cancelling.set(null)">Volver</button>
+    <button type="submit" form="cancel-gr-form" class="btn btn-danger" [disabled]="!!busyId()">
+      Cancelar servicio
+    </button>
+  </ng-container>
+</app-modal>

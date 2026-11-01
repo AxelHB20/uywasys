@@ -41,6 +41,16 @@ export class ClientsService {
     return this.http.get<ClientDetail>(`/api/clients/${id}`);
   }
 
+  /** Derecho de acceso: todo lo que la clínica guarda del cliente, como archivo JSON. */
+  exportData(id: number): Observable<Blob> {
+    return this.http.get(`/api/clients/${id}/export`, { responseType: 'blob' });
+  }
+
+  /** Derecho de cancelación: borra sus datos personales. No se puede deshacer. */
+  anonymize(id: number, reason: string): Observable<ClientDetail> {
+    return this.http.post<ClientDetail>(`/api/clients/${id}/anonymize`, { reason });
+  }
+
   consentText(): Observable<ConsentText> {
     this.consent$ ??= this.http
       .get<ConsentText>('/api/clients/consent')

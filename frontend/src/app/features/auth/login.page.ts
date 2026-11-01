@@ -9,14 +9,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
 @Component({
   selector: 'app-login-page',
-  imports: [ReactiveFormsModule, IconComponent, LogoComponent],
+  imports: [ReactiveFormsModule, RouterLink, IconComponent, LogoComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './login.page.html',
 })

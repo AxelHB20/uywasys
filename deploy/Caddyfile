@@ -1,0 +1,37 @@
+# Caddy: HTTPS con certificado gratuito (Let's Encrypt) que se renueva solo.
+# DOMAIN sale del archivo .env (por ejemplo demo.uywa.pe). Con DOMAIN=localhost sirve en tu PC.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# La API: el backend no se expone a internet, solo Caddy lo alcanza
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# La app de Angular: cualquier ruta que no sea un archivo carga index.html
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Los archivos con huella en el nombre no cambian nunca; index.html siempre se revisa
+	@hashed path_regexp [-.][A-Za-z0-9]{8,}\.(js|css|woff2?)$
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@index path / /index.html
+	header @index Cache-Control "no-cache"
+
+	log {
+		output stdout
+		format console
+	}
+}

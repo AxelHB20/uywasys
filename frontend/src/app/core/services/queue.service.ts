@@ -25,6 +25,8 @@ export interface QueueItem {
   };
   client: { id: number; number: number; name: string; phone: string };
   attendedBy: { id: number; fullName: string } | null;
+  /** Atención abierta o cerrada que salió de esta entrada */
+  visit: { id: number; status: 'OPEN' | 'CLOSED' } | null;
 }
 
 export interface NewQueueEntry {

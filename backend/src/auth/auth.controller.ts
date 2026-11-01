@@ -10,6 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 import { AllowTemporaryPassword } from '../common/auth/allow-temporary-password.decorator.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
@@ -28,8 +29,13 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
-  /** Inicia sesión. El token viaja en una cookie httpOnly que JavaScript no puede leer. */
+  /**
+   * Inicia sesión. El token viaja en una cookie httpOnly que JavaScript no puede leer.
+   * Además del bloqueo por cuenta, cada conexión tiene pocos intentos por minuto: así nadie
+   * prueba contraseñas en muchas cuentas ni bloquea a propósito la del administrador.
+   */
   @Public()
+  @Throttle({ default: { limit: loginRateLimit, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -56,17 +62,21 @@ export class AuthController {
   /** Cambia la contraseña del usuario actual (obligatorio si entró con una clave temporal). */
   @AllowTemporaryPassword()
   @Patch('password')
-  changePassword(
+  async changePassword(
     @CurrentUser() user: AuthUser,
     @Body() dto: ChangePasswordDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<SessionUser> {
-    return this.auth.changePassword(
+    const result = await this.auth.changePassword(
       user.id,
       dto.currentPassword,
       dto.newPassword,
       req.ip,
     );
+    // Las demás sesiones quedan cerradas; esta sigue con un token de la versión nueva
+    res.cookie(SESSION_COOKIE, result.token, this.cookieOptions());
+    return result.user;
   }
 
   @Public()
@@ -86,4 +96,10 @@ export class AuthController {
       maxAge: this.config.get<number>('SESSION_HOURS', 8) * 60 * 60 * 1000,
     };
   }
+}
+
+/** Se lee al momento (ConfigModule ya cargó el .env en process.env). */
+function loginRateLimit(): number {
+  const value = Number(process.env.LOGIN_RATE_LIMIT);
+  return Number.isInteger(value) && value > 0 ? value : 10;
 }

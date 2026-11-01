@@ -1,4 +1,4 @@
-import { DatePipe, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -16,6 +16,7 @@ import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 
 type Confirmation = { kind: 'reset' | 'deactivate' | 'activate'; member: TeamMember };
 type Status = { label: string; tone: BadgeTone };
@@ -25,8 +26,8 @@ const ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION', 'GROOMER', 'CASHIER'];
 @Component({
   selector: 'app-users-page',
   imports: [
+    FechaPipe,
     ReactiveFormsModule,
-    DatePipe,
     NgTemplateOutlet,
     IconComponent,
     BadgeComponent,
@@ -71,6 +72,11 @@ export class UsersPage implements OnInit {
       nonNullable: true,
       validators: [Validators.maxLength(20)],
     }),
+    commissionPercent: new FormControl<number | null>(null, [
+      Validators.min(0),
+      Validators.max(100),
+      Validators.pattern(/^\d+(\.\d{1,2})?$/),
+    ]),
   });
   protected readonly selectedRole = signal<Role>('RECEPTION');
 
@@ -127,7 +133,13 @@ export class UsersPage implements OnInit {
 
   protected openCreate(): void {
     this.editing.set(null);
-    this.form.reset({ fullName: '', email: '', role: 'RECEPTION', licenseNumber: '' });
+    this.form.reset({
+      fullName: '',
+      email: '',
+      role: 'RECEPTION',
+      licenseNumber: '',
+      commissionPercent: null,
+    });
     this.form.controls.email.enable();
     this.formOpen.set(true);
   }
@@ -139,6 +151,7 @@ export class UsersPage implements OnInit {
       email: member.email,
       role: member.role,
       licenseNumber: member.licenseNumber ?? '',
+      commissionPercent: member.commissionPercent,
     });
     this.form.controls.email.disable();
     this.formOpen.set(true);
@@ -155,6 +168,11 @@ export class UsersPage implements OnInit {
       fullName: value.fullName.trim(),
       role: value.role,
       licenseNumber: value.licenseNumber.trim() || null,
+      // Comisión: groomers, o quien la tenga configurada (un administrador que también baña)
+      commissionPercent:
+        value.commissionPercent === null || (value.commissionPercent as unknown) === ''
+          ? null
+          : Number(value.commissionPercent),
     };
     const editing = this.editing();
     this.saving.set(true);
