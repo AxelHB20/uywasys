@@ -202,6 +202,11 @@ export class ClientPrivacyService {
         );
 
       await tx.authorizedPerson.deleteMany({ where: { clientId: id } });
+      // Su enlace del portal deja de funcionar
+      await tx.portalLink.updateMany({
+        where: { clientId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
       await tx.pet.updateMany({
         where: { clientId: id },
         // El microchip identifica al dueño en los registros externos; las notas pueden nombrarlo
@@ -218,6 +223,10 @@ export class ClientPrivacyService {
           address: null,
           district: null,
           notes: null,
+          invoiceRuc: null,
+          invoiceName: null,
+          invoiceAddress: null,
+          invoiceEmail: null,
           marketingConsent: false,
           active: false,
           searchText: `anonimizado ${clientCode(row.number).toLowerCase()}`,
@@ -235,7 +244,7 @@ export class ClientPrivacyService {
       entity: 'client',
       entityId: id,
       ip,
-      data: { code: clientCode(number), reason },
+      data: { cliente: clientCode(number), reason },
     });
   }
 }

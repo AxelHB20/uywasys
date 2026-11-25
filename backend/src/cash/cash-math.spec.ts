@@ -36,14 +36,27 @@ describe('checkPayments', () => {
     ).toThrow('no cubre');
   });
 
-  it('Yape, Plin y transferencia exigen código de operación; tarjeta no', () => {
-    for (const method of ['YAPE', 'PLIN', 'TRANSFER'] as const)
-      expect(() => checkPayments([{ method, amount: 10 }], D(10))).toThrow(
-        'código de operación',
-      );
+  it('el código de operación es opcional; si se escribe, mínimo 4 caracteres', () => {
+    for (const method of ['YAPE', 'PLIN', 'TRANSFER'] as const) {
+      const { lines } = checkPayments([{ method, amount: 10 }], D(10));
+      expect(lines[0].operationCode).toBeNull();
+      expect(() =>
+        checkPayments([{ method, amount: 10, operationCode: '12' }], D(10)),
+      ).toThrow('al menos 4');
+    }
+    // El voucher de tarjeta no tiene largo mínimo
     expect(
-      checkPayments([{ method: 'CARD', amount: 10 }], D(10)).change.toNumber(),
-    ).toBe(0);
+      checkPayments(
+        [{ method: 'CARD', amount: 10, operationCode: 'V-1' }],
+        D(10),
+      ).lines[0].operationCode,
+    ).toBe('V-1');
+    expect(
+      checkPayments(
+        [{ method: 'YAPE', amount: 10, operationCode: ' 0012345 ' }],
+        D(10),
+      ).lines[0].operationCode,
+    ).toBe('0012345');
   });
 
   it('solo el efectivo tiene vuelto y cada medio va una vez', () => {

@@ -5,8 +5,8 @@ import { expect, test } from '@playwright/test';
  * se atiende con un servicio, se cobra con vuelto y se cierra la caja cuadrando.
  * Usa el administrador del seed (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD).
  */
-const EMAIL = process.env['E2E_EMAIL'] ?? 'admin@uywa.pe';
-const PASSWORD = process.env['E2E_PASSWORD'] ?? 'CambiaEstaClave123';
+const EMAIL = process.env['E2E_EMAIL'] ?? 'e2e@uywa.pe';
+const PASSWORD = process.env['E2E_PASSWORD'] ?? 'Pruebas2026clave';
 const stamp = Date.now().toString().slice(-6);
 const owner = `Cliente E2E ${stamp}`;
 const pet = `Firulais${stamp}`;
@@ -48,8 +48,8 @@ test('día completo: recepción → atención → cobro → cierre de caja', asy
   // ── Atención: signos, servicio y cierre ──
   await page.locator('#v-weight').fill('12.4');
   await page.locator('#v-notes').fill('Control general. Sin hallazgos.');
-  await page.getByRole('button', { name: 'Guardar' }).click();
-  await expect(page.getByText('Atención guardada.')).toBeVisible();
+  // Se guarda solo al dejar de escribir
+  await expect(page.getByRole('status').filter({ hasText: /^Guardado/ })).toBeVisible();
 
   await page.locator('#v-search').fill(service);
   await page.locator('#v-results').getByText(service).click();
@@ -76,7 +76,7 @@ test('día completo: recepción → atención → cobro → cierre de caja', asy
   const note = collect.getByRole('radio', { name: 'Nota de venta' });
   if (await note.count()) await note.click();
   await collect.locator('#collect-tendered-0').fill('100');
-  await expect(collect).toContainText('Vuelto S/ 50.00');
+  await expect(collect).toContainText(/Vuelto\s*S\/ 50\.00/);
   await collect.getByRole('button', { name: /^Cobrar S\// }).click();
 
   // ── Ticket ──

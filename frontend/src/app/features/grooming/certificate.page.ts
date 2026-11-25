@@ -8,7 +8,6 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { SPECIES_LABELS } from '../../core/services/clients.models';
 import {
   GROOMING_STATUS_LABELS,
@@ -23,6 +22,7 @@ import { formatPhone } from '../../shared/utils/peru';
 import { petCode } from '../../shared/utils/records';
 import { money } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 /**
  * Constancia de grooming (A5): cómo llegó la mascota, lo pedido, los servicios y la entrega.
@@ -30,17 +30,12 @@ import { apiErrorMessage } from '../../shared/utils/validators';
  */
 @Component({
   selector: 'app-grooming-certificate-page',
-  imports: [RouterLink, IconComponent],
+  imports: [BackLinkComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <a
-          routerLink="/grooming"
-          class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-        >
-          <app-icon name="chevron-left" class="size-4" /> Tablero de grooming
-        </a>
+        <app-back-link fallback="/grooming" fallbackLabel="Tablero de grooming" />
         @if (g()) {
           <button type="button" class="btn btn-primary" (click)="print()">
             <app-icon name="file-text" class="size-4" /> Imprimir

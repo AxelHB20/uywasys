@@ -59,6 +59,8 @@ describe('Clientes, mascotas y cola (e2e)', () => {
   afterAll(async () => {
     if (prisma && clinicIds.length) {
       const where = { clinicId: { in: clinicIds } };
+      await prisma.appointment.deleteMany({ where });
+      await prisma.visit.deleteMany({ where });
       await prisma.queueEntry.deleteMany({ where });
       await prisma.authorizedPerson.deleteMany({ where });
       await prisma.pet.deleteMany({ where });
@@ -365,6 +367,70 @@ describe('Clientes, mascotas y cola (e2e)', () => {
     expect(toby.lastVisit).toBe(dash.body.day);
   });
 
+  it('última visita cuenta la atención abierta sin cola; próxima cita y celular repetido', async () => {
+    const created = await http()
+      .post('/api/clients')
+      .set('Cookie', cookies.reception)
+      .send({
+        name: 'Rosa Atendida Directo',
+        phone: '966600011',
+        consent: true,
+        pet: { name: 'Pancho', species: 'DOG' },
+      })
+      .expect(201);
+    const pet = created.body.pets[0].id as number;
+    // El veterinario atiende sin pasar por la cola
+    await http()
+      .post('/api/visits')
+      .set('Cookie', cookies.vet)
+      .send({ petId: pet })
+      .expect(201);
+    const startsAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    await http()
+      .post('/api/appointments')
+      .set('Cookie', cookies.reception)
+      .send({
+        petId: pet,
+        startsAt,
+        durationMin: 30,
+        type: 'CONSULTATION',
+        reason: 'Control',
+        vetId: null,
+      })
+      .expect(201);
+
+    const detail = await http()
+      .get(`/api/clients/${created.body.id}`)
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    const pancho = detail.body.pets[0];
+    expect(pancho.lastVisit).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(pancho.nextAppointment).toMatchObject({
+      reason: 'Control',
+      startsAt,
+    });
+
+    const same = await http()
+      .get('/api/clients/lookup-phone?phone=966 600 011')
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    expect(same.body.client).toMatchObject({
+      id: created.body.id,
+      pets: ['Pancho'],
+    });
+    const none = await http()
+      .get('/api/clients/lookup-phone?phone=966600099')
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    expect(none.body.client).toBeNull();
+    // Otra clínica no lo encuentra
+    const other = await http()
+      .get('/api/clients/lookup-phone?phone=966600011')
+      .set('Cookie', cookies.other)
+      .expect(200);
+    expect(other.body.client).toBeNull();
+  });
+
   it('una mascota fallecida queda inactiva y no entra a la cola', async () => {
     const pet = await http()
       .post(`/api/clients/${clientId}/pets`)
@@ -382,5 +448,31 @@ describe('Clientes, mascotas y cola (e2e)', () => {
       .set('Cookie', cookies.reception)
       .send({ petId: pet.body.id })
       .expect(400);
+  });
+
+  it('ordena en español: la tilde no manda el nombre al final', async () => {
+    for (const name of [
+      'Zoe Orden',
+      'Álvaro Orden',
+      'Beto Orden',
+      'Ñato Orden',
+      'Nora Orden',
+    ])
+      await http()
+        .post('/api/clients')
+        .set('Cookie', cookies.reception)
+        .send({ name, phone: '933333333', consent: true })
+        .expect(201);
+    const res = await http()
+      .get('/api/clients?q=Orden')
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    expect(res.body.items.map((c: { name: string }) => c.name)).toEqual([
+      'Álvaro Orden',
+      'Beto Orden',
+      'Nora Orden',
+      'Ñato Orden',
+      'Zoe Orden',
+    ]);
   });
 });

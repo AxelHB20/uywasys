@@ -135,9 +135,14 @@ describe('Adjuntos y consentimientos (e2e)', () => {
       size: pdf.length,
     });
 
-    const file = await http()
+    // Caja no abre la historia clínica
+    await http()
       .get(`/api/attachments/${ids.attachment}/file`)
       .set('Cookie', cookies.cashier)
+      .expect(403);
+    const file = await http()
+      .get(`/api/attachments/${ids.attachment}/file`)
+      .set('Cookie', cookies.reception)
       .buffer(true)
       .parse((r, cb) => {
         const chunks: Buffer[] = [];
@@ -250,9 +255,13 @@ describe('Adjuntos y consentimientos (e2e)', () => {
       .digest('hex');
     expect(res.body.hash).toBe(expected);
 
-    const list = await http()
+    await http()
       .get(`/api/pets/${ids.pet}/consents`)
       .set('Cookie', cookies.cashier)
+      .expect(403);
+    const list = await http()
+      .get(`/api/pets/${ids.pet}/consents`)
+      .set('Cookie', cookies.reception)
       .expect(200);
     expect(list.body[0]).toMatchObject({
       code: 'CI-00001',
@@ -278,5 +287,51 @@ describe('Adjuntos y consentimientos (e2e)', () => {
       .set('Cookie', cookies.vet)
       .send({ reason: 'Otra vez' })
       .expect(409);
+  });
+
+  it('acepta la foto comprimida (WebP) y el administrador ve cuánto ocupan los archivos', async () => {
+    // Cabecera mínima de un WebP: así llega lo que comprime la web
+    const webp = Buffer.concat([
+      Buffer.from('RIFF'),
+      Buffer.from([0x24, 0, 0, 0]),
+      Buffer.from('WEBPVP8 '),
+      Buffer.alloc(32),
+    ]);
+    const photo = await http()
+      .post(`/api/pets/${ids.pet}/attachments`)
+      .set('Cookie', cookies.reception)
+      .field('kind', 'PHOTO')
+      .field('title', 'Herida pata')
+      .attach('file', webp, 'herida.webp')
+      .expect(201);
+    expect(photo.body).toMatchObject({
+      mime: 'image/webp',
+      fileName: 'herida.webp',
+    });
+
+    await http()
+      .get('/api/clinic/storage')
+      .set('Cookie', cookies.reception)
+      .expect(403);
+    const usage = await http()
+      .get('/api/clinic/storage')
+      .set('Cookie', cookies.admin)
+      .expect(200);
+    const files = await prisma.attachment.aggregate({
+      where: { clinicId: clinicIds[0] },
+      _count: true,
+      _sum: { size: true },
+    });
+    expect(usage.body.attachments).toEqual({
+      count: files._count,
+      bytes: files._sum.size,
+    });
+    expect(usage.body.totalBytes).toBeGreaterThanOrEqual(files._sum.size ?? 0);
+    // Otra clínica no suma lo de esta
+    const other = await http()
+      .get('/api/clinic/storage')
+      .set('Cookie', cookies.other)
+      .expect(200);
+    expect(other.body.attachments.count).toBe(0);
   });
 });

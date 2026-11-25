@@ -168,4 +168,128 @@ describe('Actividad (bitácora) (e2e)', () => {
       'cash.receipt_void',
     ]);
   });
+
+  it('con más de 10 000 registros no los cuenta todos: dice "más de" y deja filtrar por fecha', async () => {
+    const [a] = clinicIds;
+    await prisma.auditLog.createMany({
+      data: Array.from({ length: 10_001 }, (_, i) => ({
+        clinicId: a,
+        action: 'client.update',
+        entity: 'client',
+        entityId: String(i + 1),
+        createdAt: new Date('2025-01-15T15:00:00Z'),
+      })),
+    });
+    const all = await http()
+      .get('/api/activity')
+      .set('Cookie', adminCookie)
+      .expect(200);
+    expect(all.body).toMatchObject({ total: 10_000, totalCapped: true });
+    expect(all.body.items).toHaveLength(50);
+    // Con fecha se cuenta exacto
+    const day = await http()
+      .get('/api/activity?from=2026-10-01&to=2026-10-27')
+      .set('Cookie', adminCookie)
+      .expect(200);
+    expect(day.body).toMatchObject({ total: 3, totalCapped: false });
+  });
+
+  it('lo que hace soporte no se muestra; "Para revisar" cuenta por grupo', async () => {
+    const [a] = clinicIds;
+    const support = await prisma.user.create({
+      data: {
+        clinicId: a,
+        fullName: 'Técnico de Uywa',
+        email: `act-sup-${Date.now()}@uywa.pe`,
+        passwordHash: 'x',
+        role: 'ADMIN',
+        isSupport: true,
+      },
+    });
+    const at = (iso: string) => new Date(iso);
+    await prisma.auditLog.createMany({
+      data: [
+        {
+          clinicId: a,
+          userId: support.id,
+          action: 'auth.login',
+          entity: 'user',
+          entityId: String(support.id),
+          createdAt: at('2026-10-28T10:00:00-05:00'),
+        },
+        {
+          clinicId: a,
+          userId: support.id,
+          action: 'auth.login_failed',
+          entity: 'user',
+          entityId: String(support.id),
+          createdAt: at('2026-10-28T09:58:00-05:00'),
+        },
+        {
+          clinicId: a,
+          userId: support.id,
+          action: 'billing.token_update',
+          entity: 'clinic',
+          entityId: String(a),
+          data: { proveedor: 'MIFACT' },
+          createdAt: at('2026-10-28T10:05:00-05:00'),
+        },
+        {
+          clinicId: a,
+          userId: receptionId,
+          action: 'lab.cancel',
+          entity: 'labOrder',
+          entityId: '7',
+          createdAt: at('2026-10-28T11:00:00-05:00'),
+        },
+      ],
+    });
+    const get = async (qs: string) =>
+      (
+        await http()
+          .get(`/api/activity?from=2026-10-28&to=2026-10-28&${qs}`)
+          .set('Cookie', adminCookie)
+          .expect(200)
+      ).body.items as {
+        action: string;
+        important: boolean;
+        user: { fullName: string; support: boolean } | null;
+      }[];
+
+    // Nada de lo que hace soporte se muestra: ni sus ingresos ni sus ajustes
+    const all = await get('');
+    expect(all.map((i) => i.action)).toEqual(['lab.cancel']);
+    expect(all[0].important).toBe(true);
+    expect(await get(`userId=${support.id}`)).toEqual([]);
+    expect(await get('area=billing')).toEqual([]);
+    expect((await get('area=lab')).map((i) => i.action)).toEqual([
+      'lab.cancel',
+    ]);
+    expect((await get('kind=voids')).map((i) => i.action)).toEqual([
+      'lab.cancel',
+    ]);
+    expect(await get('kind=access')).toEqual([]);
+    expect((await get('important=true')).map((i) => i.action)).toEqual([
+      'lab.cancel',
+    ]);
+    await http()
+      .get('/api/activity?area=support')
+      .set('Cookie', adminCookie)
+      .expect(400);
+
+    const review = await http()
+      .get('/api/activity/review?from=2026-10-28&to=2026-10-28')
+      .set('Cookie', adminCookie)
+      .expect(200);
+    expect(review.body).toEqual({
+      from: '2026-10-28',
+      to: '2026-10-28',
+      total: 1,
+      kinds: [{ kind: 'voids', count: 1 }],
+    });
+    await http()
+      .get('/api/activity/review')
+      .set('Cookie', receptionCookie)
+      .expect(403);
+  });
 });

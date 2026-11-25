@@ -15,7 +15,9 @@ import { SessionService } from '../../core/auth/session.service';
 import {
   Batch,
   CATEGORIES,
+  CATEGORY_ICON,
   CATEGORY_LABELS,
+  CATEGORY_TINT,
   IGV_LABELS,
   IgvAffectation,
   MOVEMENT_LABELS,
@@ -25,8 +27,11 @@ import {
   ProductCategory,
   ProductDetail,
   STOCK_ROLES,
+  defaultTracksExpiry,
 } from '../../core/services/inventory.models';
 import { InventoryService } from '../../core/services/inventory.service';
+import { Supplier } from '../../core/services/purchases.models';
+import { PurchasesService } from '../../core/services/purchases.service';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
@@ -38,11 +43,21 @@ import {
   expiryText,
   formatQty,
   money,
+  baseTotal,
   readableStock,
   unitLabel,
 } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
+import { ExpiryChoiceComponent } from './expiry-choice.component';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
+
+const RECEIVED = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
 
 type Modal = 'purchase' | 'outflow' | 'count' | 'presentation' | 'edit' | null;
 
@@ -53,11 +68,13 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
   COUNT_ADJUST: 'warning',
   RETURN: 'neutral',
   SALE: 'neutral',
+  PURCHASE_VOID: 'danger',
 };
 
 @Component({
   selector: 'app-product-detail-page',
   imports: [
+    BackLinkComponent,
     FechaPipe,
     ReactiveFormsModule,
     RouterLink,
@@ -65,6 +82,7 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
     BadgeComponent,
     ModalComponent,
     PetPickerComponent,
+    ExpiryChoiceComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-detail.page.html',
@@ -73,11 +91,14 @@ export class ProductDetailPage {
   private readonly inventory = inject(InventoryService);
   private readonly toast = inject(ToastService);
   private readonly session = inject(SessionService);
+  private readonly purchasesApi = inject(PurchasesService);
 
   readonly id = input.required<string>();
 
   protected readonly categories = CATEGORIES;
   protected readonly categoryLabels = CATEGORY_LABELS;
+  protected readonly categoryIcon = CATEGORY_ICON;
+  protected readonly categoryTint = CATEGORY_TINT;
   protected readonly igvTypes = Object.keys(IGV_LABELS) as IgvAffectation[];
   protected readonly igvLabels = IGV_LABELS;
   protected readonly movementLabels = MOVEMENT_LABELS;
@@ -104,6 +125,11 @@ export class ProductDetailPage {
     const p = this.product();
     return p ? readableStock(p.totalStock, p.baseUnit, p.presentations) : '';
   });
+  /** "= 200 tabletas" solo si el stock se muestra en cajas o blísteres (no repite "23 unidades") */
+  protected readonly stockTotal = computed(() => {
+    const p = this.product();
+    return p ? baseTotal(p.totalStock, p.baseUnit, p.presentations) : null;
+  });
   protected readonly stockValue = computed(() => {
     const p = this.product();
     if (!p) return null;
@@ -128,12 +154,13 @@ export class ProductDetailPage {
     expiresAt: new FormControl('', { nonNullable: true }),
     costPerPresentation: new FormControl<number | null>(null, [Validators.min(0)]),
     supplier: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(120)] }),
+    supplierId: new FormControl<number | null>(null),
     documentNumber: new FormControl('', {
       nonNullable: true,
       validators: [Validators.maxLength(30)],
     }),
   });
-  private readonly purchaseValue = toSignal(this.purchaseForm.valueChanges, {
+  protected readonly purchaseValue = toSignal(this.purchaseForm.valueChanges, {
     initialValue: this.purchaseForm.value,
   });
   protected readonly purchasePreview = computed(() => {
@@ -144,7 +171,15 @@ export class ProductDetailPage {
     const units = Math.round(v.quantity * pres.factor * 1000) / 1000;
     return `= ${formatQty(units)} ${unitLabel(p.baseUnit, units)}`;
   });
-  protected readonly needsLot = computed(() => this.product()?.category !== 'ACCESSORY');
+  /** Lo que vence pide lote y fecha; camas, juguetes y similares no */
+  protected readonly needsLot = computed(() => this.product()?.tracksExpiry ?? true);
+  protected readonly purchaseTried = signal(false);
+  protected readonly lotMissing = computed(
+    () => this.purchaseTried() && this.needsLot() && !this.purchaseValue().lotNumber?.trim(),
+  );
+  protected readonly expiryMissing = computed(
+    () => this.purchaseTried() && this.needsLot() && !this.purchaseValue().expiresAt,
+  );
 
   // ── Salida ──
   protected readonly outflowForm = new FormGroup({
@@ -180,6 +215,18 @@ export class ProductDetailPage {
   });
 
   // ── Conteo ──
+  /** Lo que hay para sacar: el lote elegido o todo el stock */
+  protected readonly outflowAvailable = computed(() => {
+    const p = this.product();
+    if (!p) return '';
+    const id = this.outflowValue().batchId;
+    const batch = id && id !== 'auto' ? p.batches.find((b) => b.id === Number(id)) : null;
+    const qty = batch ? batch.quantity : p.totalStock;
+    const total = baseTotal(qty, p.baseUnit, p.presentations);
+    const text = readableStock(qty, p.baseUnit, p.presentations);
+    return (total ? `${text} (${total})` : text) + (batch ? ` en ${this.batchName(batch)}` : '');
+  });
+
   protected readonly countForm = new FormGroup({
     reason: new FormControl('', {
       nonNullable: true,
@@ -222,10 +269,27 @@ export class ProductDetailPage {
     }),
     notes: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(500)] }),
     active: new FormControl(true, { nonNullable: true }),
+    tracksExpiry: new FormControl(true, { nonNullable: true }),
+    chargeable: new FormControl(true, { nonNullable: true }),
+  });
+  private readonly editTracks = toSignal(this.editForm.controls.tracksExpiry.valueChanges, {
+    initialValue: true,
+  });
+  /** Pasar a "no vence" borra las fechas de los lotes actuales: se avisa antes */
+  protected readonly dropsExpiry = computed(() => {
+    const p = this.product();
+    return !!p?.tracksExpiry && !this.editTracks() && p.batches.some((b) => b.expiresAt);
   });
 
   constructor() {
+    // El IGV define cuánto impuesto se declara: solo el administrador lo cambia
+    if (!this.isAdmin()) this.editForm.controls.igv.disable();
     effect(() => this.load(Number(this.id())));
+    // Al cambiar de categoría, el control de vencimiento la sigue mientras no se haya tocado
+    this.editForm.controls.category.valueChanges.subscribe((category) => {
+      const tracks = this.editForm.controls.tracksExpiry;
+      if (this.modal() === 'edit' && !tracks.dirty) tracks.setValue(defaultTracksExpiry(category));
+    });
     this.outflowForm.controls.type.valueChanges.subscribe(() => {
       this.outflowForm.controls.batchId.setValue('auto');
       this.pickedPet.set(null);
@@ -279,9 +343,30 @@ export class ProductDetailPage {
     return p ? `${formatQty(value)} ${unitLabel(p.baseUnit, value)}` : '';
   }
 
+  /** Cómo se nombra un ingreso: por su lote si vence, por la fecha en que llegó si no */
+  protected batchName(b: Batch): string {
+    return this.needsLot()
+      ? `Lote ${b.lotNumber ?? '—'}`
+      : `Ingreso del ${RECEIVED.format(new Date(b.receivedAt))}`;
+  }
+
   protected unitName(): string {
     const p = this.product();
     return p ? unitLabel(p.baseUnit, 2) : '';
+  }
+
+  // ── Proveedores (lista de Compras) ──
+  protected readonly suppliers = signal<Supplier[]>([]);
+  protected readonly suppliersFailed = signal(false);
+  private suppliersLoaded = false;
+
+  private loadSuppliers(): void {
+    if (this.suppliersLoaded) return;
+    this.suppliersLoaded = true;
+    this.purchasesApi.suppliers().subscribe({
+      next: (list) => this.suppliers.set(list),
+      error: () => this.suppliersFailed.set(true),
+    });
   }
 
   // ── Abrir modales ──
@@ -294,9 +379,18 @@ export class ProductDetailPage {
       expiresAt: '',
       costPerPresentation: null,
       supplier: '',
+      supplierId: null,
       documentNumber: '',
     });
+    this.loadSuppliers();
+    this.purchaseTried.set(false);
     this.modal.set('purchase');
+  }
+
+  /** El insumo descontado por un servicio no es "uso interno" registrado a mano */
+  protected movementLabel(m: Movement): string {
+    if (m.type === 'TREATMENT' && m.refType === 'charge') return 'Servicio';
+    return this.movementLabels[m.type];
   }
 
   protected openOutflow(type: 'WASTE' | 'TREATMENT' = 'WASTE', batch?: Batch): void {
@@ -330,6 +424,36 @@ export class ProductDetailPage {
     this.modal.set('count');
   }
 
+  private readonly countValue = toSignal(this.countForm.controls.items.valueChanges, {
+    initialValue: [] as (number | null)[],
+  });
+
+  /** "−5 tabletas" mientras se escribe lo contado (null si coincide o está vacío) */
+  protected countDiff(index: number, system: number): string | null {
+    const counted = this.countValue()[index];
+    if (counted === null || counted === undefined || Number.isNaN(Number(counted))) return null;
+    const diff = Math.round((Number(counted) - system) * 1000) / 1000;
+    if (diff === 0) return null;
+    return `${diff > 0 ? '+' : '−'}${this.units(Math.abs(diff))}`;
+  }
+
+  /** Unidades SUNAT comunes; si el producto trae otra (importada), se mantiene en la lista */
+  protected readonly sunatUnits = computed(() => {
+    const list = [
+      { code: 'NIU', label: 'Unidad (NIU)' },
+      { code: 'ZZ', label: 'Servicio (ZZ)' },
+      { code: 'KGM', label: 'Kilogramo (KGM)' },
+      { code: 'GRM', label: 'Gramo (GRM)' },
+      { code: 'LTR', label: 'Litro (LTR)' },
+      { code: 'MLT', label: 'Mililitro (MLT)' },
+      { code: 'BX', label: 'Caja (BX)' },
+    ];
+    const current = this.product()?.sunatUnit;
+    return current && !list.some((u) => u.code === current)
+      ? [...list, { code: current, label: current }]
+      : list;
+  });
+
   protected openPresentation(p: Presentation | null): void {
     this.editingPresentation.set(p);
     this.presentationForm.reset({
@@ -356,6 +480,8 @@ export class ProductDetailPage {
       sunatUnit: p.sunatUnit,
       notes: p.notes ?? '',
       active: p.active,
+      tracksExpiry: p.tracksExpiry,
+      chargeable: p.chargeable ?? true,
     });
     this.modal.set('edit');
   }
@@ -367,20 +493,25 @@ export class ProductDetailPage {
   // ── Guardar ──
   protected savePurchase(): void {
     const p = this.product();
+    this.purchaseTried.set(true);
     if (!p || this.invalidForm(this.purchaseForm)) return;
     const v = this.purchaseForm.getRawValue();
-    if (this.needsLot() && (!v.lotNumber.trim() || !v.expiresAt)) {
-      this.toast.error('Ingresa el lote y la fecha de vencimiento');
+    const tracks = this.needsLot();
+    if (tracks && (!v.lotNumber.trim() || !v.expiresAt)) {
+      setTimeout(() =>
+        document.querySelector<HTMLElement>('#purchase-form [aria-invalid="true"]')?.focus(),
+      );
       return;
     }
     this.run(
       this.inventory.purchase(p.id, {
         presentationId: Number(v.presentationId),
         quantity: Number(v.quantity),
-        lotNumber: v.lotNumber.trim() || null,
-        expiresAt: v.expiresAt || null,
+        lotNumber: tracks ? v.lotNumber.trim() || null : null,
+        expiresAt: tracks ? v.expiresAt || null : null,
         costPerPresentation: v.costPerPresentation === null ? null : Number(v.costPerPresentation),
-        supplier: v.supplier.trim() || null,
+        supplier: this.suppliersFailed() ? v.supplier.trim() || null : null,
+        supplierId: this.suppliersFailed() ? undefined : v.supplierId,
         documentNumber: v.documentNumber.trim() || null,
       }),
       'Compra registrada',
@@ -473,6 +604,8 @@ export class ProductDetailPage {
         sunatUnit: v.sunatUnit,
         notes: v.notes.trim() || null,
         active: v.active,
+        tracksExpiry: v.tracksExpiry,
+        chargeable: v.chargeable,
       }),
       'Producto actualizado',
     );

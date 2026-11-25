@@ -35,12 +35,15 @@ import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { formatQty, money, unitLabel } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { loaded } from '../../shared/utils/resource';
 
 type SupplyGroup = FormGroup<{
   productId: FormControl<number>;
   name: FormControl<string>;
   baseUnit: FormControl<BaseUnit>;
   quantity: FormControl<number | null>;
+  /** Último costo sin IGV por unidad mínima (solo para mostrar; no se envía) */
+  unitCost: FormControl<number | null>;
 }>;
 
 const MAX_SUPPLIES = 20;
@@ -56,6 +59,39 @@ const sizePrice = () =>
  * Catálogo de servicios (consulta, vacunación, cirugías…) con su precio y los insumos
  * que descuentan del inventario. Todos lo consultan; solo el administrador lo edita.
  */
+/** Dónde aparece cada categoría: la categoría decide en qué pantallas se puede cobrar */
+const CATEGORY_WHERE: Record<CareServiceCategory, string> = {
+  CONSULTATION: 'Aparece en la Atención, la Caja y los Presupuestos.',
+  VACCINATION: 'Aparece en la Atención, la Caja y los Presupuestos.',
+  DEWORMING: 'Aparece en la Atención, la Caja y los Presupuestos.',
+  SURGERY: 'Aparece en la Atención, la Caja y los Presupuestos.',
+  OTHER: 'Aparece en la Atención, la Caja y los Presupuestos.',
+  LAB: 'Aparece en Exámenes al pedir un análisis, y también en la Atención y la Caja.',
+  GROOMING:
+    'Aparece solo en Grooming, al ingresar la mascota al tablero (con precio por tamaño). No sale en la Atención ni en la Caja.',
+  HOSPITALIZATION:
+    'Aparece al dar de alta en Hospitalización, como cobro por día de estadía; también en la Atención.',
+};
+const CATEGORY_SHORT: Record<CareServiceCategory, string> = {
+  CONSULTATION: 'Atención, Caja y Presupuestos',
+  VACCINATION: 'Atención, Caja y Presupuestos',
+  DEWORMING: 'Atención, Caja y Presupuestos',
+  SURGERY: 'Atención, Caja y Presupuestos',
+  OTHER: 'Atención, Caja y Presupuestos',
+  LAB: 'Exámenes y Atención',
+  GROOMING: 'Solo en Grooming',
+  HOSPITALIZATION: 'Alta de hospitalización',
+};
+/** Sin al menos uno activo de estas, una pantalla se queda sin qué cobrar */
+const NEEDED: { category: CareServiceCategory; problem: string }[] = [
+  {
+    category: 'HOSPITALIZATION',
+    problem: 'al dar de alta un internado no podrás cobrar la estadía.',
+  },
+  { category: 'LAB', problem: 'en Exámenes no habrá análisis para pedir.' },
+  { category: 'GROOMING', problem: 'no podrás ingresar mascotas al tablero de Grooming.' },
+];
+
 @Component({
   selector: 'app-care-services-page',
   imports: [ReactiveFormsModule, IconComponent, BadgeComponent, ModalComponent],
@@ -78,6 +114,8 @@ export class CareServicesPage {
   protected readonly sizes = PET_SIZES;
   protected readonly sizeLabels = PET_SIZE_LABELS;
   protected readonly sizeHints = PET_SIZE_HINTS;
+  protected readonly where = CATEGORY_WHERE;
+  protected readonly whereShort = CATEGORY_SHORT;
 
   protected readonly search = new FormControl('', { nonNullable: true });
   protected readonly showInactive = new FormControl(false, { nonNullable: true });
@@ -93,8 +131,15 @@ export class CareServicesPage {
     stream: () => this.services.list('all'),
   });
   private readonly items = signal<CareService[] | null>(null);
-  protected readonly all = computed(() => this.items() ?? this.catalog.value() ?? []);
+  private readonly catalogList = loaded(this.catalog);
+  protected readonly all = computed(() => this.items() ?? this.catalogList() ?? []);
   protected readonly inactiveCount = computed(() => this.all().filter((s) => !s.active).length);
+  /** Categorías clave sin ningún servicio activo (solo cuando el catálogo ya cargó) */
+  protected readonly missing = computed(() => {
+    const list = this.all();
+    if (!list.length) return [];
+    return NEEDED.filter((n) => !list.some((s) => s.active && s.category === n.category));
+  });
 
   protected readonly groups = computed(() => {
     const term = this.term();
@@ -161,6 +206,60 @@ export class CareServicesPage {
     ),
     { initialValue: [] as ProductSummary[] },
   );
+
+  /** Cuánto cuestan los insumos frente al precio sin IGV: ayuda a ver si el precio cubre lo que se gasta */
+  private readonly formValue = toSignal(this.form.valueChanges, {
+    initialValue: this.form.getRawValue(),
+  });
+  protected readonly supplyCost = computed(() => {
+    const v = this.formValue();
+    let total = 0;
+    let counted = 0;
+    const missing: string[] = [];
+    for (const s of v.supplies ?? []) {
+      const qty = Number(s.quantity);
+      if (!(qty > 0)) continue;
+      if (s.unitCost === null || s.unitCost === undefined) missing.push(s.name ?? '');
+      else {
+        total += s.unitCost * qty;
+        counted++;
+      }
+    }
+    const price = Number(v.price);
+    if (!counted && !missing.length) return null;
+    const base =
+      v.price === null || Number.isNaN(price) ? null : v.igv === 'TAXED' ? price / 1.18 : price;
+    return {
+      total,
+      missing,
+      base,
+      margin: base === null ? null : base - total,
+      percent: base ? Math.round(((base - total) / base) * 100) : null,
+    };
+  });
+
+  /** El precio incluye IGV: cuánto es sin IGV y cuánto el impuesto, mientras se escribe */
+  protected readonly priceBreakdown = computed(() => {
+    const v = this.formValue();
+    const price = Number(v.price);
+    if (v.price === null || v.price === undefined || !(price > 0)) return null;
+    if (v.igv !== 'TAXED') return { base: price, igv: 0 };
+    const base = Math.round((price / 1.18) * 100) / 100;
+    return { base, igv: Math.round((price - base) * 100) / 100 };
+  });
+
+  /** Se está desactivando un servicio que está en presupuestos pendientes */
+  protected readonly quotedWarning = computed(() => {
+    const s = this.editing();
+    const v = this.formValue();
+    return s && s.active && v.active === false ? (s.pendingEstimates ?? 0) : 0;
+  });
+
+  protected supplyCostOf(group: SupplyGroup): number | null {
+    const cost = group.controls.unitCost.value;
+    const qty = Number(group.controls.quantity.value);
+    return cost === null || !(qty > 0) ? null : cost * qty;
+  }
 
   protected get supplies(): FormArray<SupplyGroup> {
     return this.form.controls.supplies;
@@ -237,7 +336,9 @@ export class CareServicesPage {
       this.focusSupply(existing);
       return;
     }
-    this.supplies.push(this.supplyGroup(product.id, product.name, product.baseUnit, null));
+    this.supplies.push(
+      this.supplyGroup(product.id, product.name, product.baseUnit, null, product.unitCost ?? null),
+    );
     this.focusSupply(this.supplies.length - 1);
   }
 
@@ -310,7 +411,9 @@ export class CareServicesPage {
   }): void {
     this.supplies.clear();
     for (const s of value.supplies)
-      this.supplies.push(this.supplyGroup(s.productId, s.name, s.baseUnit, s.quantity));
+      this.supplies.push(
+        this.supplyGroup(s.productId, s.name, s.baseUnit, s.quantity, s.unitCost ?? null),
+      );
     const { supplies: _, sizePrices, ...rest } = value;
     const bySize = Object.fromEntries(
       PET_SIZES.map((size) => [size, sizePrices.find((p) => p.size === size)?.price ?? null]),
@@ -325,6 +428,7 @@ export class CareServicesPage {
     name: string,
     baseUnit: BaseUnit,
     quantity: number | null,
+    unitCost: number | null,
   ): SupplyGroup {
     return this.fb.group({
       productId: [productId],
@@ -335,6 +439,7 @@ export class CareServicesPage {
         Validators.min(0.001),
         Validators.pattern(/^\d+(\.\d{1,3})?$/),
       ]),
+      unitCost: this.fb.control<number | null>(unitCost),
     });
   }
 

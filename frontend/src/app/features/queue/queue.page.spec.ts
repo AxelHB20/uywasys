@@ -29,6 +29,13 @@ function item(id: number, overrides: Partial<QueueItem> = {}): QueueItem {
     client: { id: id * 100, number: id, name: `Cliente ${id}`, phone: '987654321' },
     attendedBy: null,
     visit: null,
+    transport: 'NONE',
+    transportAddress: null,
+    transportPrice: null,
+    deliveredHomeAt: null,
+    deliveredHomeBy: null,
+    homePending: false,
+    hospitalized: false,
     ...overrides,
   };
 }
@@ -38,7 +45,7 @@ describe('QueuePage (cola de hoy)', () => {
 
   beforeAll(stubDialog);
 
-  function render(role: 'RECEPTION' | 'GROOMER', items: QueueItem[]) {
+  function render(role: 'RECEPTION' | 'GROOMER' | 'VET', items: QueueItem[]) {
     TestBed.configureTestingModule({
       imports: [QueuePage],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -79,8 +86,17 @@ describe('QueuePage (cola de hoy)', () => {
     );
   });
 
-  it('"Atender" abre la atención y lleva a su pantalla', () => {
+  it('recepción no abre consultas: pone en espera y lo llama el veterinario', () => {
     const fixture = render('RECEPTION', [item(1)]);
+    const buttons = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].map(
+      (b) => b.textContent?.trim(),
+    );
+    expect(buttons).not.toContain('Atender');
+    expect(buttons).toContain('Esperar');
+  });
+
+  it('"Atender" abre la atención y lleva a su pantalla', () => {
+    const fixture = render('VET', [item(1)]);
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const el: HTMLElement = fixture.nativeElement;
     [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Atender')!.click();
@@ -91,7 +107,7 @@ describe('QueuePage (cola de hoy)', () => {
   });
 
   it('si ya tenía una atención abierta, lleva a esa', () => {
-    const fixture = render('RECEPTION', [item(1)]);
+    const fixture = render('VET', [item(1)]);
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const el: HTMLElement = fixture.nativeElement;
     [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Atender')!.click();
@@ -114,7 +130,7 @@ describe('QueuePage (cola de hoy)', () => {
     ]);
     const el: HTMLElement = fixture.nativeElement;
     const link = el.querySelector<HTMLAnchorElement>('a[href="/atenciones/7"]');
-    expect(link?.textContent).toContain('Continuar atención');
+    expect(link?.textContent).toMatch(/Continuar\s+atención/);
     const labels = [...el.querySelectorAll('article button')].map((b) => b.textContent?.trim());
     expect(labels).not.toContain('Terminar');
   });
@@ -126,6 +142,92 @@ describe('QueuePage (cola de hoy)', () => {
     expect(buttons.map((b) => b.textContent?.trim()).join('|')).not.toMatch(
       /Atender|Agregar a la cola/,
     );
+  });
+
+  it('consulta con entrega: "por llevar a casa" y se marca entregado', () => {
+    const fixture = render('RECEPTION', [
+      item(1, {
+        status: 'DONE',
+        finishedAt: '2026-10-27T15:00:00Z',
+        transport: 'ROUND_TRIP',
+        transportAddress: 'Av. Lima 123',
+        transportPrice: 20,
+        homePending: true,
+      }),
+    ]);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('1 por llevar a casa');
+    expect(el.textContent).toContain('Falta llevarlo a casa');
+    expect(el.textContent!.replace(/\s+/g, ' ')).toContain(
+      'Recojo y entrega · S/ 20.00 · Av. Lima 123',
+    );
+    [...el.querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent?.trim() === 'Entregado en casa')!
+      .click();
+    http.expectOne({ method: 'POST', url: '/api/queue/1/delivered-home' }).flush(
+      item(1, {
+        status: 'DONE',
+        finishedAt: '2026-10-27T15:00:00Z',
+        transport: 'ROUND_TRIP',
+        transportPrice: 20,
+        deliveredHomeAt: '2026-10-27T16:00:00Z',
+        deliveredHomeBy: { id: 1, fullName: 'Ana' },
+      }),
+    );
+    fixture.detectChanges();
+    expect(el.textContent).not.toContain('por llevar a casa');
+    expect(el.textContent).toContain('Entregado en casa');
+    expect(el.textContent).toContain('por Ana');
+  });
+
+  it('atendido sin movilidad: "Llevar a casa" agrega la entrega con su precio', () => {
+    const fixture = render('RECEPTION', [
+      item(1, { status: 'DONE', finishedAt: '2026-10-27T15:00:00Z' }),
+    ]);
+    const el: HTMLElement = fixture.nativeElement;
+    el.querySelector<HTMLButtonElement>('[aria-label="Llevar a Mascota 1 a su casa"]')!.click();
+    http.expectOne('/api/clients/100').flush({ address: 'Av. Lima 123', district: null });
+    http.expectOne('/api/clients/100/transport-price').flush({ price: 10 });
+    fixture.detectChanges();
+    expect(el.querySelector<HTMLInputElement>('#qm-address')!.value).toBe('Av. Lima 123');
+    expect(el.querySelector<HTMLInputElement>('#qm-price')!.value).toBe('10');
+    el.querySelector<HTMLButtonElement>('button[form="move-form"]')!.click();
+    const req = http.expectOne({ method: 'PATCH', url: '/api/queue/1' });
+    expect(req.request.body).toEqual({
+      transport: 'DROPOFF',
+      transportAddress: 'Av. Lima 123',
+      transportPrice: 10,
+    });
+    req.flush(
+      item(1, {
+        status: 'DONE',
+        transport: 'DROPOFF',
+        transportAddress: 'Av. Lima 123',
+        transportPrice: 10,
+        homePending: true,
+      }),
+    );
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Falta llevarlo a casa');
+  });
+
+  it('sacar de la cola con movilidad: pregunta si se cobra igual', () => {
+    const fixture = render('RECEPTION', [
+      item(1, { transport: 'PICKUP', transportAddress: 'Av. Lima 123', transportPrice: 10 }),
+    ]);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('Lo recogemos · S/ 10.00');
+    el.querySelector<HTMLButtonElement>('[title="Sacar de la cola"]')!.click();
+    fixture.detectChanges();
+    const dialog = el.querySelector('dialog[open]')!;
+    expect(dialog.textContent).toContain('Cobrar la movilidad igual');
+    dialog.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+    [...dialog.querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent?.trim() === 'Sacar de la cola')!
+      .click();
+    const req = http.expectOne({ method: 'PATCH', url: '/api/queue/1' });
+    expect(req.request.body).toEqual({ status: 'CANCELLED', chargeTransport: true });
+    req.flush(item(1, { status: 'CANCELLED' }));
   });
 
   it('agrega a la cola buscando al cliente y eligiendo la mascota', async () => {
@@ -181,10 +283,38 @@ describe('QueuePage (cola de hoy)', () => {
     expect(petButtons.find((b) => b.textContent?.includes('Mascota 1'))!.disabled).toBe(true);
     petButtons.find((b) => b.textContent?.includes('Luna'))!.click();
     fixture.detectChanges();
+    // Para la movilidad: dirección del dueño y el último precio
+    http.expectOne('/api/clients/7').flush({ id: 7, address: 'Av. Lima 123', district: 'Chosica' });
+    http.expectOne('/api/clients/7/transport-price').flush({ price: 15 });
     await tick();
+    fixture.detectChanges();
+    // Recojo y entrega: propone la dirección y el último precio
+    [...el.querySelectorAll<HTMLButtonElement>('dialog [role="radio"]')]
+      .find((b) => b.textContent?.includes('Recojo y entrega'))!
+      .click();
+    fixture.detectChanges();
+    expect(el.querySelector<HTMLInputElement>('#aq-address')!.value).toBe('Av. Lima 123, Chosica');
+    expect(el.querySelector<HTMLInputElement>('#aq-price')!.value).toBe('15');
+    expect(el.textContent).toContain('Última vez: S/ 15.00');
+    // Un cero de más no pasa
+    const price = el.querySelector<HTMLInputElement>('#aq-price')!;
+    price.value = '1200';
+    price.dispatchEvent(new Event('input'));
+    el.querySelector<HTMLButtonElement>('button[form="add-queue-form"]')!.click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Hasta S/ 500.00');
+    price.value = '18';
+    price.dispatchEvent(new Event('input'));
     el.querySelector<HTMLButtonElement>('button[form="add-queue-form"]')!.click();
     const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/queue');
-    expect(req.request.body).toEqual({ petId: 33, urgent: false, reason: null });
+    expect(req.request.body).toEqual({
+      petId: 33,
+      urgent: false,
+      reason: null,
+      transport: 'ROUND_TRIP',
+      transportAddress: 'Av. Lima 123, Chosica',
+      transportPrice: 18,
+    });
     req.flush(
       item(4, {
         pet: {
@@ -199,5 +329,108 @@ describe('QueuePage (cola de hoy)', () => {
     );
     fixture.detectChanges();
     expect(el.querySelector('[aria-labelledby="col-ARRIVED"]')!.textContent).toContain('Luna');
+  });
+
+  it('muestra cómo reconocer al cliente y a la mascota, sus avisos, y Enter elige la única posible', async () => {
+    const fixture = render('RECEPTION', [item(1)]);
+    const el: HTMLElement = fixture.nativeElement;
+    [...el.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Agregar a la cola'))!
+      .click();
+    fixture.detectChanges();
+    const input = el.querySelector<HTMLInputElement>('#aq-search')!;
+    input.value = '77';
+    input.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 350));
+    http
+      .expectOne((r) => r.url === '/api/clients' && r.params.get('q') === '77')
+      .flush({
+        items: [
+          {
+            id: 7,
+            number: 12,
+            name: 'Gabriela Medina Gutiérrez',
+            docType: 'DNI',
+            docNumber: '45677912',
+            phone: '960477990',
+            active: true,
+            lastVisit: null,
+            pets: [
+              {
+                id: 10,
+                number: 1,
+                name: 'Mascota 1',
+                species: 'DOG',
+                aggressive: false,
+                hasAllergies: false,
+                active: true,
+              },
+              {
+                id: 33,
+                number: 80,
+                name: 'Mía',
+                species: 'DOG',
+                sex: 'FEMALE',
+                breed: 'Shih tzu',
+                birthDate: null,
+                aggressive: true,
+                aggressiveNote: 'Usar bozal',
+                hasAllergies: true,
+                active: true,
+              },
+            ],
+          },
+        ],
+        total: 9,
+        page: 1,
+        pageSize: 20,
+      });
+    fixture.detectChanges();
+    const dialog = input.closest('dialog')!;
+    // Por qué salió: lo buscado en negrita en el DNI y el celular
+    const marks = [...dialog.querySelectorAll('mark')].map((m) => m.textContent?.trim());
+    expect(marks).toEqual(['77', '77']);
+    expect(dialog.textContent).toContain('Perro · Hembra · Shih tzu');
+    expect(dialog.textContent).toContain('Ya en la cola · Llegó');
+    // Agrupado por dueño, con su DNI y celular
+    expect(dialog.querySelectorAll('ul > li')).toHaveLength(1);
+    expect(dialog.textContent).toContain('DNI 45677912');
+    expect(dialog.textContent).toContain('Agresivo');
+    expect(dialog.textContent).toContain('Alergias');
+    expect(dialog.textContent).toContain('Hay 8 clientes más');
+
+    // Solo Mía se puede elegir: Enter la elige
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    fixture.detectChanges();
+    http.expectOne((r) => /^\/api\/clients\/\d+$/.test(r.url)).flush({ address: null });
+    http.expectOne((r) => r.url.endsWith('/transport-price')).flush({ price: null });
+    await tick();
+    expect(dialog.textContent).toContain('Usar bozal');
+    expect(dialog.textContent).toContain('Tiene alergias');
+    [...dialog.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Vacuna')!.click();
+    fixture.detectChanges();
+    el.querySelector<HTMLButtonElement>('button[form="add-queue-form"]')!.click();
+    const req = http.expectOne((r) => r.method === 'POST' && r.url === '/api/queue');
+    expect(req.request.body).toEqual({ petId: 33, urgent: false, reason: 'Vacuna' });
+    req.flush(item(5, { pet: { ...item(5).pet, id: 33, name: 'Mía' } }));
+  });
+
+  it('sin resultados, "Registrar cliente nuevo" lleva lo escrito', async () => {
+    const fixture = render('RECEPTION', []);
+    const el: HTMLElement = fixture.nativeElement;
+    [...el.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Agregar a la cola'))!
+      .click();
+    fixture.detectChanges();
+    const input = el.querySelector<HTMLInputElement>('#aq-search')!;
+    input.value = '45677912';
+    input.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 350));
+    http
+      .expectOne((r) => r.url === '/api/clients')
+      .flush({ items: [], total: 0, page: 1, pageSize: 20 });
+    fixture.detectChanges();
+    const link = el.querySelector<HTMLAnchorElement>('a[href^="/clientes/nuevo"]')!;
+    expect(link.getAttribute('href')).toBe('/clientes/nuevo?buscar=45677912');
   });
 });

@@ -67,6 +67,18 @@ export class ChargeItemDto {
   prescriptionRef?: string | null;
 }
 
+export class TransportPriceDto {
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'El precio admite hasta 2 decimales' },
+  )
+  @Min(0.01, { message: 'Escribe el precio' })
+  @Max(500, {
+    message: 'La movilidad no puede pasar de S/ 500: revisa el monto',
+  })
+  price: number;
+}
+
 export class CreateChargesDto {
   /** Cargo dentro de una atención abierta: cliente y mascota salen de ella */
   @IsOptional()

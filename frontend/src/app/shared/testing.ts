@@ -9,4 +9,8 @@ export function stubDialog(): void {
   };
 }
 
+// Toda prueba que use estos helpers queda con <dialog> simulado, sin depender del orden en que
+// corren los archivos (antes una prueba sin stubDialog() pasaba solo si otra lo había llamado).
+stubDialog();
+
 export const tick = () => new Promise((resolve) => setTimeout(resolve));

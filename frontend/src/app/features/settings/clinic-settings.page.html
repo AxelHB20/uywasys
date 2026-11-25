@@ -52,11 +52,16 @@
               [attr.aria-invalid]="invalid('ruc')"
             />
             <p id="ruc-hint" [class]="invalid('ruc') ? 'field-error' : 'field-hint'">
-              {{
-                invalid('ruc')
-                  ? 'El RUC no es válido: revisa los 11 dígitos'
-                  : 'Se imprime en boletas y facturas'
-              }}
+              @if (rucLocked()) {
+                <app-icon name="lock" class="inline size-3.5 align-[-2px]" />
+                Va en cada comprobante electrónico: lo cambia soporte técnico.
+              } @else {
+                {{
+                  invalid('ruc')
+                    ? 'El RUC no es válido: revisa los 11 dígitos'
+                    : 'Se imprime en boletas y facturas'
+                }}
+              }
             </p>
           </div>
 
@@ -184,6 +189,82 @@
     </div>
     @if (profile(); as p) {
       <app-opening-hours [hours]="p.openingHours" (saved)="profile.set($event)" />
+
+      <!-- Portal del dueño -->
+      <section class="card p-6" aria-labelledby="portal-title">
+        <div class="flex items-start gap-4">
+          <span
+            class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700"
+            aria-hidden="true"
+          >
+            <app-icon name="smartphone" class="size-5" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <h2 id="portal-title" class="font-semibold text-slate-900">Portal del dueño</h2>
+            <p class="mt-1 text-sm text-pretty text-slate-600">
+              El dueño siempre ve las próximas vacunas y citas, y puede activar avisos gratis en su
+              celular o agregarlas a su calendario.
+            </p>
+          </div>
+        </div>
+        <label
+          class="mt-5 flex cursor-pointer items-start justify-between gap-4 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200"
+        >
+          <span>
+            <span class="block text-sm font-medium text-slate-900"
+              >Mostrar el carnet completo y las recetas</span
+            >
+            <span class="mt-0.5 block text-sm text-slate-600">
+              Apagado, el portal no muestra lotes, quién aplicó ni recetas: el carnet válido es el
+              que entrega la clínica.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            class="peer sr-only"
+            [checked]="p.portalShowRecords"
+            [disabled]="portalBusy()"
+            (change)="togglePortalRecords($any($event.target).checked)"
+          />
+          <span
+            class="relative mt-0.5 inline-flex h-6 w-11 shrink-0 rounded-full transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-anil-600"
+            [class]="p.portalShowRecords ? 'bg-anil-600' : 'bg-slate-300'"
+            aria-hidden="true"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow-sm transition-transform"
+              [class.translate-x-5]="p.portalShowRecords"
+            ></span>
+          </span>
+        </label>
+      </section>
+    }
+    @if (storage(); as s) {
+      <section class="card space-y-3 p-6" aria-labelledby="storage-title">
+        <div>
+          <h2 id="storage-title" class="text-sm font-semibold text-slate-900">
+            Espacio de fotos y archivos
+          </h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Lo que ocupan en el servidor. Las fotos se comprimen al subir; si este número crece
+            mucho, avisa a soporte para ampliar el espacio.
+          </p>
+        </div>
+        <p class="text-2xl font-semibold tabular-nums text-slate-900" data-testid="storage-total">
+          {{ bytes(s.totalBytes) }}
+        </p>
+        <dl class="grid gap-2 text-sm sm:grid-cols-2">
+          <div class="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <dt class="text-slate-600">Historia clínica ({{ s.attachments.count }})</dt>
+            <dd class="tabular-nums text-slate-900">{{ bytes(s.attachments.bytes) }}</dd>
+          </div>
+          <div class="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <dt class="text-slate-600">Fichas de compra ({{ s.purchaseFiles.count }})</dt>
+            <dd class="tabular-nums text-slate-900">{{ bytes(s.purchaseFiles.bytes) }}</dd>
+          </div>
+        </dl>
+      </section>
     }
   }
 </section>

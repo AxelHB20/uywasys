@@ -1,0 +1,348 @@
+<section class="space-y-6">
+  <!-- Encabezado -->
+  <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Presupuestos</h1>
+      <p class="mt-1 max-w-2xl text-sm text-slate-600">
+        Para todo lo que el dueño debe aprobar antes por su costo: cirugías, tratamientos, exámenes,
+        hospitalización o paquetes. Cuando acepta, se carga a la atención con el precio
+        presupuestado.
+      </p>
+    </div>
+    @if (canEdit()) {
+      <a routerLink="/presupuestos/nuevo" class="btn btn-primary self-start sm:self-auto">
+        <app-icon name="plus" class="size-4" /> Nuevo presupuesto
+      </a>
+    }
+  </header>
+
+  <!-- Indicadores -->
+  <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Resumen de presupuestos">
+    @if (totals(); as s) {
+      <li>
+        <button
+          type="button"
+          class="card flex h-full w-full flex-col items-start p-4 text-left transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-anil-400 sm:p-5"
+          (click)="show('OPEN')"
+        >
+          <span
+            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            <span class="size-2 rounded-full bg-amber-500" aria-hidden="true"></span> Por responder
+          </span>
+          <span
+            class="mt-2 block font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl"
+            >{{ money(s.pending.amount) }}</span
+          >
+          <span class="mt-1 block text-sm text-slate-600">
+            {{ s.pending.count }} {{ s.pending.count === 1 ? 'presupuesto' : 'presupuestos' }}
+          </span>
+          @if (s.expiringSoon) {
+            <span
+              class="mt-2 inline-flex items-center gap-1 rounded-full bg-maiz-100 px-2 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-amber-600/25 ring-inset"
+            >
+              <app-icon name="clock" class="size-3.5" />
+              {{ s.expiringSoon }} {{ s.expiringSoon === 1 ? 'vence' : 'vencen' }} en 3 días
+            </span>
+          }
+        </button>
+      </li>
+      <li>
+        <button
+          type="button"
+          class="card flex h-full w-full flex-col items-start p-4 text-left transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-anil-400 sm:p-5"
+          (click)="show('ACCEPTED')"
+        >
+          <span
+            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            <span class="size-2 rounded-full bg-anil-500" aria-hidden="true"></span> Por cargar
+          </span>
+          <span
+            class="mt-2 block font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl"
+            >{{ money(s.accepted.amount) }}</span
+          >
+          <span class="mt-1 block text-sm text-slate-600">
+            {{ s.accepted.count }} {{ s.accepted.count === 1 ? 'aceptado' : 'aceptados' }}, falta
+            cargarlos
+          </span>
+        </button>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p
+          class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+        >
+          <span class="size-2 rounded-full bg-emerald-500" aria-hidden="true"></span> Cargados este
+          mes
+        </p>
+        <p class="mt-2 font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl">
+          {{ money(s.convertedMonth.amount) }}
+        </p>
+        <p class="mt-1 text-sm text-slate-600">
+          {{ s.convertedMonth.count }}
+          {{ s.convertedMonth.count === 1 ? 'presupuesto' : 'presupuestos' }} a atención
+        </p>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p
+          class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+        >
+          <span class="size-2 rounded-full bg-slate-400" aria-hidden="true"></span> Aceptación
+        </p>
+        @if (s.acceptance.rate !== null) {
+          <p
+            class="mt-2 font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl"
+          >
+            {{ s.acceptance.rate }} %
+          </p>
+          <div
+            class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"
+            role="meter"
+            aria-label="Tasa de aceptación"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="s.acceptance.rate"
+          >
+            <div
+              class="h-full rounded-full bg-emerald-500"
+              [style.width.%]="s.acceptance.rate"
+            ></div>
+          </div>
+          <p class="mt-1.5 text-xs text-slate-500">
+            {{ s.acceptance.won }} de {{ s.acceptance.decided }} · últimos 90 días
+          </p>
+        } @else {
+          <p class="mt-2 font-display text-xl font-semibold text-slate-400 sm:text-2xl">—</p>
+          <p class="mt-1 text-sm text-slate-500">Sin respuestas en 90 días</p>
+        }
+      </li>
+    } @else {
+      @for (n of [1, 2, 3, 4]; track n) {
+        <li class="card h-[118px] animate-pulse bg-slate-50 sm:h-[126px]"></li>
+      }
+    }
+  </ul>
+
+  <!-- Bandeja -->
+  <div class="card overflow-hidden">
+    <div
+      class="flex flex-col gap-3 border-b border-slate-100 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between"
+    >
+      <div
+        class="grid w-full grid-cols-4 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:w-auto sm:self-start"
+        role="tablist"
+        aria-label="Estado"
+      >
+        @for (f of filters; track f.value) {
+          <button
+            type="button"
+            role="tab"
+            [attr.aria-selected]="filter() === f.value"
+            class="inline-flex h-9 items-center justify-center gap-1 rounded-lg px-1 text-[13px] font-medium whitespace-nowrap transition-colors sm:gap-1.5 sm:px-4 sm:text-sm"
+            [class]="
+              filter() === f.value
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            "
+            (click)="show(f.value)"
+          >
+            {{ f.label }}
+            @if (f.value === 'ACCEPTED' && totals()?.accepted?.count; as n) {
+              <span
+                class="grid h-5 min-w-5 place-items-center rounded-full bg-anil-600 px-1.5 text-[11px] font-semibold text-white tabular-nums"
+                [attr.aria-label]="n + ' por cargar'"
+                >{{ n }}</span
+              >
+            }
+          </button>
+        }
+      </div>
+      <div class="relative w-full lg:max-w-sm">
+        <label for="est-q" class="sr-only">Buscar presupuesto</label>
+        <app-icon
+          name="search"
+          class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          id="est-q"
+          type="search"
+          [formControl]="search"
+          class="field-input mt-0 h-10 pr-10 pl-10"
+          placeholder="Código, mascota o dueño"
+          autocomplete="off"
+        />
+        @if (search.value) {
+          <button
+            type="button"
+            class="absolute top-1/2 right-1 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            aria-label="Limpiar búsqueda"
+            (click)="clearSearch()"
+          >
+            <app-icon name="x" class="size-4" />
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (list.isLoading() && !data()) {
+      <div class="space-y-3 p-5" aria-busy="true" aria-label="Cargando presupuestos">
+        @for (n of [1, 2, 3, 4]; track n) {
+          <div class="h-14 animate-pulse rounded-xl bg-slate-100"></div>
+        }
+      </div>
+    } @else if (list.error()) {
+      <div class="flex flex-col items-center px-6 py-12 text-center">
+        <app-icon name="alert" class="size-8 text-rose-600" />
+        <p class="mt-3 font-medium text-slate-900">{{ errorText() }}</p>
+        <button type="button" class="btn btn-secondary mt-5" (click)="list.reload()">
+          Reintentar
+        </button>
+      </div>
+    } @else if (items().length) {
+      <!-- Cabecera de columnas (escritorio) -->
+      <div
+        class="hidden grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,1.2fr)_10rem_7.5rem_1rem] gap-4 bg-slate-50/70 px-5 py-2.5 text-[11px] font-semibold tracking-wide text-slate-500 uppercase md:grid"
+        aria-hidden="true"
+      >
+        <span>Presupuesto</span>
+        <span>Paciente</span>
+        <span>Concepto</span>
+        <span>Estado</span>
+        <span class="text-right">Total</span>
+        <span></span>
+      </div>
+      <ul class="divide-y divide-slate-100" role="list">
+        @for (e of items(); track e.id) {
+          @let v = validity(e);
+          <li>
+            <a
+              [routerLink]="['/presupuestos', e.id]"
+              class="group block px-4 py-3.5 transition-colors hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none sm:px-5 md:grid md:grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,1.2fr)_10rem_7.5rem_1rem] md:items-center md:gap-4"
+              [attr.aria-label]="
+                e.code +
+                ', ' +
+                e.title +
+                ', ' +
+                e.pet.name +
+                ', ' +
+                labels[e.status] +
+                ', ' +
+                money(e.total)
+              "
+            >
+              <!-- Código -->
+              <div class="flex items-center justify-between gap-3 md:block">
+                <p class="font-mono text-sm font-semibold text-slate-900">{{ e.code }}</p>
+                <p class="text-xs text-slate-500 max-md:hidden">{{ e.createdAt | fecha }}</p>
+                <app-badge class="md:hidden" [tone]="tone[e.status]">{{
+                  labels[e.status]
+                }}</app-badge>
+              </div>
+
+              <!-- Paciente -->
+              <div class="mt-2 flex min-w-0 items-center gap-3 md:mt-0">
+                <span
+                  class="grid size-9 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-600"
+                  aria-hidden="true"
+                >
+                  <app-icon [name]="speciesIcons[e.pet.species]" class="size-4.5" />
+                </span>
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-slate-900">{{ e.pet.name }}</p>
+                  <p class="truncate text-sm text-slate-500">{{ e.client.name }}</p>
+                </div>
+              </div>
+
+              <!-- Concepto -->
+              <div class="mt-2 min-w-0 md:mt-0">
+                <p class="line-clamp-2 text-sm font-medium text-slate-800 md:line-clamp-1">
+                  {{ e.title }}
+                </p>
+                <p class="text-xs text-slate-500 max-md:hidden">
+                  {{ e.items.length }} {{ e.items.length === 1 ? 'ítem' : 'ítems' }} · por
+                  {{ e.createdBy.fullName }}
+                </p>
+              </div>
+
+              <!-- Estado -->
+              <div class="hidden md:block">
+                <app-badge [tone]="tone[e.status]">{{ labels[e.status] }}</app-badge>
+                <p class="mt-1 text-xs text-slate-500">
+                  @if (v.text) {
+                    <span
+                      class="rounded-full py-px ring-1 ring-inset"
+                      [class]="validityClass[v.tone]"
+                      >{{ v.text }}</span
+                    >
+                  } @else if (e.status === 'CONVERTED') {
+                    {{ e.convertedAt | fecha }}
+                  } @else if (e.decidedAt) {
+                    {{ e.decidedAt | fecha }}
+                  }
+                </p>
+              </div>
+
+              <!-- Total (y vigencia en celular) -->
+              <div
+                class="mt-2.5 flex items-center justify-between gap-3 md:mt-0 md:block md:text-right"
+              >
+                <span class="text-xs md:hidden">
+                  @if (v.text) {
+                    <span
+                      class="rounded-full py-0.5 ring-1 ring-inset"
+                      [class]="validityClass[v.tone]"
+                      >{{ v.text }}</span
+                    >
+                  } @else {
+                    <span class="text-slate-500">{{ e.createdAt | fecha }}</span>
+                  }
+                </span>
+                <span class="font-semibold text-slate-900 tabular-nums">{{ money(e.total) }}</span>
+              </div>
+
+              <app-icon
+                name="chevron-right"
+                class="size-4 text-slate-300 transition-colors group-hover:text-slate-500 max-md:hidden"
+              />
+            </a>
+          </li>
+        }
+      </ul>
+      <div
+        class="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-3 text-sm text-slate-600"
+      >
+        <span
+          >{{ items().length }} {{ items().length === 1 ? 'presupuesto' : 'presupuestos' }}</span
+        >
+        <span
+          >Total
+          <strong class="font-semibold text-slate-900 tabular-nums">{{
+            money(sum())
+          }}</strong></span
+        >
+      </div>
+    } @else {
+      <div class="flex flex-col items-center px-6 py-14 text-center">
+        <span class="grid size-12 place-items-center rounded-2xl bg-anil-50 text-anil-600">
+          <app-icon [name]="search.value ? 'search' : 'clipboard-list'" class="size-6" />
+        </span>
+        <p class="mt-3 font-medium text-slate-900">{{ emptyText() }}</p>
+        @if (search.value) {
+          <button type="button" class="btn btn-secondary mt-4" (click)="clearSearch()">
+            Limpiar búsqueda
+          </button>
+        } @else {
+          <p class="mt-1 max-w-sm text-sm text-slate-500">
+            Arma el presupuesto con los servicios y productos del catálogo, imprímelo o envíalo por
+            WhatsApp.
+          </p>
+          @if (canEdit() && filter() !== 'CONVERTED') {
+            <a routerLink="/presupuestos/nuevo" class="btn btn-primary mt-5">
+              <app-icon name="plus" class="size-4" /> Nuevo presupuesto
+            </a>
+          }
+        }
+      </div>
+    }
+  </div>
+</section>

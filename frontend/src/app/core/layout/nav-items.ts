@@ -17,32 +17,54 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-/** Menú principal. Agregar un módulo nuevo = agregar una línea aquí y su ruta en app.routes.ts. */
+/**
+ * Menú principal, ordenado por quién trabaja y en qué paso del día (ver docs/FLUJOS.md):
+ * recepción → clínica → grooming → caja → gestión. Cada rol ve solo lo suyo.
+ * Agregar un módulo nuevo = agregar una línea aquí, en el grupo de quien lo usa, y su ruta.
+ */
+const CLINICAL: Role[] = ['ADMIN', 'VET', 'RECEPTION'];
+
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'General',
+    // Sin título: Inicio va solo arriba
+    label: '',
     items: [{ label: 'Inicio', icon: 'dashboard', route: '/dashboard', exact: true }],
   },
   {
-    label: 'Atención',
+    label: 'Recepción',
     items: [
       { label: 'Cola de hoy', icon: 'clock', route: '/cola' },
       { label: 'Citas', icon: 'calendar', route: '/citas' },
-      { label: 'Atenciones', icon: 'stethoscope', route: '/atenciones' },
-      { label: 'Vacunas', icon: 'syringe', route: '/vacunas' },
       { label: 'Clientes', icon: 'clients', route: '/clientes' },
     ],
   },
   {
-    label: 'Ventas',
+    label: 'Clínica',
     items: [
-      { label: 'Presupuestos', icon: 'clipboard-list', route: '/presupuestos' },
+      { label: 'Historias clínicas', icon: 'folder-heart', route: '/historias', roles: CLINICAL },
+      { label: 'Atenciones', icon: 'stethoscope', route: '/atenciones', roles: CLINICAL },
+      { label: 'Hospitalización', icon: 'bed', route: '/hospitalizacion', roles: CLINICAL },
+      { label: 'Exámenes', icon: 'flask', route: '/examenes', roles: CLINICAL },
+      { label: 'Refuerzos', icon: 'syringe', route: '/vacunas', roles: CLINICAL },
+      { label: 'Presupuestos', icon: 'clipboard-list', route: '/presupuestos', roles: CLINICAL },
+    ],
+  },
+  {
+    label: 'Grooming',
+    items: [
       {
-        label: 'Caja',
-        icon: 'receipt',
-        route: '/caja',
-        roles: ['ADMIN', 'RECEPTION', 'CASHIER'],
+        label: 'Tablero',
+        icon: 'scissors',
+        route: '/grooming',
+        exact: true,
+        roles: ['ADMIN', 'RECEPTION', 'GROOMER'],
       },
+    ],
+  },
+  {
+    label: 'Caja',
+    items: [
+      { label: 'Caja', icon: 'receipt', route: '/caja', roles: ['ADMIN', 'RECEPTION', 'CASHIER'] },
       {
         label: 'Comprobantes',
         icon: 'file-text',
@@ -52,25 +74,27 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Farmacia',
-    items: [{ label: 'Inventario', icon: 'package', route: '/inventario' }],
-  },
-  {
-    label: 'Baño y peluquería',
+    label: 'Gestión',
     items: [
-      { label: 'Grooming', icon: 'scissors', route: '/grooming', exact: true },
       {
-        label: 'Comisiones',
-        icon: 'activity',
-        route: '/grooming/comisiones',
-        roles: ['ADMIN', 'GROOMER'],
+        label: 'Inventario',
+        icon: 'package',
+        route: '/inventario',
+        roles: ['ADMIN', 'VET', 'RECEPTION', 'CASHIER'],
       },
-    ],
-  },
-  {
-    label: 'Configuración',
-    items: [
-      { label: 'Servicios y precios', icon: 'receipt', route: '/servicios' },
+      {
+        label: 'Servicios y precios',
+        icon: 'table',
+        route: '/servicios',
+        roles: ['ADMIN', 'VET', 'RECEPTION'],
+      },
+      {
+        label: 'Plantillas clínicas',
+        icon: 'book-open',
+        route: '/plantillas',
+        roles: ['ADMIN', 'VET'],
+      },
+      { label: 'Reportes', icon: 'chart-column', route: '/reportes', roles: ['ADMIN'] },
       { label: 'Clínica', icon: 'building', route: '/configuracion', roles: ['ADMIN'] },
       { label: 'Usuarios', icon: 'user-cog', route: '/usuarios', roles: ['ADMIN'] },
       { label: 'Actividad', icon: 'history', route: '/actividad', roles: ['ADMIN'] },

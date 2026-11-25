@@ -1,11 +1,6 @@
 <form [formGroup]="form" (ngSubmit)="submit()" novalidate class="mx-auto max-w-4xl space-y-6 pb-4">
   <div>
-    <a
-      routerLink="/inventario"
-      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-    >
-      <app-icon name="chevron-left" class="size-4" /> Inventario
-    </a>
+    <app-back-link fallback="/inventario" fallbackLabel="Inventario" />
     <h1 class="font-display text-2xl font-semibold text-slate-900">Nuevo producto</h1>
     <p class="mt-1 text-slate-600">
       Primero el producto y sus presentaciones; el stock entra con la primera compra.
@@ -49,10 +44,10 @@
       </div>
       @if (invalid(form.controls.category)) {
         <p class="field-error">Elige la categoría</p>
-      } @else if (category() === 'ACCESSORY') {
-        <p class="field-hint">Los accesorios no llevan lote ni vencimiento.</p>
       }
     </fieldset>
+
+    <app-expiry-choice [control]="form.controls.tracksExpiry" />
 
     <div class="grid gap-5 sm:grid-cols-2">
       <fieldset>
@@ -89,16 +84,6 @@
 
     <div class="grid gap-3 sm:grid-cols-2">
       <label
-        class="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-1 text-sm text-slate-800"
-      >
-        <input
-          type="checkbox"
-          formControlName="requiresPrescription"
-          class="size-5 rounded accent-anil-600"
-        />
-        Se vende con receta
-      </label>
-      <label
         class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 text-sm text-slate-800"
       >
         <input
@@ -110,6 +95,22 @@
           <span class="font-medium">Medicamento controlado</span>
           <span class="block text-slate-500"
             >Ketamina y similares: cada uso pide paciente, receta y veterinario colegiado.</span
+          >
+        </span>
+      </label>
+      <label
+        class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 text-sm text-slate-800"
+      >
+        <input
+          type="checkbox"
+          formControlName="chargeable"
+          class="mt-0.5 size-5 shrink-0 rounded accent-anil-600"
+        />
+        <span>
+          <span class="font-medium">Se cobra al cliente</span>
+          <span class="block text-slate-500"
+            >Apágalo en insumos (jeringas, guantes, algodón): no salen al cobrar y se descuentan
+            solos con el servicio o como "insumos usados" en la atención.</span
           >
         </span>
       </label>
@@ -229,11 +230,18 @@
       </div>
       <div>
         <label for="p-igv" class="field-label">Afectación del IGV</label>
-        <select id="p-igv" formControlName="igv" class="field-input">
+        <select id="p-igv" formControlName="igv" class="field-input" aria-describedby="p-igv-hint">
           @for (t of igvTypes; track t) {
             <option [value]="t">{{ igvLabels[t] }}</option>
           }
         </select>
+        <p id="p-igv-hint" class="field-hint">
+          {{
+            isAdmin()
+              ? 'Casi todo es Gravado. Cámbialo solo si el contador lo indica.'
+              : 'Lo cambia el administrador (consulta al contador).'
+          }}
+        </p>
       </div>
       <div>
         <label for="p-sunat" class="field-label">Unidad SUNAT</label>
@@ -259,7 +267,7 @@
   </details>
 
   <div
-    class="sticky bottom-0 z-20 -mx-4 flex gap-2 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:justify-end sm:px-6 lg:-mx-8 lg:px-8"
+    class="sticky bottom-0 z-20 -mx-4 flex gap-2 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mx-6 sm:justify-end sm:px-6 lg:-mx-8 lg:px-8"
   >
     <a routerLink="/inventario" class="btn btn-ghost hidden sm:inline-flex">Cancelar</a>
     <button type="submit" class="btn btn-primary flex-1 sm:flex-none" [disabled]="saving()">

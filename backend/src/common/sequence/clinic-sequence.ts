@@ -9,6 +9,9 @@ export type SequenceKey =
   | 'estimate'
   | 'consent'
   | 'grooming'
+  | 'hospitalization'
+  | 'lab'
+  | 'purchase'
   | `cpe:${string}`;
 
 /**
@@ -68,3 +71,15 @@ export function parseRecordCode(
 /** GR-00012: constancia de grooming */
 export const groomingCode = (number: number) =>
   `GR-${String(number).padStart(5, '0')}`;
+
+/** HZ-00012: hospitalización */
+export const hospitalizationCode = (number: number) =>
+  `HZ-${String(number).padStart(5, '0')}`;
+
+/** EX-00012 */
+export const labCode = (number: number) =>
+  `EX-${String(number).padStart(5, '0')}`;
+
+/** CO-00012: compra (ficha del proveedor) */
+export const purchaseCode = (number: number) =>
+  `CO-${String(number).padStart(5, '0')}`;

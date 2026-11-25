@@ -52,6 +52,8 @@ export interface ChargePrep {
   today: string;
   maxDiscountPercent: Prisma.Decimal;
   licenseNumber: string | null;
+  /** Presupuestos: se cobra lo cotizado aunque luego se haya desactivado */
+  allowInactive?: boolean;
 }
 
 export interface ClientAccount {
@@ -67,6 +69,8 @@ export interface ClientAccount {
   pending: ChargeView[];
   /** Lo que el cliente debe hoy */
   pendingTotal: number;
+  /** Mascotas con una atención todavía abierta que ya tiene cargos: se cobra al cerrarla */
+  inProgress: { visitId: number; petName: string }[];
   /** Últimos cobros del cliente */
   receipts: {
     id: number;
@@ -150,7 +154,19 @@ export class ChargesService {
       actor.clinicId,
       dto.items,
       ctx.size,
+      { allowInactive: prep.allowInactive },
     );
+    // El baño y el corte van por el tablero de grooming: ahí los atiende un groomer, se entrega la
+    // mascota con su checklist y constancia. Cargarlos en una consulta o en mostrador se los salta.
+    if (!ctx.grooming) {
+      const groomingLine = lines.find(
+        (l) => l.kind === 'SERVICE' && l.service.category === 'GROOMING',
+      );
+      if (groomingLine && groomingLine.kind === 'SERVICE')
+        throw new BadRequestException(
+          `«${groomingLine.service.name}» es de grooming: regístralo en Grooming → Ingreso para que lo atienda un groomer y quede en el tablero (un baño terapéutico del veterinario va en otra categoría)`,
+        );
+    }
 
     // Todos los productos se bloquean al inicio y en orden: dos cargos simultáneos
     // que comparten insumos nunca se bloquean entre sí
@@ -447,6 +463,16 @@ export class ChargesService {
       orderBy: { id: 'asc' },
     });
     const pending = rows.map(toChargeView);
+    const visitIds = [
+      ...new Set(pending.flatMap((c) => (c.visitId ? [c.visitId] : []))),
+    ];
+    const open = visitIds.length
+      ? await this.prisma.visit.findMany({
+          where: { clinicId, id: { in: visitIds }, status: 'OPEN' },
+          select: { id: true, pet: { select: { name: true } } },
+          orderBy: { id: 'asc' },
+        })
+      : [];
     const pendingTotal = rows
       .reduce((sum, r) => sum.plus(r.total).minus(r.paidAmount), new D(0))
       .toNumber();
@@ -466,6 +492,7 @@ export class ChargesService {
       client,
       pending,
       pendingTotal,
+      inProgress: open.map((v) => ({ visitId: v.id, petName: v.pet.name })),
       receipts: receipts.map((r) => ({ ...r, total: Number(r.total) })),
     };
   }
@@ -548,6 +575,8 @@ export class ChargesService {
     visitId: number | null;
     /** Tamaño del grooming de la atención: sus servicios toman el precio de ese tamaño */
     size: PetSize | null;
+    /** Es la atención de un grooming: solo ahí se cargan servicios de grooming */
+    grooming: boolean;
   }> {
     if (dto.visitId) {
       const visit = await lockVisit(tx, clinicId, dto.visitId);
@@ -565,6 +594,7 @@ export class ChargesService {
         petId: visit.pet_id,
         visitId: visit.id,
         size: grooming?.size ?? null,
+        grooming: !!grooming,
       };
     }
     const client = await tx.client.findFirst({
@@ -587,6 +617,7 @@ export class ChargesService {
       petId: dto.petId ?? null,
       visitId: null,
       size: null,
+      grooming: false,
     };
   }
 
@@ -597,7 +628,13 @@ export class ChargesService {
     clinicId: number,
     items: ChargeItemDto[],
     size: PetSize | null = null,
+    /**
+     * Presupuestos: lo cotizado se cobra aunque luego se haya desactivado el servicio o el
+     * producto (desactivar solo impide usarlo en cobros nuevos).
+     */
+    { allowInactive = false }: { allowInactive?: boolean } = {},
   ) {
+    const onlyActive = allowInactive ? {} : { active: true };
     const serviceIds = items.flatMap((i) =>
       i.careServiceId ? [i.careServiceId] : [],
     );
@@ -606,10 +643,17 @@ export class ChargesService {
     );
     const services = serviceIds.length
       ? await tx.careService.findMany({
-          where: { id: { in: serviceIds }, clinicId, active: true },
+          // La movilidad (servicio interno) no se agrega a mano: su precio lo pone recepción
+          where: {
+            id: { in: serviceIds },
+            clinicId,
+            systemKey: null,
+            ...onlyActive,
+          },
           select: {
             id: true,
             name: true,
+            category: true,
             price: true,
             igv: true,
             sizePrices: size
@@ -634,7 +678,7 @@ export class ChargesService {
       : [];
     const presentations = presentationIds.length
       ? await tx.productPresentation.findMany({
-          where: { id: { in: presentationIds }, clinicId, active: true },
+          where: { id: { in: presentationIds }, clinicId, ...onlyActive },
           select: {
             id: true,
             name: true,
@@ -646,6 +690,7 @@ export class ChargesService {
                 name: true,
                 active: true,
                 controlled: true,
+                chargeable: true,
                 igv: true,
                 sunatUnit: true,
               },
@@ -685,9 +730,14 @@ export class ChargesService {
       const presentation = presentations.find(
         (p) => p.id === item.presentationId && p.product.id === item.productId,
       );
-      if (!presentation || !presentation.product.active)
+      if (!presentation || (!allowInactive && !presentation.product.active))
         throw new NotFoundException(
           'El producto o su presentación no existen o están inactivos',
+        );
+      // Un presupuesto ya aceptado se respeta aunque después se marcara como insumo
+      if (!allowInactive && !presentation.product.chargeable)
+        throw new BadRequestException(
+          `${presentation.product.name} es un insumo de uso interno: se descuenta solo con el servicio o con "Insumos usados" (sin cobrar). Si se vende, márcalo "Se cobra al cliente" en Inventario`,
         );
       if (presentation.price === null)
         throw new BadRequestException(
@@ -697,8 +747,11 @@ export class ChargesService {
         kind: 'PRODUCT' as const,
         product: presentation.product,
         presentation: { id: presentation.id, factor: presentation.factor },
-        description:
-          `${presentation.product.name} · ${presentation.name}`.slice(0, 200),
+        // La unidad base no se repite en el comprobante: ya va en la columna Unidad.
+        description: (presentation.factor.equals(1)
+          ? presentation.product.name
+          : `${presentation.product.name} · ${presentation.name}`
+        ).slice(0, 200),
         unitPrice: presentation.price,
         igv: presentation.product.igv,
         sunatUnit: presentation.product.sunatUnit,

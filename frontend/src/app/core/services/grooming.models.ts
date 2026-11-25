@@ -41,6 +41,8 @@ export const TRANSPORT_LABELS: Record<GroomingTransport, string> = {
   ROUND_TRIP: 'Recojo y entrega',
 };
 
+export const TRANSPORTS = Object.keys(TRANSPORT_LABELS) as GroomingTransport[];
+
 export interface GroomingCard {
   id: number;
   /** GR-00012 */
@@ -62,6 +64,8 @@ export interface GroomingCard {
   aggressive: boolean;
   instructions: string | null;
   transport: GroomingTransport;
+  /** Precio de la movilidad (su línea en la cuenta); null = sin cobro */
+  transportPrice: number | null;
   visitId: number;
   queueEntryId: number | null;
   pet: {
@@ -129,6 +133,8 @@ export interface CheckInInput {
   instructions: string | null;
   transport: GroomingTransport;
   transportAddress: string | null;
+  /** Precio con IGV según el criterio de recepción; null o 0 = sin cobro */
+  transportPrice: number | null;
   signerName: string | null;
   signature: string | null;
 }
@@ -202,70 +208,4 @@ export function readyMessageLink(
     '¡Gracias por confiar en nosotros!',
   ].filter(Boolean);
   return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`;
-}
-
-// ── Comisiones ──
-
-export interface CommissionLine {
-  id: number;
-  code: string;
-  deliveredAt: string;
-  groomer: { id: number; fullName: string } | null;
-  pet: { id: number; name: string };
-  client: { id: number; name: string };
-  services: string;
-  paid: number;
-  pending: number;
-  percent: number;
-  commission: number;
-}
-
-export interface CommissionRow {
-  groomer: { id: number; fullName: string } | null;
-  currentPercent: number | null;
-  services: number;
-  paid: number;
-  pending: number;
-  commission: number;
-}
-
-export interface CommissionReport {
-  from: string;
-  to: string;
-  rows: CommissionRow[];
-  lines: CommissionLine[];
-  totals: { services: number; paid: number; pending: number; commission: number };
-}
-
-export type CommissionPeriod = 'week' | 'lastWeek' | 'month' | 'lastMonth' | 'custom';
-
-export const COMMISSION_PERIOD_LABELS: Record<Exclude<CommissionPeriod, 'custom'>, string> = {
-  week: 'Esta semana',
-  lastWeek: 'Semana pasada',
-  month: 'Este mes',
-  lastMonth: 'Mes pasado',
-};
-
-/** Rango [desde, hasta] (AAAA-MM-DD) de un período, con semanas de lunes a domingo */
-export function periodRange(
-  period: Exclude<CommissionPeriod, 'custom'>,
-  today: string,
-): { from: string; to: string } {
-  const d = new Date(`${today}T12:00:00Z`);
-  const iso = (x: Date) => x.toISOString().slice(0, 10);
-  const shift = (x: Date, days: number) => new Date(x.getTime() + days * 86_400_000);
-  const monday = shift(d, -((d.getUTCDay() + 6) % 7));
-  switch (period) {
-    case 'week':
-      return { from: iso(monday), to: today };
-    case 'lastWeek':
-      return { from: iso(shift(monday, -7)), to: iso(shift(monday, -1)) };
-    case 'month':
-      return { from: `${today.slice(0, 7)}-01`, to: today };
-    case 'lastMonth': {
-      const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1, 12));
-      const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0, 12));
-      return { from: iso(first), to: iso(last) };
-    }
-  }
 }

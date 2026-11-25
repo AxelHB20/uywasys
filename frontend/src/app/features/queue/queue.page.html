@@ -11,6 +11,15 @@
           >
         }
         <span>{{ doneCount() }} {{ doneCount() === 1 ? 'atendido' : 'atendidos' }}</span>
+        @if (homePending().length) {
+          <button
+            type="button"
+            class="font-medium text-amber-800 underline-offset-2 hover:underline"
+            (click)="showHomePending()"
+          >
+            {{ homePending().length }} por llevar a casa
+          </button>
+        }
       </p>
     </div>
     @if (canEdit()) {
@@ -92,11 +101,13 @@
                   [item]="item"
                   [now]="now()"
                   [canEdit]="canEdit()"
+                  [canAttend]="canAttend()"
                   [busy]="busyId() === item.id"
                   (move)="move(item, $event)"
                   (attend)="attend(item)"
                   (toggleUrgent)="toggleUrgent(item)"
-                  (cancel)="cancelling.set(item)"
+                  (cancel)="askCancel(item)"
+                  (editMove)="openMove(item)"
                 />
               </li>
             } @empty {
@@ -156,11 +167,62 @@
                     · {{ item.reason }}
                   }
                 </p>
+                @if (item.transport !== 'NONE') {
+                  <p class="truncate text-xs text-slate-500">
+                    {{ moveText(item) }}
+                    @if (item.homePending && item.transportAddress) {
+                      · {{ item.transportAddress }}
+                    }
+                    @if (item.deliveredHomeAt) {
+                      · Entregado en casa {{ clockTime(item.deliveredHomeAt) }}
+                      @if (item.deliveredHomeBy) {
+                        por {{ item.deliveredHomeBy.fullName }}
+                      }
+                    }
+                  </p>
+                }
               </div>
-              <app-badge [tone]="item.status === 'DONE' ? 'success' : 'neutral'" class="shrink-0">{{
-                closedSummary(item)
-              }}</app-badge>
-              @if (item.visit) {
+              @if (item.homePending) {
+                <app-badge tone="warning" class="shrink-0"
+                  ><app-icon name="map-pin" class="size-3" />Falta llevarlo a casa</app-badge
+                >
+              } @else if (item.hospitalized) {
+                <app-badge tone="info" class="shrink-0"
+                  >Internado: a casa al darle de alta</app-badge
+                >
+              } @else {
+                <app-badge
+                  [tone]="item.status === 'DONE' ? 'success' : 'neutral'"
+                  class="shrink-0"
+                  >{{ closedSummary(item) }}</app-badge
+                >
+              }
+              @if (
+                canEdit() &&
+                item.status === 'DONE' &&
+                item.type === 'CONSULTATION' &&
+                item.transport === 'NONE'
+              ) {
+                <button
+                  type="button"
+                  class="btn btn-ghost h-10 shrink-0 px-3 text-sm"
+                  [attr.aria-label]="'Llevar a ' + item.pet.name + ' a su casa'"
+                  (click)="openMove(item)"
+                >
+                  Llevar a casa
+                </button>
+              }
+              @if (item.homePending && canEdit()) {
+                <button
+                  type="button"
+                  class="btn btn-secondary h-10 shrink-0 px-3 text-sm"
+                  [disabled]="busyId() === item.id"
+                  (click)="deliveredHome(item)"
+                >
+                  Entregado en casa
+                </button>
+              }
+              @if (item.visit && canOpenVisit(item.type)) {
                 <a
                   [routerLink]="['/atenciones', item.visit.id]"
                   class="btn btn-ghost h-10 shrink-0 px-3 text-sm"
@@ -180,12 +242,59 @@
   }
 </section>
 
+<!-- Movilidad después: "ya no puede volver, llévenlo" -->
+<app-modal
+  [open]="!!moving()"
+  [title]="'Movilidad · ' + (moving()?.pet?.name ?? '')"
+  description="Se suma a su cuenta; el precio se corrige en Caja mientras no se cobre."
+  (closed)="moving.set(null)"
+>
+  @if (moving()) {
+    <form id="move-form" (submit)="$event.preventDefault(); saveMove()" novalidate>
+      <app-transport-fields
+        prefix="qm"
+        [group]="moveForm"
+        [clientAddress]="clientAddress()"
+        [lastPrice]="lastTransportPrice()"
+        [submitted]="moveSubmitted()"
+      />
+    </form>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="moving.set(null)">Volver</button>
+    <button type="submit" form="move-form" class="btn btn-primary" [disabled]="!!busyId()">
+      @if (busyId()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Guardar
+    </button>
+  </ng-container>
+</app-modal>
+
 <!-- Sacar de la cola -->
 <app-modal [open]="!!cancelling()" title="Sacar de la cola" (closed)="cancelling.set(null)">
   <p class="text-slate-700">
     <strong class="font-semibold text-slate-900">{{ cancelling()?.pet?.name }}</strong> saldrá de la
     cola de hoy. Úsalo si el cliente se fue sin ser atendido.
   </p>
+  @if (cancelling()?.transportPrice) {
+    <label
+      class="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-800 ring-1 ring-slate-200"
+    >
+      <input
+        type="checkbox"
+        [formControl]="chargeTransport"
+        class="mt-0.5 size-5 shrink-0 rounded accent-anil-600"
+      />
+      <span>
+        <span class="font-medium">Cobrar la movilidad igual</span>
+        ({{ money(cancelling()!.transportPrice!) }})
+        <span class="block text-slate-600"
+          >Si ya fueron a recogerlo. Si no, se quita de la cuenta.</span
+        >
+      </span>
+    </label>
+  }
   <ng-container modal-actions>
     <button type="button" class="btn btn-secondary" (click)="cancelling.set(null)">Volver</button>
     <button type="button" class="btn btn-danger" [disabled]="!!busyId()" (click)="confirmCancel()">
@@ -205,17 +314,59 @@
   (closed)="addOpen.set(false)"
 >
   @if (selected(); as sel) {
-    <div class="flex items-center gap-3 rounded-xl bg-anil-50 p-3 ring-1 ring-anil-200">
-      <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-anil-700">
-        <app-icon [name]="speciesIcons[sel.pet.species]" class="size-5" />
-      </span>
-      <div class="min-w-0 flex-1">
-        <p class="font-medium text-slate-900">{{ sel.pet.name }}</p>
-        <p class="truncate text-sm text-slate-600">{{ sel.client.name }}</p>
+    <div class="rounded-2xl bg-anil-50/70 p-4 ring-1 ring-anil-200">
+      <div class="flex items-start gap-3">
+        <span
+          class="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-anil-700 ring-1 ring-anil-100"
+          aria-hidden="true"
+        >
+          <app-icon [name]="speciesIcons[sel.pet.species]" class="size-5" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="flex flex-wrap items-baseline gap-x-2">
+            <span class="font-display text-base font-semibold text-slate-900">{{
+              sel.pet.name
+            }}</span>
+            <span class="text-xs text-slate-500 tabular-nums">{{ hc(sel.pet.number) }}</span>
+          </p>
+          <p class="text-sm text-slate-600">{{ petLine(sel.pet) }}</p>
+          <p class="mt-1 truncate text-sm text-slate-700">
+            {{ sel.client.name }}
+            <span class="text-slate-500 tabular-nums">· {{ phone(sel.client.phone) }}</span>
+          </p>
+        </div>
+        <button type="button" class="btn btn-ghost h-10 shrink-0 px-3" (click)="selected.set(null)">
+          Cambiar
+        </button>
       </div>
-      <button type="button" class="btn btn-ghost h-10 px-3" (click)="selected.set(null)">
-        Cambiar
-      </button>
+      @if (sel.pet.aggressive || sel.pet.hasAllergies) {
+        <ul class="mt-3 space-y-1.5" aria-label="Avisos de la mascota">
+          @if (sel.pet.aggressive) {
+            <li
+              class="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-200"
+            >
+              <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-rose-600" />
+              <span
+                ><strong class="font-semibold">Agresivo.</strong>
+                {{
+                  sel.pet.aggressiveNote || 'Manipúlalo con cuidado y avisa al veterinario.'
+                }}</span
+              >
+            </li>
+          }
+          @if (sel.pet.hasAllergies) {
+            <li
+              class="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200"
+            >
+              <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-amber-700" />
+              <span
+                ><strong class="font-semibold">Tiene alergias.</strong> El veterinario las ve en su
+                historia.</span
+              >
+            </li>
+          }
+        </ul>
+      }
     </div>
     <form
       id="add-queue-form"
@@ -232,7 +383,25 @@
           class="field-input"
           autocomplete="off"
           placeholder="Ej.: vacuna, control, vómitos"
+          maxlength="200"
         />
+        <div class="mt-2 flex flex-wrap gap-1.5" aria-label="Motivos frecuentes">
+          @for (r of quickReasons; track r) {
+            <button
+              type="button"
+              class="h-9 rounded-full px-3 text-sm ring-1 transition-colors duration-150"
+              [class]="
+                addForm.controls.reason.value === r
+                  ? 'bg-anil-50 font-medium text-anil-800 ring-anil-600'
+                  : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+              "
+              [attr.aria-pressed]="addForm.controls.reason.value === r"
+              (click)="setReason(r)"
+            >
+              {{ r }}
+            </button>
+          }
+        </div>
       </div>
       <label
         class="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-slate-800"
@@ -240,6 +409,13 @@
         <input type="checkbox" formControlName="urgent" class="size-5 rounded accent-rose-600" />
         Es una urgencia (pasa primero)
       </label>
+      <app-transport-fields
+        prefix="aq"
+        [group]="addForm.controls.move"
+        [clientAddress]="clientAddress()"
+        [lastPrice]="lastTransportPrice()"
+        [submitted]="addSubmitted()"
+      />
     </form>
   } @else {
     <div class="relative">
@@ -254,13 +430,16 @@
         [formControl]="search"
         class="field-input mt-0 pl-10"
         autocomplete="off"
+        autofocus
         placeholder="Nombre, DNI, celular o mascota"
+        aria-describedby="aq-search-hint"
+        (keydown.enter)="pickOnlyChoice($event)"
       />
     </div>
     <div class="mt-4 min-h-24" aria-live="polite">
       @switch (results().kind) {
         @case ('idle') {
-          <p class="py-6 text-center text-sm text-slate-500">
+          <p id="aq-search-hint" class="py-6 text-center text-sm text-slate-500">
             Escribe al menos 2 letras o números.
           </p>
         }
@@ -277,40 +456,101 @@
         @case ('ready') {
           @let found = results();
           @if (found.kind === 'ready' && found.items.length) {
+            @let q = search.value;
             <ul class="space-y-3">
               @for (client of found.items; track client.id) {
                 <li class="rounded-xl ring-1 ring-slate-200">
-                  <p class="px-3.5 pt-3 text-sm font-medium text-slate-900">{{ client.name }}</p>
+                  <div class="px-3.5 pt-3">
+                    <p class="text-sm font-medium text-slate-900">
+                      <app-mark-text [text]="client.name" [query]="q" />
+                    </p>
+                    <p class="mt-0.5 flex flex-wrap gap-x-1.5 text-xs text-slate-500 tabular-nums">
+                      @if (client.docType && client.docNumber) {
+                        <span
+                          >{{ docShort[client.docType] }}
+                          <app-mark-text [text]="client.docNumber" [query]="q"
+                        /></span>
+                        <span aria-hidden="true">·</span>
+                      }
+                      <app-mark-text [text]="phone(client.phone)" [query]="q" />
+                    </p>
+                  </div>
                   <div class="flex flex-wrap gap-2 p-3">
                     @for (pet of activePets(client); track pet.id) {
+                      @let status = queueStatus(pet.id);
                       <button
                         type="button"
-                        class="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ring-1 transition-colors disabled:cursor-not-allowed"
+                        class="inline-flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm ring-1 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600 disabled:cursor-not-allowed"
                         [class]="
-                          inQueue(pet.id)
+                          status
                             ? 'bg-slate-50 text-slate-400 ring-slate-200'
                             : 'text-slate-800 ring-slate-300 hover:bg-anil-50 hover:ring-anil-400'
                         "
-                        [disabled]="inQueue(pet.id)"
+                        [disabled]="!!status"
+                        [attr.aria-label]="
+                          pet.name +
+                          ', ' +
+                          petLine(pet) +
+                          (pet.aggressive ? ', agresivo' : '') +
+                          (pet.hasAllergies ? ', tiene alergias' : '') +
+                          (status ? ', ya está en la cola' : '')
+                        "
                         (click)="pick(client, pet)"
                       >
-                        <app-icon [name]="speciesIcons[pet.species]" class="size-4" />
-                        {{ pet.name }}
-                        @if (inQueue(pet.id)) {
-                          <span class="text-xs font-normal">· ya en cola</span>
-                        }
+                        <app-icon [name]="speciesIcons[pet.species]" class="size-4 shrink-0" />
+                        <span class="min-w-0">
+                          <span class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                            <span class="font-medium">
+                              <app-mark-text [text]="pet.name" [query]="q" />
+                            </span>
+                            @if (!status && pet.aggressive) {
+                              <span
+                                class="rounded bg-rose-50 px-1 text-[11px] font-medium text-rose-800 ring-1 ring-rose-200"
+                                aria-hidden="true"
+                                >Agresivo</span
+                              >
+                            }
+                            @if (!status && pet.hasAllergies) {
+                              <span
+                                class="rounded bg-amber-50 px-1 text-[11px] font-medium text-amber-900 ring-1 ring-amber-200"
+                                aria-hidden="true"
+                                >Alergias</span
+                              >
+                            }
+                          </span>
+                          <span class="block text-xs font-normal text-slate-500">{{
+                            status ? 'Ya en la cola · ' + status : petLine(pet)
+                          }}</span>
+                        </span>
                       </button>
                     } @empty {
-                      <p class="text-sm text-slate-500">Sin mascotas activas</p>
+                      <p class="text-sm text-slate-500">
+                        Sin mascotas activas ·
+                        <a
+                          [routerLink]="['/clientes', client.id]"
+                          class="font-medium text-anil-700 hover:underline"
+                          >Agregar mascota</a
+                        >
+                      </p>
                     }
                   </div>
                 </li>
               }
             </ul>
+            @if (found.total > found.items.length) {
+              <p class="mt-3 text-center text-sm text-slate-500">
+                Hay {{ found.total - found.items.length }} clientes más: escribe más letras o el
+                DNI.
+              </p>
+            }
           } @else {
             <div class="py-6 text-center">
               <p class="text-sm text-slate-600">No encontramos a «{{ search.value }}».</p>
-              <a routerLink="/clientes/nuevo" class="btn btn-secondary mt-3">
+              <a
+                routerLink="/clientes/nuevo"
+                [queryParams]="newClientQuery()"
+                class="btn btn-secondary mt-3"
+              >
                 <app-icon name="user-plus" class="size-4" /> Registrar cliente nuevo
               </a>
             </div>

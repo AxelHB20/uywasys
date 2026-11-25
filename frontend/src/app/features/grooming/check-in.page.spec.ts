@@ -56,6 +56,7 @@ describe('GroomingCheckInPage (ingreso)', () => {
     http.expectOne('/api/grooming/groomers').flush([{ id: 5, fullName: 'Pepe Groomer' }]);
     await fixture.whenStable();
     http.expectOne('/api/pets/3/immunization-card').flush(card);
+    http.expectOne('/api/clients/9/transport-price').flush({ price: null });
     http
       .expectOne('/api/pets/3/grooming')
       .flush([{ id: 1, status: 'DELIVERED', size: 'MEDIUM', instructions: 'Corte cachorro' }]);
@@ -103,6 +104,62 @@ describe('GroomingCheckInPage (ingreso)', () => {
     });
     req.flush({ id: 7, code: 'GR-00007', pet: { name: 'Copito' } });
     await fixture.whenStable();
-    expect(navigate).toHaveBeenCalledWith(['/grooming']);
+    expect(navigate).toHaveBeenCalledWith(['/grooming'], { replaceUrl: true });
+  });
+
+  it('con recojo, propone la dirección registrada del dueño y se puede cambiar', async () => {
+    TestBed.configureTestingModule({
+      imports: [GroomingCheckInPage],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+    });
+    http = TestBed.inject(HttpTestingController);
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const fixture = TestBed.createComponent(GroomingCheckInPage);
+    fixture.componentRef.setInput('petId', '3');
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne((r) => r.url === '/api/care-services').flush([bath]);
+    http.expectOne('/api/grooming/groomers').flush([]);
+    await fixture.whenStable();
+    http.expectOne('/api/pets/3/immunization-card').flush({
+      ...card,
+      pet: {
+        ...card.pet,
+        client: { ...card.pet.client, address: 'Av. Carapongo 497', district: 'Lurigancho' },
+      },
+    });
+    http.expectOne('/api/clients/9/transport-price').flush({ price: 12 });
+    http.expectOne('/api/pets/3/grooming').flush([]);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const byText = (text: string) =>
+      [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+        b.textContent?.includes(text),
+      )!;
+
+    byText('Lo recogemos').click();
+    fixture.detectChanges();
+    const address = el.querySelector<HTMLInputElement>('#gr-address')!;
+    expect(address.value).toBe('Av. Carapongo 497, Lurigancho');
+    expect(el.textContent).toContain('Dirección registrada del cliente');
+
+    // El último precio que pagó viene puesto y se suma al total
+    expect(el.querySelector<HTMLInputElement>('#gr-price')!.value).toBe('12');
+    address.value = 'Jr. Las Flores 120, Chosica';
+    address.dispatchEvent(new Event('input'));
+    const price = el.querySelector<HTMLInputElement>('#gr-price')!;
+    price.value = '10';
+    price.dispatchEvent(new Event('input'));
+    el.querySelector<HTMLElement>('[data-service="11"]')!.click();
+    fixture.detectChanges();
+    expect(byText('Registrar ingreso').textContent).toContain('S/ 45.00');
+    byText('Registrar ingreso').click();
+    const req = http.expectOne({ method: 'POST', url: '/api/grooming' });
+    expect(req.request.body).toMatchObject({
+      transport: 'PICKUP',
+      transportAddress: 'Jr. Las Flores 120, Chosica',
+      transportPrice: 10,
+    });
+    req.flush({ id: 8, code: 'GR-00008', pet: { name: 'Copito' } });
   });
 });

@@ -1,0 +1,569 @@
+<div class="min-h-dvh bg-slate-50 print:bg-white">
+  @if (data.isLoading() && !view()) {
+    <div class="mx-auto max-w-2xl space-y-4 px-4 py-8" aria-busy="true" aria-label="Cargando">
+      <div class="h-10 w-48 animate-pulse rounded-xl bg-slate-200"></div>
+      <div class="h-40 animate-pulse rounded-2xl bg-white"></div>
+      <div class="h-64 animate-pulse rounded-2xl bg-white"></div>
+    </div>
+  } @else if (data.error()) {
+    <main
+      class="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 text-center"
+    >
+      <span
+        class="grid size-16 place-items-center rounded-2xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200"
+      >
+        <app-icon name="lock" class="size-7" />
+      </span>
+      <h1 class="mt-5 font-display text-xl font-semibold text-slate-900">Enlace no disponible</h1>
+      <p class="mt-2 text-slate-600">{{ errorText() }}</p>
+      <button type="button" class="btn btn-secondary mt-6" (click)="data.reload()">
+        <app-icon name="refresh" class="size-4" /> Intentar otra vez
+      </button>
+    </main>
+  } @else if (view(); as v) {
+    <!-- Clínica -->
+    <header class="border-b border-slate-200 bg-white print:border-b-2 print:border-black">
+      <div class="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
+        @if (logoUrl(); as logo) {
+          <img
+            [src]="logo"
+            alt=""
+            class="h-10 w-auto max-w-32 object-contain"
+            (error)="logoFailed.set(true)"
+          />
+        } @else {
+          <span
+            class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-600 text-white"
+            aria-hidden="true"
+          >
+            <app-icon name="paw" class="size-5" />
+          </span>
+        }
+        <div class="min-w-0">
+          <p class="truncate font-display font-semibold text-slate-900">{{ v.clinic.name }}</p>
+          @if (v.clinic.address) {
+            <p class="truncate text-xs text-slate-500">{{ v.clinic.address }}</p>
+          }
+        </div>
+        @if (v.clinic.phone) {
+          <a
+            [href]="'tel:' + clinicTel()"
+            class="ml-auto grid size-11 shrink-0 place-items-center rounded-xl text-anil-700 ring-1 ring-slate-200 hover:bg-slate-50 print:hidden"
+            [attr.aria-label]="'Llamar a ' + v.clinic.name"
+          >
+            <app-icon name="phone" class="size-5" />
+          </a>
+        }
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-2xl space-y-5 px-4 pt-6 pb-10">
+      <div class="print:hidden">
+        <h1 class="font-display text-2xl font-semibold text-slate-900">
+          Hola, {{ v.ownerFirstName }}
+        </h1>
+        <p class="mt-1 text-slate-600">
+          Las próximas vacunas y citas de tus mascotas, siempre a la mano.
+        </p>
+      </div>
+
+      @if (!v.pets.length) {
+        <div class="rounded-2xl bg-white px-6 py-10 text-center shadow-sm ring-1 ring-slate-200">
+          <p class="font-medium text-slate-900">Aún no hay mascotas registradas.</p>
+          <p class="mt-1 text-sm text-slate-600">Consulta con la clínica.</p>
+        </div>
+      } @else {
+        @if (v.pets.length > 1) {
+          <div class="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="Tus mascotas">
+            @for (p of v.pets; track p.id) {
+              <button
+                type="button"
+                role="tab"
+                class="inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-medium ring-1 transition-colors"
+                [class]="
+                  pet()?.id === p.id
+                    ? 'bg-anil-600 text-white ring-anil-600'
+                    : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+                "
+                [attr.aria-selected]="pet()?.id === p.id"
+                (click)="selectedId.set(p.id)"
+              >
+                <app-icon [name]="speciesIcons[p.species]" class="size-4" />
+                {{ p.name }}
+              </button>
+            }
+          </div>
+        }
+
+        @if (pet(); as p) {
+          <!-- Mascota -->
+          <section
+            class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 print:shadow-none print:ring-0"
+            aria-labelledby="pet-name"
+          >
+            <div class="flex items-center gap-4">
+              <span
+                class="grid size-14 shrink-0 place-items-center rounded-2xl bg-anil-50 text-anil-700 print:hidden"
+                aria-hidden="true"
+              >
+                <app-icon [name]="speciesIcons[p.species]" class="size-7" />
+              </span>
+              <div class="min-w-0">
+                <h2 id="pet-name" class="font-display text-xl font-semibold text-slate-900">
+                  {{ p.name }}
+                </h2>
+                <p class="text-sm text-slate-600">
+                  {{ speciesLabels[p.species] }}
+                  @if (p.breed) {
+                    · {{ p.breed }}
+                  }
+                  @if (p.sex) {
+                    · {{ sexLabels[p.sex] }}{{ p.neutered ? ' (esterilizado)' : '' }}
+                  }
+                </p>
+              </div>
+            </div>
+            <dl class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div class="rounded-xl bg-slate-50 px-3 py-2">
+                <dt class="text-xs text-slate-500">Historia</dt>
+                <dd class="font-medium text-slate-900 tabular-nums">{{ petCode(p.number) }}</dd>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-2">
+                <dt class="text-xs text-slate-500">Edad</dt>
+                <dd class="font-medium text-slate-900">{{ age(p) ?? '—' }}</dd>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-2">
+                <dt class="text-xs text-slate-500">Peso</dt>
+                <dd class="font-medium text-slate-900 tabular-nums">
+                  {{ p.weightKg !== null ? p.weightKg + ' kg' : '—' }}
+                </dd>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-2">
+                <dt class="text-xs text-slate-500">Microchip</dt>
+                <dd class="truncate font-medium text-slate-900 tabular-nums">
+                  {{ p.microchip ?? '—' }}
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <!-- Lo que toca -->
+          @if (pendingDoses().length) {
+            <section
+              class="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200 print:hidden"
+              aria-labelledby="due-title"
+            >
+              <h2 id="due-title" class="flex items-center gap-2 font-semibold text-amber-950">
+                <app-icon name="bell" class="size-4" /> Le toca pronto a {{ p.name }}
+              </h2>
+              <ul class="mt-2 space-y-1.5">
+                @for (d of pendingDoses(); track d.id) {
+                  @let s = due(d)!;
+                  <li class="flex items-center justify-between gap-3 text-sm">
+                    <span class="min-w-0 text-amber-950">
+                      <span class="font-medium">{{ d.name }}</span>
+                      <span class="text-amber-900/80"> · {{ date(d.nextDueAt) }}</span>
+                    </span>
+                    <span
+                      class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1"
+                      [class]="dueStyle[s.tone]"
+                      >{{ s.label }}</span
+                    >
+                  </li>
+                }
+              </ul>
+              @if (whatsappClinic(); as wa) {
+                <a
+                  [href]="wa"
+                  target="_blank"
+                  rel="noopener"
+                  class="btn mt-3 h-10 w-full bg-white text-amber-950 ring-1 ring-amber-300 hover:bg-amber-100 sm:w-auto"
+                >
+                  <app-icon name="message-circle" class="size-4" /> Pedir cita por WhatsApp
+                </a>
+              }
+            </section>
+          }
+
+          <!-- Citas -->
+          <section
+            class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 print:hidden"
+            aria-labelledby="appt-title"
+          >
+            <h2
+              id="appt-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Próximas citas
+            </h2>
+            @if (p.appointments.length) {
+              <ul class="mt-3 space-y-2.5">
+                @for (a of p.appointments; track a.id) {
+                  <li
+                    class="flex items-start gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70"
+                  >
+                    <span
+                      class="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-anil-700 ring-1 ring-slate-200"
+                      aria-hidden="true"
+                    >
+                      <app-icon name="calendar" class="size-5" />
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <p class="font-medium text-slate-900">{{ appointmentDay(a.startsAt) }}</p>
+                      <p class="text-sm text-slate-600">
+                        <span class="font-medium tabular-nums">{{
+                          appointmentTime(a.startsAt)
+                        }}</span>
+                        · {{ a.reason ?? typeLabel(a.type) }}
+                        @if (a.vet) {
+                          · {{ a.vet }}
+                        }
+                      </p>
+                    </div>
+                    <span
+                      class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1"
+                      [class]="
+                        a.status === 'CONFIRMED'
+                          ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                          : 'bg-white text-slate-700 ring-slate-300'
+                      "
+                      >{{ a.status === 'CONFIRMED' ? 'Confirmada' : 'Agendada' }}</span
+                    >
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="mt-3 text-sm text-slate-600">No tiene citas agendadas.</p>
+            }
+          </section>
+
+          <!-- Recordatorios -->
+          <section
+            class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 print:hidden"
+            aria-labelledby="notice-title"
+          >
+            <h2
+              id="notice-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Recordatorios
+            </h2>
+            <p class="mt-1 text-sm text-pretty text-slate-600">
+              Te avisamos antes de cada refuerzo y la tarde antes de tus citas. Gratis.
+            </p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <div class="flex flex-col rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/70">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-xl"
+                    [class]="
+                      push() === 'on'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-white text-anil-700 ring-1 ring-slate-200'
+                    "
+                    aria-hidden="true"
+                  >
+                    <app-icon [name]="push() === 'on' ? 'check' : 'bell'" class="size-5" />
+                  </span>
+                  <p class="font-medium text-slate-900">Avisos en este celular</p>
+                </div>
+                <p class="mt-2 flex-1 text-sm text-slate-600" aria-live="polite">
+                  @switch (push()) {
+                    @case ('on') {
+                      Activados. Te llegará una notificación como la de cualquier app.
+                    }
+                    @case ('denied') {
+                      Bloqueaste las notificaciones. Actívalas en los permisos del navegador para
+                      esta página.
+                    }
+                    @case ('install') {
+                      En iPhone: toca <strong>Compartir</strong> →
+                      <strong>Agregar a inicio</strong>, abre el portal desde ese ícono y activa los
+                      avisos ahí.
+                    }
+                    @case ('unsupported') {
+                      Este navegador no permite avisos. Usa el calendario.
+                    }
+                    @default {
+                      Recibe el aviso aunque no abras esta página.
+                    }
+                  }
+                </p>
+                @if (push() === 'off' || push() === 'busy') {
+                  <button
+                    type="button"
+                    class="btn btn-primary mt-3 h-11 w-full"
+                    [disabled]="push() === 'busy'"
+                    (click)="enablePush()"
+                  >
+                    @if (push() === 'busy') {
+                      <app-icon name="loader" class="size-4 animate-spin" />
+                    } @else {
+                      <app-icon name="bell" class="size-4" />
+                    }
+                    Activar avisos
+                  </button>
+                } @else if (push() === 'on') {
+                  <button
+                    type="button"
+                    class="btn btn-ghost mt-3 h-10 w-full text-sm text-slate-600"
+                    (click)="disablePush()"
+                  >
+                    Desactivar
+                  </button>
+                }
+              </div>
+              <div class="flex flex-col rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/70">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-anil-700 ring-1 ring-slate-200"
+                    aria-hidden="true"
+                  >
+                    <app-icon name="calendar" class="size-5" />
+                  </span>
+                  <p class="font-medium text-slate-900">En tu calendario</p>
+                </div>
+                <p class="mt-2 flex-1 text-sm text-slate-600">
+                  Las fechas se guardan con alarma y se actualizan solas cuando la clínica agenda
+                  algo nuevo.
+                </p>
+                <div class="mt-3 grid gap-2">
+                  <a
+                    [href]="googleCalendar()"
+                    target="_blank"
+                    rel="noopener"
+                    class="btn btn-secondary h-11 w-full"
+                  >
+                    Google Calendar
+                  </a>
+                  <a [href]="webcal()" class="btn btn-secondary h-11 w-full"> iPhone u Outlook </a>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          @if (v.showRecords) {
+            <!-- Carnet -->
+            <section
+              class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 print:p-0 print:shadow-none print:ring-0"
+              aria-labelledby="card-title"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <h2
+                  id="card-title"
+                  class="text-xs font-semibold tracking-wide text-slate-500 uppercase print:text-base print:text-black"
+                >
+                  Carnet de vacunación
+                </h2>
+                @if (p.immunizations.length) {
+                  <button
+                    type="button"
+                    class="btn btn-ghost h-10 px-3 text-sm print:hidden"
+                    (click)="print()"
+                  >
+                    <app-icon name="download" class="size-4" /> Imprimir
+                  </button>
+                }
+              </div>
+              @if (p.immunizations.length) {
+                @for (
+                  group of [
+                    { title: 'Vacunas', items: vaccines() },
+                    { title: 'Desparasitaciones', items: dewormings() },
+                  ];
+                  track group.title
+                ) {
+                  @if (group.items.length) {
+                    <h3 class="mt-4 text-sm font-semibold text-slate-900">{{ group.title }}</h3>
+                    <ul class="mt-2 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+                      @for (i of group.items; track i.id) {
+                        <li class="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                          <div class="min-w-0 flex-1">
+                            <p class="font-medium text-slate-900">
+                              {{ i.name }}
+                              @if (i.kind !== 'VACCINE') {
+                                <span class="font-normal text-slate-500"
+                                  >· {{ kindShort[i.kind] }}</span
+                                >
+                              }
+                            </p>
+                            <p class="text-xs text-slate-500">
+                              Aplicada el <span class="tabular-nums">{{ date(i.appliedAt) }}</span>
+                              @if (i.laboratory) {
+                                · {{ i.laboratory }}
+                              }
+                              @if (i.batchNumber) {
+                                · Lote {{ i.batchNumber }}
+                              }
+                            </p>
+                            <p class="text-xs text-slate-500">
+                              @if (i.external) {
+                                Otra clínica{{ i.externalClinic ? ': ' + i.externalClinic : '' }}
+                              } @else if (i.appliedBy) {
+                                {{ i.appliedBy }}
+                                @if (i.licenseNumber) {
+                                  · CMVP {{ i.licenseNumber }}
+                                }
+                              }
+                            </p>
+                          </div>
+                          @if (i.nextDueAt) {
+                            <div class="shrink-0 text-right text-xs">
+                              <p class="text-slate-500">Refuerzo</p>
+                              <p class="font-medium text-slate-900 tabular-nums">
+                                {{ date(i.nextDueAt) }}
+                              </p>
+                            </div>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  }
+                }
+              } @else {
+                <p class="mt-3 text-sm text-slate-600">Todavía no hay vacunas registradas.</p>
+              }
+            </section>
+          } @else {
+            <!-- Próximas dosis (sin carnet en el portal) -->
+            <section
+              class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
+              aria-labelledby="doses-title"
+            >
+              <h2
+                id="doses-title"
+                class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+              >
+                Próximas vacunas y desparasitaciones
+              </h2>
+              @if (doses().length) {
+                <ul class="mt-3 divide-y divide-slate-100">
+                  @for (d of doses(); track d.id) {
+                    @let s = due(d)!;
+                    <li class="flex items-center justify-between gap-3 py-2.5">
+                      <span class="min-w-0">
+                        <span class="block font-medium text-slate-900">{{ d.name }}</span>
+                        <span class="block text-sm text-slate-500"
+                          >{{ kindShort[d.kind] }} · {{ date(d.nextDueAt) }}</span
+                        >
+                      </span>
+                      <span
+                        class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1"
+                        [class]="dueStyle[s.tone]"
+                        >{{ s.label }}</span
+                      >
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="mt-3 text-sm text-slate-600">No hay refuerzos pendientes.</p>
+              }
+              <p class="mt-3 text-xs text-slate-500">
+                El carnet de vacunación te lo entrega la clínica en cada aplicación.
+              </p>
+            </section>
+          }
+
+          <!-- Recetas -->
+          @if (p.prescriptions.length) {
+            <section
+              class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 print:hidden"
+              aria-labelledby="rx-title"
+            >
+              <h2
+                id="rx-title"
+                class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+              >
+                Recetas recientes
+              </h2>
+              <ul class="mt-3 space-y-3">
+                @for (r of p.prescriptions; track r.id) {
+                  <li class="rounded-xl ring-1 ring-slate-200">
+                    <div
+                      class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2"
+                    >
+                      <p class="text-sm font-medium text-slate-900">
+                        {{ day(r.createdAt) }}
+                        <span class="font-normal text-slate-500">· {{ rxCode(r.number) }}</span>
+                      </p>
+                      <p class="text-xs text-slate-500">
+                        {{ r.vet }}{{ r.licenseNumber ? ' · CMVP ' + r.licenseNumber : '' }}
+                      </p>
+                    </div>
+                    <ul class="divide-y divide-slate-100">
+                      @for (it of r.items; track $index) {
+                        <li class="flex gap-3 px-3 py-2.5 text-sm">
+                          <app-icon name="pill" class="mt-0.5 size-4 shrink-0 text-anil-600" />
+                          <div class="min-w-0">
+                            <p class="font-medium text-slate-900">{{ it.drug }}</p>
+                            <p class="text-slate-700">
+                              {{ it.dose }}{{ it.route ? ' · ' + it.route : '' }} ·
+                              {{ it.frequency }} · {{ it.duration }}
+                            </p>
+                            @if (it.instructions) {
+                              <p class="text-xs text-slate-500">{{ it.instructions }}</p>
+                            }
+                          </div>
+                        </li>
+                      }
+                    </ul>
+                    @if (r.notes) {
+                      <p class="border-t border-slate-100 px-3 py-2 text-sm text-slate-700">
+                        <span class="font-medium">Indicaciones:</span> {{ r.notes }}
+                      </p>
+                    }
+                  </li>
+                }
+              </ul>
+            </section>
+          }
+        }
+      }
+
+      <!-- Contacto -->
+      <section
+        class="rounded-2xl bg-anil-600 p-5 text-white shadow-sm print:hidden"
+        aria-labelledby="contact-title"
+      >
+        <h2 id="contact-title" class="font-display font-semibold">¿Necesitas algo?</h2>
+        <p class="mt-1 text-sm text-anil-100">
+          Escríbenos o llámanos para agendar o resolver dudas.
+        </p>
+        <div class="mt-4 grid gap-2 sm:grid-cols-2">
+          @if (whatsappClinic(); as wa) {
+            <a
+              [href]="wa"
+              target="_blank"
+              rel="noopener"
+              class="btn h-11 bg-white text-anil-800 hover:bg-anil-50"
+            >
+              <app-icon name="message-circle" class="size-4" /> WhatsApp
+            </a>
+          }
+          @if (v.clinic.phone) {
+            <a
+              [href]="'tel:' + clinicTel()"
+              class="btn h-11 bg-anil-700 text-white ring-1 ring-white/30 hover:bg-anil-800"
+            >
+              <app-icon name="phone" class="size-4" /> Llamar · {{ v.clinic.phone }}
+            </a>
+          }
+        </div>
+        @if (v.clinic.address) {
+          <p class="mt-3 flex items-start gap-1.5 text-sm text-anil-100">
+            <app-icon name="map-pin" class="mt-0.5 size-4 shrink-0" /> {{ v.clinic.address }}
+          </p>
+        }
+      </section>
+
+      <p class="text-center text-xs leading-relaxed text-slate-500 print:hidden">
+        Este enlace es personal: no lo compartas. Vale hasta el {{ day(v.expiresAt) }}; luego pide
+        uno nuevo a la clínica.<br />
+        <a href="/legal/privacidad" class="underline underline-offset-2 hover:text-slate-700"
+          >Política de privacidad</a
+        >
+        · con Uywa
+      </p>
+    </main>
+  }
+</div>

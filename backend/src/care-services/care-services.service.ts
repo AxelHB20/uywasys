@@ -13,6 +13,7 @@ import type {
   IgvAffectation,
   PetSize,
 } from '../generated/prisma/enums.js';
+import { lastUnitCosts } from '../inventory/last-cost.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
   CreateCareServiceDto,
@@ -37,7 +38,11 @@ export interface CareServiceView {
     quantity: number;
     /** Si es controlado, el cargo exige receta y veterinario con colegiatura */
     controlled: boolean;
+    /** Último costo sin IGV por unidad mínima (null si nunca se compró por el sistema) */
+    unitCost: number | null;
   }[];
+  /** Presupuestos emitidos o aceptados que lo incluyen (se cobran aunque se desactive) */
+  pendingEstimates: number;
 }
 
 const SELECT = {
@@ -76,12 +81,39 @@ export class CareServicesService {
     const rows = await this.prisma.careService.findMany({
       where: {
         clinicId,
+        // La movilidad es interna: su precio lo pone recepción en cada caso
+        systemKey: null,
         ...(status === 'all' ? {} : { active: status === 'active' }),
       },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
       select: SELECT,
     });
-    return rows.map(toView);
+    return this.withCosts(clinicId, rows);
+  }
+
+  /** Vista con el último costo de cada insumo, para ver cuánto gasta el servicio */
+  private async withCosts(
+    clinicId: number,
+    rows: Row[],
+  ): Promise<CareServiceView[]> {
+    const ids = [
+      ...new Set(rows.flatMap((r) => r.supplies.map((s) => s.product.id))),
+    ];
+    const [costs, quoted] = await Promise.all([
+      lastUnitCosts(this.prisma, clinicId, ids),
+      this.prisma.estimateItem.groupBy({
+        by: ['careServiceId'],
+        where: {
+          careServiceId: { in: rows.map((r) => r.id) },
+          estimate: { clinicId, status: { in: ['PENDING', 'ACCEPTED'] } },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    const pending = new Map(
+      quoted.map((q) => [q.careServiceId, q._count._all] as const),
+    );
+    return rows.map((r) => toView(r, costs, pending.get(r.id) ?? 0));
   }
 
   async create(
@@ -132,7 +164,7 @@ export class CareServicesService {
       ip,
       data: { name: row.name, price: dto.price },
     });
-    return toView(row);
+    return (await this.withCosts(actor.clinicId, [row]))[0];
   }
 
   async update(
@@ -142,7 +174,7 @@ export class CareServicesService {
     ip?: string,
   ): Promise<CareServiceView> {
     const current = await this.prisma.careService.findFirst({
-      where: { id, clinicId: actor.clinicId },
+      where: { id, clinicId: actor.clinicId, systemKey: null },
       select: { price: true, name: true },
     });
     if (!current) throw new NotFoundException('El servicio no existe');
@@ -211,7 +243,7 @@ export class CareServicesService {
         fields: Object.keys(dto),
       },
     });
-    return toView(row);
+    return (await this.withCosts(actor.clinicId, [row]))[0];
   }
 
   private async checkSupplies(
@@ -232,8 +264,13 @@ export class CareServicesService {
   }
 }
 
-function toView(row: Row): CareServiceView {
+function toView(
+  row: Row,
+  costs: Map<number, number>,
+  pendingEstimates = 0,
+): CareServiceView {
   return {
+    pendingEstimates,
     id: row.id,
     name: row.name,
     category: row.category,
@@ -251,6 +288,7 @@ function toView(row: Row): CareServiceView {
       baseUnit: s.product.baseUnit,
       quantity: Number(s.quantity),
       controlled: s.product.controlled,
+      unitCost: costs.get(s.product.id) ?? null,
     })),
   };
 }

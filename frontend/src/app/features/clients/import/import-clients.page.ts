@@ -13,6 +13,7 @@ import { BadgeComponent, BadgeTone } from '../../../shared/ui/badge/badge.compon
 import { IconComponent } from '../../../shared/ui/icon/icon.component';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../../shared/utils/validators';
+import { BackLinkComponent } from '../../../shared/ui/back-link/back-link.component';
 
 type Step = 1 | 2 | 3 | 4;
 type RowFilter = 'problems' | 'all';
@@ -29,7 +30,7 @@ const STATUS: Record<ImportRow['status'], { label: string; tone: BadgeTone }> = 
 
 @Component({
   selector: 'app-import-clients-page',
-  imports: [ReactiveFormsModule, RouterLink, IconComponent, BadgeComponent],
+  imports: [BackLinkComponent, ReactiveFormsModule, RouterLink, IconComponent, BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './import-clients.page.html',
 })

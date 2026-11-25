@@ -30,7 +30,11 @@
             ],
             "allowedCommonJsDependencies": [
               "qrcode",
-              "dijkstrajs"
+              "dijkstrajs",
+              "core-js",
+              "raf",
+              "rgbcolor",
+              "html2canvas"
             ]
           },
           "configurations": {

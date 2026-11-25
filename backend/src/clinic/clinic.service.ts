@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   BadRequestException,
   Injectable,
   NotFoundException,
@@ -35,6 +36,15 @@ export interface ClinicProfile {
   /** Descuento máximo por línea (%) sin autorización del administrador */
   maxDiscountPercent: number;
   openingHours: OpeningHours;
+  /** El portal del dueño muestra el carnet completo y las recetas */
+  portalShowRecords: boolean;
+}
+
+/** Espacio que ocupan los archivos de la clínica (fotos, análisis, fichas de compra) */
+export interface StorageUsage {
+  attachments: { count: number; bytes: number };
+  purchaseFiles: { count: number; bytes: number };
+  totalBytes: number;
 }
 
 export interface SetupStatus {
@@ -55,6 +65,7 @@ const PROFILE_SELECT = {
   logoUpdatedAt: true,
   maxDiscountPercent: true,
   openingHours: true,
+  portalShowRecords: true,
 } as const;
 
 @Injectable()
@@ -132,7 +143,19 @@ export class ClinicService {
       // Si no se envía, se mantiene el tope actual
       maxDiscountPercent:
         dto.maxDiscountPercent ?? Number(before.maxDiscountPercent),
+      portalShowRecords: dto.portalShowRecords ?? before.portalShowRecords,
     };
+    // Con el PSE activo, el RUC va en cada comprobante: si cambia, SUNAT rechaza todo
+    if (data.ruc !== before.ruc && !actor.support) {
+      const billing = await this.prisma.billingSettings.findUnique({
+        where: { clinicId: actor.clinicId },
+        select: { enabled: true, provider: true },
+      });
+      if (billing?.enabled && billing.provider !== 'SIMULATED')
+        throw new ForbiddenException(
+          'El RUC está ligado a la facturación electrónica: lo cambia soporte técnico',
+        );
+    }
     const changed = (Object.keys(data) as (keyof typeof data)[]).filter(
       (key) =>
         key === 'maxDiscountPercent'
@@ -233,6 +256,39 @@ export class ClinicService {
     return { data: Buffer.from(clinic.logo), mime: clinic.logoMime };
   }
 
+  /**
+   * Suma el tamaño guardado de cada archivo (columna size), sin leer los archivos: es barato
+   * aunque haya miles. Incluye los anulados: siguen guardados por la historia clínica.
+   */
+  async storage(clinicId: number): Promise<StorageUsage> {
+    const [attachments, purchaseFiles] = await Promise.all([
+      this.prisma.attachment.aggregate({
+        where: { clinicId },
+        _count: true,
+        _sum: { size: true },
+      }),
+      this.prisma.purchaseFile.aggregate({
+        where: { purchase: { clinicId } },
+        _count: true,
+        _sum: { size: true },
+      }),
+    ]);
+    const a = { count: attachments._count, bytes: attachments._sum.size ?? 0 };
+    const p = {
+      count: purchaseFiles._count,
+      bytes: purchaseFiles._sum.size ?? 0,
+    };
+    return { attachments: a, purchaseFiles: p, totalBytes: a.bytes + p.bytes };
+  }
+
+  async openingHours(clinicId: number): Promise<OpeningHours> {
+    const clinic = await this.prisma.clinic.findUniqueOrThrow({
+      where: { id: clinicId },
+      select: { openingHours: true },
+    });
+    return readOpeningHours(clinic.openingHours);
+  }
+
   async setupStatus(clinicId: number): Promise<SetupStatus> {
     const [clinic, activeUsers] = await Promise.all([
       this.prisma.clinic.findUniqueOrThrow({
@@ -259,6 +315,7 @@ function toProfile(clinic: {
   logoUpdatedAt: Date | null;
   maxDiscountPercent: Prisma.Decimal;
   openingHours: unknown;
+  portalShowRecords: boolean;
 }): ClinicProfile {
   const { logoMime: _mime, logoUpdatedAt: _updated, ...rest } = clinic;
   return {

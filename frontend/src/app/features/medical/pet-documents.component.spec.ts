@@ -57,7 +57,7 @@ describe('PetDocumentsComponent (archivos y consentimientos)', () => {
     return fixture;
   }
 
-  it('lista archivos y consentimientos; sube un PDF enlazado a la atención', () => {
+  it('lista archivos y consentimientos; sube un PDF enlazado a la atención', async () => {
     const fixture = render('VET');
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toContain('Hemograma');
@@ -76,6 +76,8 @@ describe('PetDocumentsComponent (archivos y consentimientos)', () => {
     expect(el.querySelector<HTMLInputElement>('#doc-title')!.value).toBe('Rx tórax');
 
     el.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit'));
+    // El archivo se prepara (las fotos se comprimen) antes de enviarse
+    await new Promise((r) => setTimeout(r));
     const req = http.expectOne({ method: 'POST', url: '/api/pets/3/attachments' });
     const body = req.request.body as FormData;
     expect(body.get('kind')).toBe('LAB');

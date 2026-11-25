@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, guestGuard, roleGuard } from './core/auth/auth.guards';
+import { authGuard, guestGuard, roleGuard, supportGuard } from './core/auth/auth.guards';
 
 const comingSoon = () =>
   import('./features/coming-soon/coming-soon.page').then((m) => m.ComingSoonPage);
@@ -33,6 +33,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/legal/legal.page').then((m) => m.LegalPage),
   },
   {
+    // Portal del dueño: se abre con el enlace que envía la clínica, sin sesión
+    path: 'p/:token',
+    title: 'Mis mascotas',
+    loadComponent: () => import('./features/portal/portal.page').then((m) => m.PortalPage),
+  },
+  {
     // Todo lo que está dentro del layout exige sesión
     path: '',
     canActivate: [authGuard],
@@ -42,9 +48,37 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
       {
         path: 'dashboard',
-        title: 'Dashboard · Uywa',
+        title: 'Inicio · Uywa',
         loadComponent: () =>
           import('./features/dashboard/dashboard.page').then((m) => m.DashboardPage),
+      },
+      {
+        path: 'reportes',
+        title: 'Ventas · Reportes · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/reports/sales-report.page').then((m) => m.SalesReportPage),
+      },
+      {
+        path: 'reportes/margen',
+        title: 'Margen · Reportes · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/reports/margin-report.page').then((m) => m.MarginReportPage),
+      },
+      {
+        path: 'reportes/inventario',
+        title: 'Inventario valorizado · Reportes · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/reports/inventory-report.page').then((m) => m.InventoryReportPage),
+      },
+      {
+        path: 'reportes/control',
+        title: 'Control · Reportes · Uywa',
+        canActivate: [roleGuard('ADMIN')],
+        loadComponent: () =>
+          import('./features/reports/control-report.page').then((m) => m.ControlReportPage),
       },
       {
         path: 'cola',
@@ -52,12 +86,20 @@ export const routes: Routes = [
         loadComponent: () => import('./features/queue/queue.page').then((m) => m.QueuePage),
       },
       {
+        path: 'historias',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        title: 'Historias clínicas · Uywa',
+        loadComponent: () => import('./features/medical/patients.page').then((m) => m.PatientsPage),
+      },
+      {
         path: 'atenciones',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
         title: 'Atenciones · Uywa',
         loadComponent: () => import('./features/visits/visits.page').then((m) => m.VisitsPage),
       },
       {
         path: 'atenciones/:id',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION', 'GROOMER')],
         title: 'Atención · Uywa',
         loadComponent: () => import('./features/visits/visit.page').then((m) => m.VisitPage),
       },
@@ -93,13 +135,6 @@ export const routes: Routes = [
           import('./features/grooming/board.page').then((m) => m.GroomingBoardPage),
       },
       {
-        path: 'grooming/comisiones',
-        title: 'Comisiones de grooming · Uywa',
-        canActivate: [roleGuard('ADMIN', 'GROOMER')],
-        loadComponent: () =>
-          import('./features/grooming/commissions.page').then((m) => m.GroomingCommissionsPage),
-      },
-      {
         path: 'grooming/:id/constancia',
         title: 'Constancia de grooming · Uywa',
         loadComponent: () =>
@@ -111,6 +146,27 @@ export const routes: Routes = [
         canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION', 'GROOMER')],
         loadComponent: () =>
           import('./features/grooming/check-in.page').then((m) => m.GroomingCheckInPage),
+      },
+      {
+        path: 'hospitalizacion',
+        title: 'Hospitalización · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        loadComponent: () =>
+          import('./features/hospitalization/board.page').then((m) => m.HospitalizationBoardPage),
+      },
+      {
+        path: 'hospitalizacion/:id',
+        title: 'Paciente internado · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        loadComponent: () =>
+          import('./features/hospitalization/detail.page').then((m) => m.HospitalizationDetailPage),
+      },
+      {
+        path: 'plantillas',
+        title: 'Plantillas clínicas · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/templates/templates.page').then((m) => m.TemplatesPage),
       },
       {
         path: 'citas',
@@ -129,13 +185,22 @@ export const routes: Routes = [
         },
       },
       {
+        path: 'examenes',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        title: 'Exámenes · Uywa',
+        loadComponent: () =>
+          import('./features/medical/lab-orders.page').then((m) => m.LabOrdersPage),
+      },
+      {
         path: 'vacunas',
-        title: 'Vacunas · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        title: 'Refuerzos · Uywa',
         loadComponent: () =>
           import('./features/medical/vaccine-reminders.page').then((m) => m.VaccineRemindersPage),
       },
       {
         path: 'mascotas/:id',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
         title: 'Historia clínica · Uywa',
         loadComponent: () =>
           import('./features/medical/pet-record.page').then((m) => m.PetRecordPage),
@@ -161,6 +226,7 @@ export const routes: Routes = [
       },
       {
         path: 'recetas/:id',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
         title: 'Receta · Uywa',
         loadComponent: () =>
           import('./features/medical/prescription-print.page').then((m) => m.PrescriptionPrintPage),
@@ -174,12 +240,21 @@ export const routes: Routes = [
       },
       {
         path: 'consentimientos/:id',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
         title: 'Consentimiento · Uywa',
         loadComponent: () =>
           import('./features/medical/consent-print.page').then((m) => m.ConsentPrintPage),
       },
       {
+        path: 'mascotas/:id/historia',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
+        title: 'Historia clínica completa · Uywa',
+        loadComponent: () =>
+          import('./features/medical/pet-history.page').then((m) => m.PetHistoryPage),
+      },
+      {
         path: 'mascotas/:id/carnet',
+        canActivate: [roleGuard('ADMIN', 'VET', 'RECEPTION')],
         title: 'Carnet de vacunación · Uywa',
         loadComponent: () =>
           import('./features/medical/immunization-card.page').then((m) => m.ImmunizationCardPage),
@@ -214,6 +289,34 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'inventario/compras',
+        title: 'Compras · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/purchases/purchases.page').then((m) => m.PurchasesPage),
+      },
+      {
+        path: 'inventario/compras/nueva',
+        title: 'Recibir compra · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/purchases/purchase-form.page').then((m) => m.PurchaseFormPage),
+      },
+      {
+        path: 'inventario/compras/:id',
+        title: 'Compra · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/purchases/purchase-detail.page').then((m) => m.PurchaseDetailPage),
+      },
+      {
+        path: 'inventario/proveedores',
+        title: 'Proveedores · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/purchases/suppliers.page').then((m) => m.SuppliersPage),
+      },
+      {
         path: 'servicios',
         title: 'Servicios y precios · Uywa',
         loadComponent: () =>
@@ -232,10 +335,23 @@ export const routes: Routes = [
         loadComponent: () => import('./features/cash/cash.page').then((m) => m.CashPage),
       },
       {
+        path: 'caja/cierres/:id',
+        title: 'Reporte de cierre · Uywa',
+        canActivate: [roleGuard('ADMIN', 'RECEPTION', 'CASHIER')],
+        loadComponent: () => import('./features/cash/closing.page').then((m) => m.ClosingPage),
+      },
+      {
         path: 'caja/tickets/:id',
         title: 'Ticket · Uywa',
         canActivate: [roleGuard('ADMIN', 'RECEPTION', 'CASHIER')],
         loadComponent: () => import('./features/cash/ticket.page').then((m) => m.TicketPage),
+      },
+      {
+        path: 'comprobantes/:id/a4',
+        title: 'Comprobante A4 · Uywa',
+        canActivate: [roleGuard('ADMIN', 'RECEPTION', 'CASHIER')],
+        loadComponent: () =>
+          import('./features/billing/document-print.page').then((m) => m.DocumentPrintPage),
       },
       {
         path: 'comprobantes',
@@ -247,7 +363,8 @@ export const routes: Routes = [
       {
         path: 'comprobantes/configuracion',
         title: 'Facturación electrónica · Uywa',
-        canActivate: [roleGuard('ADMIN')],
+        // El dueño no maneja el PSE ni el token: solo soporte técnico
+        canActivate: [supportGuard],
         loadComponent: () =>
           import('./features/billing/billing-settings.page').then((m) => m.BillingSettingsPage),
       },

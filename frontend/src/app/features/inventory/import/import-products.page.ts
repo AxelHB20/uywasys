@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import {
   CATEGORY_LABELS,
+  IGV_LABELS,
   ProductImportPreview,
   ProductImportResult,
   ProductImportRow,
@@ -13,6 +14,7 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { formatQty, money, unitLabel } from '../../../shared/utils/stock';
 import { apiErrorMessage } from '../../../shared/utils/validators';
 import { FechaPipe } from '../../../shared/pipes/fecha.pipe';
+import { BackLinkComponent } from '../../../shared/ui/back-link/back-link.component';
 
 type Step = 1 | 2 | 3 | 4;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -24,10 +26,12 @@ const STATUS: Record<ProductImportRow['status'], { label: string; tone: BadgeTon
   error: { label: 'Con error', tone: 'danger' },
 };
 
+const hasRemark = (r: ProductImportRow) => r.status !== 'ok' || r.warnings.length > 0;
+
 /** Carga inicial del inventario desde Excel, en 4 pasos (mismo flujo que la de clientes). */
 @Component({
   selector: 'app-import-products-page',
-  imports: [FechaPipe, RouterLink, IconComponent, BadgeComponent],
+  imports: [BackLinkComponent, FechaPipe, RouterLink, IconComponent, BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './import-products.page.html',
 })
@@ -38,6 +42,7 @@ export class ImportProductsPage {
   protected readonly steps = ['Plantilla', 'Subir archivo', 'Revisar', 'Listo'];
   protected readonly status = STATUS;
   protected readonly categoryLabels = CATEGORY_LABELS;
+  protected readonly igvLabels = IGV_LABELS;
   protected readonly money = money;
 
   protected readonly step = signal<Step>(1);
@@ -53,14 +58,18 @@ export class ImportProductsPage {
 
   protected readonly visibleRows = computed(() => {
     const rows = this.preview()?.rows ?? [];
-    const list = this.filter() === 'problems' ? rows.filter((r) => r.status !== 'ok') : rows;
+    const list = this.filter() === 'problems' ? rows.filter(hasRemark) : rows;
     return list.slice(0, VISIBLE_ROWS);
   });
 
+  /** Errores, ya existentes y avisos: lo que conviene mirar antes de importar */
+  protected readonly remarks = computed(
+    () => (this.preview()?.rows ?? []).filter(hasRemark).length,
+  );
+
   protected readonly hiddenRows = computed(() => {
     const rows = this.preview()?.rows ?? [];
-    const total =
-      this.filter() === 'problems' ? rows.filter((r) => r.status !== 'ok').length : rows.length;
+    const total = this.filter() === 'problems' ? rows.filter(hasRemark).length : rows.length;
     return Math.max(0, total - VISIBLE_ROWS);
   });
 
@@ -108,7 +117,7 @@ export class ImportProductsPage {
     this.inventory.previewImport(file).subscribe({
       next: (preview) => {
         this.preview.set(preview);
-        this.filter.set(preview.summary.errors + preview.summary.exists > 0 ? 'problems' : 'all');
+        this.filter.set(preview.rows.some(hasRemark) ? 'problems' : 'all');
         this.checking.set(false);
         this.step.set(3);
       },

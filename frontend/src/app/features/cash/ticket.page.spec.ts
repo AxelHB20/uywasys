@@ -178,6 +178,45 @@ describe('TicketPage', () => {
     expect(el.textContent).toContain('ANULADO');
   });
 
+  it('al anular un cobro con productos de caja pregunta si los devolvió', async () => {
+    const fixture = render('ADMIN', {
+      ...ticket,
+      lines: [
+        ...ticket.lines,
+        {
+          chargeId: 9,
+          description: 'Cama acolchada · Unidad',
+          quantity: 1,
+          unitPrice: 110,
+          discount: 0,
+          total: 110,
+          paid: 110,
+          returnable: true,
+        },
+      ],
+    });
+    const el: HTMLElement = fixture.nativeElement;
+    [...el.querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === 'Anular cobro')!
+      .click();
+    fixture.detectChanges();
+    await tick();
+    const dialog = el.querySelector('dialog[open]')!;
+    expect(dialog.textContent).toContain('¿Devolvió los productos?');
+    expect(dialog.textContent).toContain('Cama acolchada · Unidad');
+    const input = el.querySelector<HTMLInputElement>('#t-reason')!;
+    input.value = 'Devolvió la cama';
+    input.dispatchEvent(new Event('input'));
+    const yes = [...dialog.querySelectorAll<HTMLInputElement>('input[type=radio]')][0];
+    yes.click();
+    fixture.detectChanges();
+    [...dialog.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Anular cobro'))!
+      .dispatchEvent(new Event('click'));
+    const req = http.expectOne('/api/cash/receipts/44/void');
+    expect(req.request.body).toEqual({ reason: 'Devolvió la cama', returnProducts: true });
+  });
+
   it('con boleta electrónica imprime su representación: título, cliente, importe en letras y QR', async () => {
     const fixture = render('CASHIER', {
       ...ticket,

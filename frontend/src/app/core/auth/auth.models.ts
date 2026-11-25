@@ -9,6 +9,8 @@ export interface SessionUser {
   licenseNumber: string | null;
   /** Entró con una clave temporal: debe cambiarla antes de usar el sistema. */
   mustChangePassword: boolean;
+  /** Soporte técnico: único que cambia la configuración de facturación y el RUC. */
+  support?: boolean;
   clinic: { id: number; name: string; logoUrl: string | null };
 }
 

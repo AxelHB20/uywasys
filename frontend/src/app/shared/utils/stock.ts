@@ -50,6 +50,20 @@ export function readableStock(
     : parts[0];
 }
 
+/**
+ * "200 tabletas" debajo de "2 cajas": el total en la unidad mínima, solo cuando el stock se
+ * muestra en cajas o blísteres (si ya está en la unidad mínima, null: no se repite).
+ */
+export function baseTotal(
+  quantity: number,
+  baseUnit: BaseUnit,
+  presentations: { name: string; factor: number; active?: boolean }[],
+): string | null {
+  if (quantity <= 0) return null;
+  const plain = `${formatQty(quantity)} ${unitLabel(baseUnit, quantity)}`;
+  return readableStock(quantity, baseUnit, presentations) === plain ? null : plain;
+}
+
 export const EXPIRY_BADGE: Record<ExpiryLevel, { tone: BadgeTone; label: string }> = {
   EXPIRED: { tone: 'danger', label: 'Vencido' },
   RED: { tone: 'danger', label: 'Vence pronto' },

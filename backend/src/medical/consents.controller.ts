@@ -12,6 +12,7 @@ import type { Request } from 'express';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
 import { Roles } from '../common/auth/roles.decorator.js';
+import { CLINICAL_ROLES } from '../common/auth/staff-roles.js';
 import { ConsentsService } from './consents.service.js';
 import type { ConsentDocument, ConsentSummary } from './consents.service.js';
 import {
@@ -34,6 +35,7 @@ export class ConsentsController {
     return this.consents.template(user.clinicId, query);
   }
 
+  @Roles(...CLINICAL_ROLES)
   @Get('pets/:id/consents')
   list(
     @CurrentUser() user: AuthUser,
@@ -42,6 +44,7 @@ export class ConsentsController {
     return this.consents.listForPet(user.clinicId, id);
   }
 
+  @Roles(...CLINICAL_ROLES)
   @Get('consents/:id')
   get(
     @CurrentUser() user: AuthUser,

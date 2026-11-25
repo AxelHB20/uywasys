@@ -5,6 +5,7 @@ import {
   AuthorizedPerson,
   ClientDetail,
   ClientInput,
+  ClientInvoiceInput,
   ClientPage,
   ClientStatus,
   ConsentText,
@@ -67,13 +68,22 @@ export class ClientsService {
     }>('/api/clients/lookup', { params: { docType, docNumber } });
   }
 
+  /** ¿El celular ya es de otro cliente? (aviso en el registro, no bloquea) */
+  lookupPhone(phone: string): Observable<{
+    client: { id: number; name: string; active: boolean; pets: string[] } | null;
+  }> {
+    return this.http.get<{
+      client: { id: number; name: string; active: boolean; pets: string[] } | null;
+    }>('/api/clients/lookup-phone', { params: { phone } });
+  }
+
   create(client: NewClient): Observable<ClientDetail> {
     return this.http.post<ClientDetail>('/api/clients', client);
   }
 
   update(
     id: number,
-    changes: Partial<ClientInput> & { active?: boolean },
+    changes: Partial<ClientInput> & Partial<ClientInvoiceInput> & { active?: boolean },
   ): Observable<ClientDetail> {
     return this.http.patch<ClientDetail>(`/api/clients/${id}`, changes);
   }

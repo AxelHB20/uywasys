@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -20,7 +21,10 @@ import { CASH_ROLES } from '../common/auth/staff-roles.js';
 import {
   BillingSettingsDto,
   DocumentsQuery,
+  LookupQuery,
   ReportQuery,
+  ToFacturaDto,
+  UpdateTokenDto,
 } from './billing.dto.js';
 import { BillingSender } from './billing.sender.js';
 import {
@@ -30,7 +34,15 @@ import {
   DocumentSummary,
 } from './billing.service.js';
 
-/** Facturación electrónica: configuración (administrador) y comprobantes emitidos (caja). */
+/** La configuración del PSE (token incluido) la ve y la cambia solo soporte técnico */
+function supportOnly(user: AuthUser): void {
+  if (!user.support)
+    throw new ForbiddenException(
+      'La configuración de facturación la maneja soporte técnico',
+    );
+}
+
+/** Facturación electrónica: configuración (soporte técnico) y comprobantes emitidos (caja). */
 @Controller('billing')
 export class BillingController {
   constructor(
@@ -47,6 +59,7 @@ export class BillingController {
   @Roles('ADMIN')
   @Get('settings')
   settings(@CurrentUser() user: AuthUser): Promise<BillingSettingsView> {
+    supportOnly(user);
     return this.billing.settings(user.clinicId);
   }
 
@@ -60,11 +73,91 @@ export class BillingController {
     return this.billing.updateSettings(user, dto, req.ip);
   }
 
+  /** Soporte pega el token nuevo del PSE; solo se guarda si la prueba pasa */
+  @Roles('ADMIN')
+  @Put('settings/token')
+  updateToken(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateTokenDto,
+    @Req() req: Request,
+  ): Promise<BillingSettingsView> {
+    supportOnly(user);
+    return this.billing.updateToken(user, dto.apiToken, req.ip);
+  }
+
+  @Roles('ADMIN')
+  @Post('documents/retry-all')
+  @HttpCode(HttpStatus.OK)
+  async retryAll(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ): Promise<{ count: number }> {
+    const result = await this.billing.retryAll(user, req.ip);
+    if (result.count) this.sender.dispatch();
+    return result;
+  }
+
   @Roles('ADMIN')
   @Post('settings/test')
   @HttpCode(HttpStatus.OK)
   test(@CurrentUser() user: AuthUser) {
+    supportOnly(user);
     return this.billing.test(user.clinicId);
+  }
+
+  /** Datos de facturación que se proponen para el cliente (RUC propio, guardados o última factura). */
+  @Roles(...CASH_ROLES)
+  @Get('buyer/:clientId')
+  buyer(
+    @CurrentUser() user: AuthUser,
+    @Param('clientId', ParseIntPipe) clientId: number,
+  ) {
+    return this.billing.buyerFor(user.clinicId, clientId);
+  }
+
+  /**
+   * Nombre de un RUC o DNI: lo que ya tiene la clínica o APISPERU. null = escribirlo a mano.
+   * También el veterinario: registra clientes y su DNI llena el nombre.
+   */
+  @Roles(...CASH_ROLES, 'VET')
+  @Get('lookup')
+  lookup(@CurrentUser() user: AuthUser, @Query() query: LookupQuery) {
+    return this.billing.lookup(user.clinicId, query.type, query.number);
+  }
+
+  /** Datos de la representación impresa A4 (boleta, factura o nota de crédito). */
+  @Roles(...CASH_ROLES)
+  @Get('documents/:id/print')
+  print(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.billing.printView(user.clinicId, id);
+  }
+
+  /** Cambia una boleta por factura: nota de crédito de la boleta y factura por el mismo detalle. */
+  @Roles(...CASH_ROLES)
+  @Post('documents/:id/factura')
+  async toFactura(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ToFacturaDto,
+    @Req() req: Request,
+  ) {
+    const result = await this.billing.toFactura(user, id, dto.buyer, req.ip);
+    this.sender.dispatch();
+    return result;
+  }
+
+  /** Corrige un comprobante rechazado: otro del mismo tipo con los datos corregidos */
+  @Roles(...CASH_ROLES)
+  @Post('documents/:id/reissue')
+  async reissue(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ToFacturaDto,
+    @Req() req: Request,
+  ) {
+    const result = await this.billing.reissue(user, id, dto.buyer, req.ip);
+    this.sender.dispatch();
+    return result;
   }
 
   @Roles(...CASH_ROLES)

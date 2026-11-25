@@ -8,8 +8,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { initialsOf } from '../../core/auth/session.service';
-import { ClinicProfile, ClinicService } from '../../core/services/clinic.service';
+import { SessionService, initialsOf } from '../../core/auth/session.service';
+import { BillingService } from '../../core/services/billing.service';
+import { ClinicProfile, ClinicService, StorageUsage } from '../../core/services/clinic.service';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage, rucValidator } from '../../shared/utils/validators';
@@ -27,6 +28,10 @@ const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 export class ClinicSettingsPage implements OnInit {
   private readonly clinic = inject(ClinicService);
   private readonly toast = inject(ToastService);
+  private readonly session = inject(SessionService);
+  private readonly billing = inject(BillingService);
+  /** Con el PSE activo el RUC va en cada comprobante: solo soporte técnico lo cambia */
+  protected readonly rucLocked = signal(false);
   private readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
 
   protected readonly form = new FormGroup({
@@ -52,14 +57,30 @@ export class ClinicSettingsPage implements OnInit {
   protected readonly logoBusy = signal(false);
   protected readonly logoError = signal<string | null>(null);
   protected readonly profile = signal<ClinicProfile | null>(null);
+  /** Espacio de fotos y archivos (si no carga, la sección no se muestra) */
+  protected readonly storage = signal<StorageUsage | null>(null);
 
   ngOnInit(): void {
     this.load();
+    if (!this.session.isSupport())
+      this.billing.status().subscribe({
+        next: (s) => {
+          if (!s.enabled || s.simulated) return;
+          this.rucLocked.set(true);
+          this.form.controls.ruc.disable();
+        },
+        // Si no se pudo saber, el servidor igual lo protege
+        error: () => undefined,
+      });
   }
 
   protected load(): void {
     this.loading.set(true);
     this.loadError.set(null);
+    this.clinic.storage().subscribe({
+      next: (s) => this.storage.set(s),
+      error: () => this.storage.set(null),
+    });
     this.clinic.get().subscribe({
       next: (profile) => {
         this.apply(profile);
@@ -72,6 +93,12 @@ export class ClinicSettingsPage implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  protected bytes(value: number): string {
+    if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+    if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+    return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
   }
 
   protected save(): void {
@@ -98,6 +125,40 @@ export class ClinicSettingsPage implements OnInit {
         },
         error: (error: unknown) => {
           this.saving.set(false);
+          this.toast.error(apiErrorMessage(error));
+        },
+      });
+  }
+
+  protected readonly portalBusy = signal(false);
+
+  /** Se guarda al instante: es una sola opción, no necesita el botón del formulario */
+  protected togglePortalRecords(show: boolean): void {
+    const p = this.profile();
+    if (!p) return;
+    this.portalBusy.set(true);
+    this.clinic
+      .update({
+        name: p.name,
+        ruc: p.ruc,
+        address: p.address,
+        phone: p.phone,
+        email: p.email,
+        portalShowRecords: show,
+      })
+      .subscribe({
+        next: (profile) => {
+          this.profile.set(profile);
+          this.portalBusy.set(false);
+          this.toast.success(
+            show
+              ? 'El portal muestra el carnet y las recetas'
+              : 'El portal ya no muestra el carnet',
+          );
+        },
+        error: (error: unknown) => {
+          this.portalBusy.set(false);
+          this.profile.set({ ...p });
           this.toast.error(apiErrorMessage(error));
         },
       });

@@ -1,11 +1,21 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, debounceTime, distinctUntilChanged, map, of, switchMap } from 'rxjs';
+import {
+  ClinicalTemplate,
+  ClinicalTemplatesService,
+  PrescriptionContent,
+} from '../../core/services/clinical-templates.service';
+import { ProductDetail } from '../../core/services/inventory.models';
+import { SaveTemplateComponent } from '../templates/save-template.component';
+import { TemplatePickerComponent } from '../templates/template-picker.component';
 import { InventoryService } from '../../core/services/inventory.service';
 import {
   DURATION_OPTIONS,
   FREQUENCY_OPTIONS,
+  suggestedUnits,
   PrescriptionPrint,
   ROUTE_OPTIONS,
 } from '../../core/services/medical.models';
@@ -25,6 +35,8 @@ interface DrugOption {
   price: number;
   stock: string;
   controlled: boolean;
+  /** Unidades base que trae (tableta = 1, caja de 100 = 100) */
+  factor: number;
 }
 
 type ItemGroup = FormGroup<{
@@ -33,6 +45,7 @@ type ItemGroup = FormGroup<{
   presentation: FormControl<string>;
   price: FormControl<number>;
   controlled: FormControl<boolean>;
+  factor: FormControl<number>;
   drug: FormControl<string>;
   dose: FormControl<string>;
   route: FormControl<string>;
@@ -58,17 +71,48 @@ const text = (max: number, required = false) =>
  */
 @Component({
   selector: 'app-prescription-form',
-  imports: [ReactiveFormsModule, IconComponent],
+  imports: [ReactiveFormsModule, IconComponent, TemplatePickerComponent, SaveTemplateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" novalidate class="space-y-4">
+      <!-- Recetas frecuentes: un clic llena los medicamentos -->
+      @if (frequent().length) {
+        <div>
+          <p id="rx-frequent-label" class="text-sm font-medium text-slate-800">
+            Recetas frecuentes
+          </p>
+          <div class="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="rx-frequent-label">
+            @for (t of frequent().slice(0, 5); track t.id) {
+              <button
+                type="button"
+                class="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-anil-50 px-3.5 text-sm font-medium text-anil-800 ring-1 ring-anil-200 transition-colors hover:bg-anil-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-anil-500 disabled:opacity-60"
+                [disabled]="applying()"
+                (click)="applyRx(t)"
+                [attr.aria-label]="'Usar receta frecuente ' + t.name"
+              >
+                <app-icon name="pill" class="size-3.5" /> {{ t.name }}
+              </button>
+            }
+            @if (frequent().length > 5) {
+              <button
+                type="button"
+                class="inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-medium text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
+                (click)="picking.set(true)"
+              >
+                Ver todas ({{ frequent().length }})
+              </button>
+            }
+          </div>
+        </div>
+      }
+
       <!-- Buscar o escribir el medicamento -->
       <div class="relative">
         <label for="rx-search" class="field-label">Agregar medicamento</label>
         <div class="relative mt-1.5">
           <app-icon
             name="search"
-            class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+            class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-500"
           />
           <input
             id="rx-search"
@@ -166,7 +210,7 @@ const text = (max: number, required = false) =>
                 </div>
                 <button
                   type="button"
-                  class="grid size-10 shrink-0 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                  class="grid size-11 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-600"
                   [attr.aria-label]="'Quitar ' + g.controls.drug.value"
                   (click)="items.removeAt(i)"
                 >
@@ -273,6 +317,25 @@ const text = (max: number, required = false) =>
                         </span>
                       </span>
                     </div>
+                    @if (suggestion(g); as s) {
+                      <p class="mt-1 basis-full text-xs text-slate-500 tabular-nums">
+                        @if (g.controls.quantity.dirty) {
+                          Según la receta: {{ s.text }}.
+                          <button
+                            type="button"
+                            class="font-medium text-anil-700 hover:text-anil-900"
+                            (click)="
+                              g.controls.quantity.setValue(s.packs);
+                              g.controls.quantity.markAsPristine()
+                            "
+                          >
+                            Usar {{ s.packs }}
+                          </button>
+                        } @else {
+                          Calculado según la receta: {{ s.text }}
+                        }
+                      </p>
+                    }
                   }
                 </div>
               }
@@ -319,7 +382,12 @@ const text = (max: number, required = false) =>
         </p>
       }
 
-      <div class="flex flex-wrap justify-end gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        @if (items.length && canSaveFrequent()) {
+          <button type="button" class="btn btn-ghost mr-auto" (click)="askSaveFrequent()">
+            <app-icon name="save" class="size-4" /> Guardar como receta frecuente
+          </button>
+        }
         <button type="button" class="btn btn-secondary" (click)="cancelled.emit()">Cancelar</button>
         <button type="submit" class="btn btn-primary" [disabled]="saving() || !items.length">
           @if (saving()) {
@@ -329,16 +397,38 @@ const text = (max: number, required = false) =>
         </button>
       </div>
     </form>
+
+    <app-template-picker
+      kind="PRESCRIPTION"
+      [open]="picking()"
+      (picked)="picking.set(false); applyRx($event.template)"
+      (closed)="picking.set(false)"
+    />
+    <app-save-template
+      kind="PRESCRIPTION"
+      [open]="savingFrequent() !== null"
+      [prescription]="savingFrequent()"
+      (saved)="onFrequentSaved($event)"
+      (closed)="savingFrequent.set(null)"
+    />
   `,
 })
 export class PrescriptionFormComponent {
   private readonly api = inject(PrescriptionsService);
   private readonly inventory = inject(InventoryService);
   private readonly toast = inject(ToastService);
+  private readonly templates = inject(ClinicalTemplatesService);
 
   readonly visitId = input.required<number>();
   readonly saved = output<PrescriptionPrint>();
   readonly cancelled = output<void>();
+  /** Guardar recetas frecuentes: veterinario o administrador */
+  readonly canSaveFrequent = input(true);
+
+  protected readonly frequent = signal<ClinicalTemplate[]>([]);
+  protected readonly applying = signal(false);
+  protected readonly picking = signal(false);
+  protected readonly savingFrequent = signal<PrescriptionContent | null>(null);
 
   protected readonly money = money;
   protected readonly routes = ROUTE_OPTIONS;
@@ -366,6 +456,8 @@ export class PrescriptionFormComponent {
                   .flatMap((p) =>
                     p.presentations
                       .filter((pr) => pr.active && pr.price !== null)
+                      // La unidad más chica primero: se entrega lo que pide la dosis, no una caja
+                      .sort((a, b) => a.factor - b.factor)
                       .map((pr) => ({
                         key: `p${pr.id}`,
                         productId: p.id,
@@ -375,6 +467,7 @@ export class PrescriptionFormComponent {
                         price: pr.price as number,
                         stock: `stock ${formatQty(p.totalStock)} ${unitLabel(p.baseUnit, p.totalStock)}`,
                         controlled: p.controlled,
+                        factor: pr.factor || 1,
                       })),
                   )
                   .slice(0, 6),
@@ -397,6 +490,106 @@ export class PrescriptionFormComponent {
     );
   }
 
+  constructor() {
+    this.templates.list('PRESCRIPTION').subscribe({
+      next: (list) => this.frequent.set(list),
+      error: () => this.frequent.set([]),
+    });
+  }
+
+  /**
+   * Agrega los medicamentos de una receta frecuente. Los del inventario se vuelven a leer
+   * (precio y stock de hoy); si ya no existen o no tienen precio, quedan para farmacia.
+   */
+  protected applyRx(t: ClinicalTemplate): void {
+    const content = t.prescription;
+    if (!content || this.applying()) return;
+    const productIds = [
+      ...new Set(content.items.map((i) => i.productId).filter((id): id is number => !!id)),
+    ];
+    this.applying.set(true);
+    const lookups = productIds.map((id) =>
+      this.inventory.get(id).pipe(catchError(() => of(null as ProductDetail | null))),
+    );
+    (lookups.length ? forkJoin(lookups) : of([] as (ProductDetail | null)[])).subscribe(
+      (products) => {
+        let pharmacy = 0;
+        for (const item of content.items) {
+          const product = products.find((p) => p?.id === item.productId) ?? null;
+          const presentation = product?.presentations.find(
+            (pr) => pr.id === item.presentationId && pr.active && pr.price !== null,
+          );
+          const fromStock = product && product.active && presentation;
+          if (item.productId && !fromStock) pharmacy++;
+          const group = fromStock
+            ? this.row({
+                productId: product.id,
+                presentationId: presentation.id,
+                presentation: presentation.name,
+                price: presentation.price as number,
+                controlled: product.controlled,
+                factor: presentation.factor || 1,
+                drug: product.name,
+                dispense: item.dispenseQuantity != null,
+              })
+            : this.row({ drug: item.drug, dispense: false });
+          // La cantidad guardada en la plantilla manda sobre el cálculo
+          if (item.dispenseQuantity != null) group.controls.quantity.markAsDirty();
+          group.patchValue({
+            dose: item.dose,
+            route: item.route ?? (fromStock ? 'Oral' : ''),
+            frequency: item.frequency,
+            duration: item.duration,
+            instructions: item.instructions ?? '',
+            quantity: item.dispenseQuantity ?? 1,
+          });
+          this.items.push(group);
+        }
+        if (content.notes && !this.form.controls.notes.value.trim())
+          this.form.controls.notes.setValue(content.notes);
+        this.applying.set(false);
+        this.templates.used(t.id).subscribe({ error: () => undefined });
+        this.toast.success(
+          pharmacy
+            ? `Receta «${t.name}» agregada. ${pharmacy} medicamento(s) ya no está(n) en inventario: quedan para farmacia.`
+            : `Receta «${t.name}» agregada: ajusta la dosis al peso si hace falta.`,
+        );
+      },
+    );
+  }
+
+  protected askSaveFrequent(): void {
+    const v = this.form.getRawValue();
+    const items = v.items.filter(
+      (i) => i.drug.trim() && i.dose.trim() && i.frequency.trim() && i.duration.trim(),
+    );
+    if (items.length !== v.items.length) {
+      this.form.markAllAsTouched();
+      this.toast.error('Completa dosis, frecuencia y duración de cada medicamento.');
+      return;
+    }
+    this.savingFrequent.set({
+      notes: v.notes.trim() || null,
+      items: items.map((i) => ({
+        productId: i.productId,
+        presentationId: i.presentationId,
+        drug: i.drug.trim(),
+        dose: i.dose.trim(),
+        route: i.route.trim() || null,
+        frequency: i.frequency.trim(),
+        duration: i.duration.trim(),
+        instructions: i.instructions.trim() || null,
+        dispenseQuantity:
+          i.productId && i.dispense && i.presentationId ? Number(i.quantity) || null : null,
+      })),
+    });
+  }
+
+  protected onFrequentSaved(t: ClinicalTemplate): void {
+    this.savingFrequent.set(null);
+    this.frequent.update((list) => [...list, t]);
+  }
+
   protected addProduct(o: DrugOption): void {
     this.items.push(
       this.row({
@@ -405,6 +598,7 @@ export class PrescriptionFormComponent {
         presentation: o.presentation,
         price: o.price,
         controlled: o.controlled,
+        factor: o.factor,
         drug: o.drug,
         dispense: true,
       }),
@@ -419,6 +613,18 @@ export class PrescriptionFormComponent {
     this.items.push(this.row({ drug: name, dispense: false }));
     this.search.setValue('');
     this.focusDose();
+  }
+
+  /** "1 × 2 al día × 5 días = 10" y cuántas presentaciones son (10 tabletas, o 1 caja de 100) */
+  protected suggestion(g: ItemGroup): { total: number; packs: number; text: string } | null {
+    const v = g.getRawValue();
+    if (!v.productId) return null;
+    const s = suggestedUnits(v.dose, v.frequency, v.duration);
+    if (!s) return null;
+    const factor = v.factor || 1;
+    const packs = Math.max(1, Math.ceil(s.total / factor));
+    const perDay = s.days === 1 && s.perDay === 1 ? '' : ` × ${s.perDay} al día × ${s.days} días`;
+    return { total: s.total, packs, text: `${s.perDose}${perDay} = ${s.total}` };
   }
 
   protected bad(control: { invalid: boolean; touched: boolean }): boolean {
@@ -476,6 +682,7 @@ export class PrescriptionFormComponent {
     presentation?: string;
     price?: number;
     controlled?: boolean;
+    factor?: number;
     drug: string;
     dispense: boolean;
   }): ItemGroup {
@@ -485,6 +692,7 @@ export class PrescriptionFormComponent {
       presentation: new FormControl(init.presentation ?? '', { nonNullable: true }),
       price: new FormControl(init.price ?? 0, { nonNullable: true }),
       controlled: new FormControl(init.controlled ?? false, { nonNullable: true }),
+      factor: new FormControl(init.factor ?? 1, { nonNullable: true }),
       drug: new FormControl(init.drug, {
         nonNullable: true,
         validators: [Validators.required, Validators.minLength(2), Validators.maxLength(150)],
@@ -499,6 +707,13 @@ export class PrescriptionFormComponent {
       instructions: text(300),
       dispense: new FormControl(init.dispense, { nonNullable: true }),
       quantity: new FormControl<number | null>(1, [Validators.min(0.001), Validators.max(999)]),
+    });
+    // Mientras no la cambie a mano, la cantidad a entregar sigue a la dosis, frecuencia y días
+    group.valueChanges.subscribe(() => {
+      const q = group.controls.quantity;
+      if (!group.controls.dispense.value || q.dirty) return;
+      const units = this.suggestion(group);
+      if (units && q.value !== units.packs) q.setValue(units.packs, { emitEvent: false });
     });
     return group;
   }

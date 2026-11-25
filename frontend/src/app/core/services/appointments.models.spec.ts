@@ -1,6 +1,7 @@
 import {
   Appointment,
   confirmationLink,
+  firstFreeSlot,
   layoutLanes,
   limaClock,
   limaIso,
@@ -57,5 +58,18 @@ describe('appointments.models', () => {
     expect(url.searchParams.get('text')).toBe(
       'Hola, le escribimos de Vet Sol. Le recordamos su cita para Toby el jueves, 29 de octubre a las 10:00. ¿Nos confirma su asistencia?',
     );
+  });
+
+  it('propone la primera hora libre donde entra la cita', () => {
+    const busy = [at(1, '09:00', 30), at(2, '09:30', 60)];
+    const day = { open: 9 * 60, close: 12 * 60 };
+    expect(firstFreeSlot(busy, day)).toBe('10:30');
+    // No antes de la hora pedida (redondeada a 15 min)
+    expect(firstFreeSlot(busy, { ...day, after: 10 * 60 + 40 })).toBe('10:45');
+    // Una cita de 60 min no entra en un hueco de 30
+    expect(firstFreeSlot([at(1, '09:30', 30)], { ...day, durationMin: 60 })).toBe('10:00');
+    // Día lleno o ya terminado
+    expect(firstFreeSlot([at(1, '09:00', 180)], day)).toBeNull();
+    expect(firstFreeSlot([], { ...day, after: 12 * 60 })).toBeNull();
   });
 });

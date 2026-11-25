@@ -30,6 +30,7 @@ import { formatQty, money } from '../../shared/utils/stock';
 import { scheduleSummary } from '../../shared/utils/opening-hours';
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 /** Margen de la ticketera alrededor del ticket */
 const PAPER_MARGIN_MM = 3;
@@ -38,6 +39,7 @@ const PAPER_MARGIN_MM = 3;
 @Component({
   selector: 'app-ticket-page',
   imports: [
+    BackLinkComponent,
     FechaPipe,
     ReactiveFormsModule,
     RouterLink,
@@ -144,8 +146,18 @@ export class TicketPage {
     style.remove();
   }
 
+  /** Productos vendidos en caja que el cliente podría devolver al anular */
+  protected readonly returnable = computed(
+    () =>
+      this.ticket()
+        ?.lines.filter((l) => l.returnable)
+        .map((l) => l.description) ?? [],
+  );
+  protected readonly returnProducts = signal(false);
+
   protected askVoid(): void {
     this.reason.reset('');
+    this.returnProducts.set(false);
     this.voiding.set(true);
   }
 
@@ -157,12 +169,17 @@ export class TicketPage {
       return;
     }
     this.saving.set(true);
-    this.cash.voidReceipt(t.id, this.reason.value.trim()).subscribe({
+    const giveBack = this.returnProducts() && this.returnable().length > 0;
+    this.cash.voidReceipt(t.id, this.reason.value.trim(), giveBack).subscribe({
       next: (updated) => {
         this.ticket.set(updated);
         this.saving.set(false);
         this.voiding.set(false);
-        this.toast.success(`Cobro ${updated.code} anulado. Los cargos volvieron a pendientes.`);
+        this.toast.success(
+          giveBack
+            ? `Cobro ${updated.code} anulado. Los productos volvieron al stock.`
+            : `Cobro ${updated.code} anulado. Los cargos volvieron a pendientes.`,
+        );
       },
       error: (error: unknown) => {
         this.saving.set(false);

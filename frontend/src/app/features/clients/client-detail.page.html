@@ -1,10 +1,5 @@
 <section class="space-y-6">
-  <a
-    routerLink="/clientes"
-    class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-  >
-    <app-icon name="chevron-left" class="size-4" /> Clientes
-  </a>
+  <app-back-link fallback="/clientes" fallbackLabel="Clientes" />
 
   @if (loading() && !client()) {
     <div class="card space-y-3 p-6" aria-busy="true" aria-label="Cargando ficha">
@@ -18,8 +13,70 @@
       <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
     </div>
   } @else if (client(); as c) {
+    <!-- Barra fija: al bajar, el nombre del cliente se queda a la vista (no empuja el contenido) -->
+    <div class="sticky top-3 z-20 -my-3 h-0">
+      <div
+        class="absolute inset-x-0 top-0 flex items-center gap-3 rounded-2xl bg-white/95 px-3 py-2 shadow-md ring-1 ring-slate-900/5 transition duration-200 ease-out sm:px-4"
+        [class]="
+          compactBar()
+            ? 'translate-y-0 opacity-100'
+            : 'pointer-events-none -translate-y-2 opacity-0'
+        "
+        [attr.inert]="compactBar() ? null : ''"
+        data-testid="client-compact-bar"
+      >
+        <span
+          class="grid size-9 shrink-0 place-items-center rounded-xl bg-anil-600 font-display text-xs font-semibold text-white"
+          aria-hidden="true"
+          >{{ initials(c.name) }}</span
+        >
+        <div class="min-w-0 flex-1">
+          <p class="truncate font-display font-semibold text-slate-900">{{ c.name }}</p>
+          <p class="truncate text-xs text-slate-500 tabular-nums">
+            {{ c.docType ? docShort[c.docType] + ' ' + c.docNumber : 'Sin documento' }}
+            @if (!c.anonymizedAt) {
+              <span class="hidden sm:inline">· {{ formatPhone(c.phone) }}</span>
+            }
+          </p>
+        </div>
+        @if (account(); as acc) {
+          @if (acc.pendingTotal > 0) {
+            <span
+              class="hidden shrink-0 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 tabular-nums sm:inline"
+              >Debe {{ money(acc.pendingTotal) }}</span
+            >
+          }
+        }
+        @if (!c.anonymizedAt) {
+          <a
+            [href]="'tel:+51' + c.phone"
+            class="btn btn-secondary size-10 shrink-0 px-0"
+            [attr.aria-label]="'Llamar a ' + c.name"
+            ><app-icon name="phone" class="size-4"
+          /></a>
+          <a
+            [href]="whatsappLink(c.phone)"
+            target="_blank"
+            rel="noopener"
+            class="btn btn-secondary size-10 shrink-0 px-0"
+            [attr.aria-label]="'WhatsApp a ' + c.name"
+            ><app-icon name="message-circle" class="size-4"
+          /></a>
+        }
+        @if (canEdit()) {
+          <button
+            type="button"
+            class="btn btn-primary hidden h-10 shrink-0 sm:inline-flex"
+            (click)="openPet(null)"
+          >
+            <app-icon name="plus" class="size-4" /> Mascota
+          </button>
+        }
+      </div>
+    </div>
+
     <!-- Encabezado del expediente -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div #clientHeader class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div class="flex min-w-0 items-center gap-4">
         <span
           class="grid size-14 shrink-0 place-items-center rounded-2xl bg-anil-600 font-display text-lg font-semibold text-white"
@@ -73,11 +130,14 @@
       </div>
     }
 
-    <div class="grid gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start">
+    <!-- En celular: cuenta, mascotas y atenciones primero; los datos del dueño al final -->
+    <div
+      class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start"
+    >
       <!-- Columna del dueño -->
-      <aside class="space-y-6 lg:sticky lg:top-24">
+      <aside class="contents lg:block lg:space-y-6">
         @if (!c.anonymizedAt) {
-          <section class="card p-5" aria-labelledby="contact-title">
+          <section class="card order-4 p-5" aria-labelledby="contact-title">
             <h2
               id="contact-title"
               class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
@@ -118,6 +178,17 @@
                   }
                 </dd>
               </div>
+              @if (c.invoiceRuc) {
+                <div class="flex gap-3">
+                  <dt class="sr-only">Datos de facturación</dt>
+                  <app-icon name="building" class="mt-0.5 size-4 shrink-0 text-slate-400" />
+                  <dd class="text-slate-900">
+                    <span class="block text-xs text-slate-500">Factura a</span>
+                    {{ c.invoiceName }}
+                    <span class="block text-slate-500 tabular-nums">RUC {{ c.invoiceRuc }}</span>
+                  </dd>
+                </div>
+              }
             </dl>
             @if (c.notes) {
               <p
@@ -129,7 +200,7 @@
           </section>
         }
 
-        <section class="card p-5" aria-labelledby="account-title">
+        <section class="card order-1 p-5" aria-labelledby="account-title">
           <h2
             id="account-title"
             class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
@@ -142,13 +213,27 @@
                 {{ money(acc.pendingTotal) }}
               </p>
               <p class="text-sm text-slate-500">por cobrar</p>
+              @if (acc.inProgress?.length) {
+                <p
+                  class="mt-3 flex gap-2 rounded-xl bg-anil-50 px-3 py-2 text-sm text-anil-900 ring-1 ring-anil-200"
+                  role="note"
+                >
+                  <app-icon name="clock" class="mt-0.5 size-4 shrink-0 text-anil-600" />
+                  <span
+                    ><strong class="font-semibold">{{
+                      inProgressText(acc.inProgress!.map((v) => v.petName))
+                    }}</strong>
+                    Lo de esa atención se cobra cuando el médico la cierre.</span
+                  >
+                </p>
+              }
               <ul class="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm">
                 @for (c of acc.pending.slice(0, 5); track c.id) {
                   <li class="flex justify-between gap-3">
                     <span class="min-w-0 truncate text-slate-700"
                       >{{ c.description }}
                       @if (c.pet) {
-                        <span class="text-slate-400">· {{ c.pet.name }}</span>
+                        <span class="text-slate-500">· {{ c.pet.name }}</span>
                       }
                     </span>
                     <span class="shrink-0 text-slate-900 tabular-nums">{{ money(c.balance) }}</span>
@@ -181,7 +266,7 @@
                 @for (r of acc.receipts.slice(0, 3); track r.id) {
                   <li
                     class="flex justify-between gap-3"
-                    [class]="r.status === 'VOID' ? 'text-slate-400 line-through' : 'text-slate-700'"
+                    [class]="r.status === 'VOID' ? 'text-slate-500 line-through' : 'text-slate-700'"
                   >
                     <span class="tabular-nums">{{ r.createdAt | fecha: 'date' }}</span>
                     <span class="tabular-nums">{{ money(r.total) }}</span>
@@ -195,7 +280,7 @@
         </section>
 
         @if (!c.anonymizedAt) {
-          <section class="card p-5" aria-labelledby="auth-title">
+          <section class="card order-5 p-5" aria-labelledby="auth-title">
             <div class="flex items-center justify-between gap-3">
               <h2
                 id="auth-title"
@@ -251,7 +336,17 @@
           </section>
         }
 
-        <section class="card p-5" aria-labelledby="privacy-title">
+        @if (!c.anonymizedAt && c.active) {
+          <app-portal-card
+            class="order-6 block"
+            [clientId]="c.id"
+            [clientName]="c.name"
+            [phone]="c.phone"
+            [canEdit]="canEdit()"
+          />
+        }
+
+        <section class="card order-7 p-5" aria-labelledby="privacy-title">
           <h2
             id="privacy-title"
             class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
@@ -320,251 +415,446 @@
         </section>
       </aside>
 
-      <!-- Mascotas -->
-      <div class="space-y-4">
-        <h2 class="font-display text-lg font-semibold text-slate-900">
-          Mascotas
-          <span class="font-sans text-base font-normal text-slate-500">{{
-            activePets().length
-          }}</span>
-        </h2>
+      <!-- Mascotas y atenciones -->
+      <div class="contents lg:block lg:space-y-6">
+        <section class="order-2 space-y-4" aria-labelledby="pets-title">
+          <h2 id="pets-title" class="font-display text-lg font-semibold text-slate-900">
+            Mascotas
+            <span class="font-sans text-base font-normal text-slate-500">{{
+              activePets().length
+            }}</span>
+          </h2>
 
-        @if (activePets().length === 0) {
-          <div class="card px-6 py-12 text-center">
-            <span
-              class="mx-auto grid size-12 place-items-center rounded-2xl bg-anil-50 text-anil-700"
-            >
-              <app-icon name="paw" class="size-6" />
-            </span>
-            <p class="mt-3 font-medium text-slate-900">
-              Este cliente aún no tiene mascotas activas
-            </p>
-            @if (canEdit()) {
-              <button type="button" class="btn btn-primary mt-4" (click)="openPet(null)">
-                <app-icon name="plus" class="size-4" /> Registrar mascota
-              </button>
-            }
-          </div>
-        } @else {
-          <ul class="grid gap-4 md:grid-cols-2">
-            @for (pet of activePets(); track pet.id) {
-              <li class="card flex flex-col p-5">
-                <div class="flex items-start gap-3">
-                  <span
-                    class="grid size-12 shrink-0 place-items-center rounded-2xl"
+          <!-- Desde 4 mascotas: buscar y filtrar (las tarjetas son las mismas) -->
+          @if (activePets().length >= petSearchFrom) {
+            <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" role="search">
+              <div class="relative sm:min-w-56 sm:flex-1">
+                <label for="pet-search" class="sr-only">Buscar mascota</label>
+                <app-icon
+                  name="search"
+                  class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  id="pet-search"
+                  type="search"
+                  autocomplete="off"
+                  class="field-input mt-0 h-10 pl-9"
+                  placeholder="Buscar mascota"
+                  [value]="petQuery()"
+                  (input)="petQuery.set($any($event.target).value)"
+                />
+              </div>
+              <div
+                class="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1"
+                role="group"
+                aria-label="Filtrar mascotas"
+              >
+                @for (f of petFilters(); track f.id) {
+                  <button
+                    type="button"
+                    class="h-9 shrink-0 rounded-full px-3 text-sm ring-1 transition-colors"
                     [class]="
-                      pet.aggressive ? 'bg-rose-50 text-rose-700' : 'bg-anil-50 text-anil-700'
+                      petFilter() === f.id
+                        ? 'bg-anil-50 font-semibold text-slate-900 ring-anil-400'
+                        : 'bg-white font-medium text-slate-700 ring-slate-200 hover:bg-slate-50'
                     "
-                    aria-hidden="true"
+                    [attr.aria-pressed]="petFilter() === f.id"
+                    (click)="petFilter.set(f.id)"
                   >
-                    <app-icon [name]="speciesIcons[pet.species]" class="size-6" />
-                  </span>
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-baseline justify-between gap-2">
-                      <h3 class="truncate font-display text-lg font-semibold text-slate-900">
-                        <a
-                          [routerLink]="['/mascotas', pet.id]"
-                          class="hover:text-anil-700 hover:underline"
-                          >{{ pet.name }}</a
-                        >
-                      </h3>
-                      <span class="shrink-0 text-xs font-medium text-slate-500 tabular-nums">{{
-                        petCode(pet.number)
-                      }}</span>
+                    {{ f.label }} <span class="text-slate-500 tabular-nums">{{ f.count }}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
+          @if (activePets().length === 0) {
+            <div class="card px-6 py-12 text-center">
+              <span
+                class="mx-auto grid size-12 place-items-center rounded-2xl bg-anil-50 text-anil-700"
+              >
+                <app-icon name="paw" class="size-6" />
+              </span>
+              <p class="mt-3 font-medium text-slate-900">
+                Este cliente aún no tiene mascotas activas
+              </p>
+              @if (canEdit()) {
+                <button type="button" class="btn btn-primary mt-4" (click)="openPet(null)">
+                  <app-icon name="plus" class="size-4" /> Registrar mascota
+                </button>
+              }
+            </div>
+          } @else {
+            <ul class="grid gap-4 md:grid-cols-2">
+              @for (pet of shownPets(); track pet.id) {
+                <li class="card flex flex-col p-5">
+                  <div class="flex items-start gap-3">
+                    <span
+                      class="grid size-12 shrink-0 place-items-center rounded-2xl"
+                      [class]="
+                        pet.aggressive ? 'bg-rose-50 text-rose-700' : 'bg-anil-50 text-anil-700'
+                      "
+                      aria-hidden="true"
+                    >
+                      <app-icon [name]="speciesIcons[pet.species]" class="size-6" />
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-baseline justify-between gap-2">
+                        <h3 class="truncate font-display text-lg font-semibold text-slate-900">
+                          @if (canSeeRecord()) {
+                            <a
+                              [routerLink]="['/mascotas', pet.id]"
+                              class="hover:text-anil-700 hover:underline"
+                              >{{ pet.name }}</a
+                            >
+                          } @else {
+                            {{ pet.name }}
+                          }
+                        </h3>
+                        <span class="shrink-0 text-xs font-medium text-slate-500 tabular-nums">{{
+                          petCode(pet.number)
+                        }}</span>
+                      </div>
+                      <p class="text-sm text-slate-600">{{ petSummary(pet) }}</p>
                     </div>
-                    <p class="text-sm text-slate-600">{{ petSummary(pet) }}</p>
                   </div>
-                </div>
 
-                <dl
-                  class="mt-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl bg-slate-50 py-2.5 text-center ring-1 ring-slate-200/60"
-                >
-                  <div class="px-2">
-                    <dt class="text-xs text-slate-500">Edad</dt>
-                    <dd class="mt-0.5 text-sm font-medium text-slate-900">
-                      @if (petAge(pet.birthDate); as age) {
-                        {{ pet.birthDateEstimated ? '≈ ' : '' }}{{ age }}
-                      } @else {
-                        —
-                      }
-                    </dd>
-                  </div>
-                  <div class="px-2">
-                    <dt class="text-xs text-slate-500">Peso</dt>
-                    <dd class="mt-0.5 text-sm font-medium text-slate-900 tabular-nums">
-                      {{ pet.weightKg != null ? pet.weightKg + ' kg' : '—' }}
-                    </dd>
-                  </div>
-                  <div class="px-2">
-                    <dt class="text-xs text-slate-500">Última visita</dt>
-                    <dd class="mt-0.5 text-sm font-medium text-slate-900">
-                      {{ relativeDay(pet.lastVisit ?? null) }}
-                    </dd>
-                  </div>
-                </dl>
+                  <dl
+                    class="mt-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl bg-slate-50 py-2.5 text-center ring-1 ring-slate-200/60"
+                  >
+                    <div class="px-2">
+                      <dt class="text-xs text-slate-500">Edad</dt>
+                      <dd class="mt-0.5 text-sm font-medium text-slate-900">
+                        @if (petAge(pet.birthDate); as age) {
+                          {{ pet.birthDateEstimated ? '≈ ' : '' }}{{ age }}
+                        } @else {
+                          —
+                        }
+                      </dd>
+                    </div>
+                    <div class="px-2">
+                      <dt class="text-xs text-slate-500">Peso</dt>
+                      <dd class="mt-0.5 text-sm font-medium text-slate-900 tabular-nums">
+                        {{ pet.weightKg != null ? pet.weightKg + ' kg' : '—' }}
+                      </dd>
+                    </div>
+                    <div class="px-2">
+                      <dt class="text-xs text-slate-500">Última visita</dt>
+                      <dd class="mt-0.5 text-sm font-medium text-slate-900">
+                        {{ relativeDay(pet.lastVisit ?? null) }}
+                      </dd>
+                    </div>
+                  </dl>
 
-                <a
-                  [routerLink]="['/mascotas', pet.id]"
-                  class="mt-3 flex min-h-11 items-center justify-between rounded-xl px-3 text-sm font-medium text-anil-700 ring-1 ring-anil-100 hover:bg-anil-50"
-                >
-                  <span class="flex items-center gap-2">
-                    <app-icon name="file-text" class="size-4" /> Historia clínica y vacunas
-                  </span>
-                  <app-icon name="chevron-right" class="size-4" />
-                </a>
-
-                @if (pet.aggressive || pet.allergies) {
-                  <div class="mt-3 space-y-2">
-                    @if (pet.aggressive) {
-                      <p
-                        class="flex gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-600/15"
-                      >
-                        <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-rose-600" />
-                        <span>
-                          <strong class="font-semibold">Agresivo.</strong>
-                          {{ pet.aggressiveNote ?? 'Puede morder o arañar.' }}
-                        </span>
-                      </p>
-                    }
-                    @if (pet.allergies) {
-                      <p
-                        class="flex gap-2 rounded-lg bg-maiz-100 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-600/20"
-                      >
-                        <app-icon name="info" class="mt-0.5 size-4 shrink-0" />
-                        <span
-                          ><strong class="font-semibold">Alergias:</strong>
-                          {{ pet.allergies }}</span
-                        >
-                      </p>
-                    }
-                  </div>
-                }
-
-                @if (canEdit()) {
-                  <div class="mt-auto flex gap-2 pt-4">
-                    <button
-                      type="button"
-                      class="btn btn-primary flex-1 px-3"
-                      [disabled]="saving()"
-                      (click)="attend(pet)"
+                  @if (canSeeRecord()) {
+                    <a
+                      [routerLink]="['/mascotas', pet.id]"
+                      class="mt-3 flex min-h-11 items-center justify-between rounded-xl px-3 text-sm font-medium text-anil-700 ring-1 ring-anil-100 hover:bg-anil-50"
                     >
-                      <app-icon name="stethoscope" class="size-4" /> Atender
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-secondary flex-1 px-3"
-                      (click)="openQueue(pet)"
-                    >
-                      <app-icon name="clock" class="size-4" /> A la cola
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-secondary size-11 shrink-0 px-0"
-                      (click)="openPet(pet)"
-                      [attr.aria-label]="'Editar a ' + pet.name"
-                      title="Editar"
-                    >
-                      <app-icon name="pencil" class="size-4" />
-                    </button>
-                  </div>
-                }
-              </li>
-            }
-          </ul>
-        }
-
-        @if (inactivePets().length) {
-          <details class="group card px-5">
-            <summary
-              class="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-700"
-            >
-              <app-icon
-                name="chevron-right"
-                class="size-4 transition-transform group-open:rotate-90"
-              />
-              Inactivas o fallecidas ({{ inactivePets().length }})
-            </summary>
-            <ul class="divide-y divide-slate-100 pb-2">
-              @for (pet of inactivePets(); track pet.id) {
-                <li class="flex items-center gap-3 py-3">
-                  <app-icon
-                    [name]="speciesIcons[pet.species]"
-                    class="size-5 shrink-0 text-slate-400"
-                  />
-                  <div class="min-w-0 flex-1">
-                    <p class="font-medium text-slate-800">
-                      {{ pet.name }}
-                      <span class="text-xs font-normal text-slate-500">{{
-                        petCode(pet.number)
-                      }}</span>
-                    </p>
-                    <p class="text-sm text-slate-500">
-                      {{ speciesLabels[pet.species] }}
-                      @if (pet.deceasedAt) {
-                        · Falleció el {{ pet.deceasedAt | fecha: 'calendar' }}
-                      } @else {
-                        · Inactiva
-                      }
-                    </p>
-                  </div>
-                  @if (canEdit()) {
-                    <button type="button" class="btn btn-ghost h-11 px-3" (click)="openPet(pet)">
-                      Editar
-                    </button>
+                      <span class="flex items-center gap-2">
+                        <app-icon name="file-text" class="size-4" /> Historia clínica y vacunas
+                      </span>
+                      <app-icon name="chevron-right" class="size-4" />
+                    </a>
                   }
+
+                  @if (pet.nextAppointment) {
+                    <p
+                      class="mt-3 flex items-center gap-2 rounded-xl bg-anil-50 px-3 py-2 text-sm text-anil-900 ring-1 ring-anil-200"
+                    >
+                      <app-icon name="calendar" class="size-4 shrink-0 text-anil-600" />
+                      <span class="min-w-0"
+                        ><strong class="font-semibold">Próxima cita:</strong>
+                        {{ nextLabel(pet) }}</span
+                      >
+                    </p>
+                  }
+
+                  @if (pet.aggressive || pet.allergies) {
+                    <div class="mt-3 space-y-2">
+                      @if (pet.aggressive) {
+                        <p
+                          class="flex gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-600/15"
+                        >
+                          <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-rose-600" />
+                          <span>
+                            <strong class="font-semibold">Agresivo.</strong>
+                            {{ pet.aggressiveNote ?? 'Puede morder o arañar.' }}
+                          </span>
+                        </p>
+                      }
+                      @if (pet.allergies) {
+                        <p
+                          class="flex gap-2 rounded-lg bg-maiz-100 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-600/20"
+                        >
+                          <app-icon name="info" class="mt-0.5 size-4 shrink-0" />
+                          <span
+                            ><strong class="font-semibold">Alergias:</strong>
+                            {{ pet.allergies }}</span
+                          >
+                        </p>
+                      }
+                    </div>
+                  }
+
+                  @if (canEdit()) {
+                    <!-- Veterinario: Atender · A la cola · ⋯ — Recepción: A la cola · Agendar · ⋯ -->
+                    <div class="relative mt-auto flex gap-2 pt-4" data-pet-menu>
+                      @if (canAttend()) {
+                        <button
+                          type="button"
+                          class="btn btn-primary flex-1 px-3"
+                          [disabled]="saving()"
+                          (click)="attend(pet)"
+                        >
+                          <app-icon name="stethoscope" class="size-4" /> Atender
+                        </button>
+                      }
+                      <button
+                        type="button"
+                        class="btn flex-1 px-3"
+                        [class]="canAttend() ? 'btn-secondary' : 'btn-primary'"
+                        (click)="openQueue(pet)"
+                      >
+                        <app-icon name="clock" class="size-4" /> A la cola
+                      </button>
+                      @if (!canAttend()) {
+                        <a
+                          routerLink="/citas"
+                          [queryParams]="scheduleParams(pet)"
+                          class="btn btn-secondary flex-1 px-3"
+                        >
+                          <app-icon name="calendar" class="size-4" /> Agendar
+                        </a>
+                      }
+                      <button
+                        type="button"
+                        class="btn btn-secondary size-11 shrink-0 px-0"
+                        [attr.aria-expanded]="menuFor() === pet.id"
+                        [attr.aria-controls]="'pet-menu-' + pet.id"
+                        [attr.aria-label]="'Más acciones para ' + pet.name"
+                        (click)="menuFor.set(menuFor() === pet.id ? null : pet.id)"
+                      >
+                        <app-icon name="more-horizontal" class="size-4" />
+                      </button>
+                      @if (menuFor() === pet.id) {
+                        <div
+                          [id]="'pet-menu-' + pet.id"
+                          class="panel-in absolute right-0 bottom-full z-30 mb-2 w-56 origin-bottom-right rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-slate-900/5"
+                          role="menu"
+                        >
+                          @if (canAttend()) {
+                            <a
+                              role="menuitem"
+                              routerLink="/citas"
+                              [queryParams]="scheduleParams(pet)"
+                              class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-slate-800 hover:bg-slate-50"
+                            >
+                              <app-icon name="calendar" class="size-4 text-slate-500" /> Agendar
+                              cita
+                            </a>
+                          }
+                          <a
+                            role="menuitem"
+                            routerLink="/grooming/ingreso"
+                            [queryParams]="{ petId: pet.id }"
+                            class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-slate-800 hover:bg-slate-50"
+                          >
+                            <app-icon name="scissors" class="size-4 text-slate-500" /> Ingreso a
+                            grooming
+                          </a>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm text-slate-800 hover:bg-slate-50"
+                            (click)="menuFor.set(null); openPet(pet)"
+                          >
+                            <app-icon name="pencil" class="size-4 text-slate-500" /> Editar mascota
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </li>
+              } @empty {
+                <li class="card px-5 py-8 text-center text-sm text-slate-600 md:col-span-2">
+                  Ninguna mascota coincide.
+                  <button
+                    type="button"
+                    class="ml-1 font-medium text-anil-700 hover:underline"
+                    (click)="petQuery.set(''); petFilter.set('ALL')"
+                  >
+                    Ver todas
+                  </button>
                 </li>
               }
             </ul>
-          </details>
-        }
+          }
 
-        <h2 class="pt-2 font-display text-lg font-semibold text-slate-900">
-          Atenciones
-          <span class="font-sans text-base font-normal text-slate-500">{{ historyTotal() }}</span>
-        </h2>
-        @if (history().length) {
-          <ul class="card divide-y divide-slate-100">
-            @for (v of history(); track v.id) {
-              <li>
-                <a
-                  [routerLink]="['/atenciones', v.id]"
-                  class="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50"
-                >
-                  <app-icon
-                    [name]="speciesIcons[v.pet.species]"
-                    class="size-5 shrink-0 text-slate-400"
-                  />
-                  <div class="min-w-0 flex-1">
-                    <p class="font-medium text-slate-900">
-                      {{ v.pet.name }}
-                      <span class="text-sm font-normal text-slate-500"
-                        >· {{ v.openedAt | fecha: 'date' }}</span
-                      >
-                    </p>
-                    <p class="truncate text-sm text-slate-500">
-                      {{ v.reason ?? 'Sin motivo' }} · {{ v.attendedBy.fullName }}
-                      @if (v.weightKg) {
-                        · {{ v.weightKg }} kg
-                      }
-                    </p>
-                  </div>
-                  <div class="shrink-0 text-right">
-                    <p class="text-sm font-semibold text-slate-900 tabular-nums">
-                      {{ money(v.total) }}
-                    </p>
-                    <p
-                      class="text-xs"
-                      [class]="v.status === 'OPEN' ? 'font-medium text-anil-700' : 'text-slate-500'"
+          @if (inactivePets().length) {
+            <details class="group card px-5">
+              <summary
+                class="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-700"
+              >
+                <app-icon
+                  name="chevron-right"
+                  class="size-4 transition-transform group-open:rotate-90"
+                />
+                Inactivas o fallecidas ({{ inactivePets().length }})
+              </summary>
+              <ul class="divide-y divide-slate-100 pb-2">
+                @for (pet of inactivePets(); track pet.id) {
+                  <li class="flex items-center gap-3 py-3">
+                    <app-icon
+                      [name]="speciesIcons[pet.species]"
+                      class="size-5 shrink-0 text-slate-400"
+                    />
+                    <div class="min-w-0 flex-1">
+                      <p class="font-medium text-slate-800">
+                        {{ pet.name }}
+                        <span class="text-xs font-normal text-slate-500">{{
+                          petCode(pet.number)
+                        }}</span>
+                      </p>
+                      <p class="text-sm text-slate-500">
+                        {{ speciesLabels[pet.species] }}
+                        @if (pet.deceasedAt) {
+                          · Falleció el {{ pet.deceasedAt | fecha: 'calendar' }}
+                        } @else {
+                          · Inactiva
+                        }
+                      </p>
+                    </div>
+                    @if (canEdit()) {
+                      <button type="button" class="btn btn-ghost h-11 px-3" (click)="openPet(pet)">
+                        Editar
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            </details>
+          }
+        </section>
+
+        @if (canSeeVisits()) {
+          <section class="order-3 space-y-4" aria-labelledby="visits-title">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="visits-title" class="font-display text-lg font-semibold text-slate-900">
+                Atenciones
+                <span class="font-sans text-base font-normal text-slate-500">{{
+                  historyTotal()
+                }}</span>
+              </h2>
+              @if (visitFilters().length) {
+                <div class="flex flex-wrap gap-1.5" role="group" aria-label="Atenciones de">
+                  <button
+                    type="button"
+                    class="h-9 rounded-full px-3 text-sm ring-1 transition-colors"
+                    [class]="
+                      visitPet() === null
+                        ? 'bg-anil-50 font-semibold text-slate-900 ring-anil-400'
+                        : 'bg-white font-medium text-slate-700 ring-slate-200 hover:bg-slate-50'
+                    "
+                    [attr.aria-pressed]="visitPet() === null"
+                    (click)="visitPet.set(null)"
+                  >
+                    Todas
+                  </button>
+                  @for (f of visitFilters(); track f.id) {
+                    <button
+                      type="button"
+                      class="h-9 rounded-full px-3 text-sm ring-1 transition-colors"
+                      [class]="
+                        visitPet() === f.id
+                          ? 'bg-anil-50 font-semibold text-slate-900 ring-anil-400'
+                          : 'bg-white font-medium text-slate-700 ring-slate-200 hover:bg-slate-50'
+                      "
+                      [attr.aria-pressed]="visitPet() === f.id"
+                      (click)="visitPet.set(f.id)"
                     >
-                      {{ visitLabels[v.status] }}
-                    </p>
-                  </div>
-                </a>
-              </li>
+                      {{ f.name }} <span class="text-slate-500 tabular-nums">{{ f.count }}</span>
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+            @if (history().length) {
+              <ul class="card divide-y divide-slate-100">
+                @for (v of shownHistory(); track v.id) {
+                  <li>
+                    <a
+                      [routerLink]="['/atenciones', v.id]"
+                      class="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50"
+                    >
+                      <app-icon
+                        [name]="speciesIcons[v.pet.species]"
+                        class="size-5 shrink-0 text-slate-400"
+                      />
+                      <div class="min-w-0 flex-1">
+                        <p class="font-medium text-slate-900">
+                          {{ v.pet.name }}
+                          <span class="text-sm font-normal text-slate-500"
+                            >· {{ v.openedAt | fecha: 'date' }}</span
+                          >
+                        </p>
+                        <p class="truncate text-sm text-slate-500">
+                          {{ v.reason ?? 'Sin motivo' }} · {{ v.attendedBy.fullName }}
+                          @if (v.weightKg) {
+                            · {{ v.weightKg }} kg
+                          }
+                        </p>
+                      </div>
+                      <div class="shrink-0 text-right">
+                        <p class="text-sm font-semibold text-slate-900 tabular-nums">
+                          {{ money(v.total) }}
+                        </p>
+                        <p
+                          class="text-xs"
+                          [class]="
+                            v.status === 'OPEN' ? 'font-medium text-anil-700' : 'text-slate-500'
+                          "
+                        >
+                          {{ visitLabels[v.status] }}
+                        </p>
+                      </div>
+                    </a>
+                  </li>
+                }
+                @if (filteredHistory().length > visitsShown) {
+                  <li>
+                    <button
+                      type="button"
+                      class="flex min-h-12 w-full items-center justify-center gap-1.5 text-sm font-semibold text-anil-700 hover:bg-anil-50"
+                      [attr.aria-expanded]="allVisits()"
+                      (click)="allVisits.set(!allVisits())"
+                    >
+                      {{
+                        allVisits()
+                          ? 'Ver solo las ' + visitsShown + ' últimas'
+                          : 'Ver las ' + filteredHistory().length + ' atenciones'
+                      }}
+                      <app-icon
+                        name="chevron-down"
+                        class="size-4 transition-transform"
+                        [class.rotate-180]="allVisits()"
+                      />
+                    </button>
+                  </li>
+                }
+              </ul>
+              @if (allVisits() && historyTotal() > history().length) {
+                <p class="text-sm text-slate-500">
+                  Se ven las {{ history().length }} más recientes. Las anteriores están en la
+                  historia clínica de cada mascota.
+                </p>
+              }
+            } @else {
+              <p class="card px-5 py-6 text-sm text-slate-500">
+                Aún no tiene atenciones registradas.
+              </p>
             }
-          </ul>
-        } @else {
-          <p class="card px-5 py-6 text-sm text-slate-500">Aún no tiene atenciones registradas.</p>
+          </section>
         }
       </div>
     </div>
@@ -670,6 +960,121 @@
         <input id="e-district" formControlName="district" class="field-input" autocomplete="off" />
       </div>
     </div>
+    <!-- Factura: un cliente normal no la ve; con el RUC, la razón social y la dirección salen solas -->
+    @if (!showInvoice()) {
+      <button
+        type="button"
+        class="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-anil-700 hover:underline"
+        (click)="showInvoice.set(true)"
+      >
+        <app-icon name="plus" class="size-4" /> Agregar RUC para facturas
+      </button>
+    } @else {
+      <fieldset class="space-y-3 rounded-xl p-4 ring-1 ring-slate-200">
+        <legend class="px-1 text-sm font-semibold text-slate-900">Datos de facturación</legend>
+        <p class="-mt-1 text-xs text-slate-500">
+          La empresa a la que factura. Escribe el RUC y el resto se llena solo. El nombre del
+          cliente no cambia.
+        </p>
+        <div>
+          <label for="e-invoice-ruc" class="field-label">RUC</label>
+          <input
+            id="e-invoice-ruc"
+            formControlName="invoiceRuc"
+            class="field-input tabular-nums"
+            inputmode="numeric"
+            maxlength="11"
+            autocomplete="off"
+            [attr.aria-invalid]="invalid(clientForm, 'invoiceRuc')"
+            [attr.aria-describedby]="invoiceFound() ? 'e-invoice-card' : null"
+          />
+          @if (invalid(clientForm, 'invoiceRuc')) {
+            <p class="field-error">RUC no válido</p>
+          } @else if (invoiceSearching()) {
+            <p class="field-hint" aria-live="polite">Buscando en SUNAT…</p>
+          }
+        </div>
+        @if (invoiceFound() && !invoiceEditing()) {
+          <div
+            id="e-invoice-card"
+            class="flex items-start gap-3 rounded-xl bg-slate-50 px-3.5 py-3 ring-1 ring-slate-200"
+          >
+            <span
+              class="grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700"
+            >
+              <app-icon name="check" class="size-4" />
+            </span>
+            <div class="min-w-0 flex-1 text-sm">
+              <p class="font-semibold break-words text-slate-900">{{ invoiceFound()!.name }}</p>
+              <p class="text-slate-600">
+                {{ clientForm.controls.invoiceAddress.value || 'Sin dirección fiscal' }}
+              </p>
+              @if (clientForm.controls.invoiceEmail.value) {
+                <p class="text-slate-500">
+                  Facturas a {{ clientForm.controls.invoiceEmail.value }}
+                </p>
+              }
+            </div>
+            <button
+              type="button"
+              class="btn btn-ghost size-10 shrink-0 px-0 text-slate-600"
+              aria-label="Editar la dirección o el correo"
+              title="Editar la dirección o el correo"
+              (click)="invoiceEditing.set(true)"
+            >
+              <app-icon name="pencil" class="size-4" />
+            </button>
+          </div>
+        } @else if (
+          invoiceEditing() || (clientForm.controls.invoiceRuc.value && !invoiceSearching())
+        ) {
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+              <label for="e-invoice-name" class="field-label">Razón social</label>
+              <input
+                id="e-invoice-name"
+                formControlName="invoiceName"
+                class="field-input"
+                autocomplete="off"
+                [readonly]="!!invoiceFound()"
+                [attr.aria-invalid]="invalid(clientForm, 'invoiceName')"
+              />
+              @if (invalid(clientForm, 'invoiceName')) {
+                <p class="field-error">Escribe la razón social</p>
+              } @else if (!invoiceFound()) {
+                <p class="field-hint">No apareció en SUNAT: escríbela como figura en su RUC.</p>
+              }
+            </div>
+            <div>
+              <label for="e-invoice-address" class="field-label">Dirección fiscal</label>
+              <input
+                id="e-invoice-address"
+                formControlName="invoiceAddress"
+                class="field-input"
+                autocomplete="off"
+              />
+            </div>
+            <div>
+              <label for="e-invoice-email" class="field-label">Correo para facturas</label>
+              <input
+                id="e-invoice-email"
+                type="email"
+                formControlName="invoiceEmail"
+                class="field-input"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+        }
+        <button
+          type="button"
+          class="text-sm font-medium text-rose-700 hover:underline"
+          (click)="removeInvoice()"
+        >
+          Quitar el RUC
+        </button>
+      </fieldset>
+    }
     <div>
       <label for="e-notes" class="field-label">Notas</label>
       <textarea

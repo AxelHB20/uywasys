@@ -1,9 +1,9 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import type { TransportInput } from './queue.service';
 import {
   BoardStatus,
-  CommissionReport,
   CheckInInput,
   DeliverInput,
   Groomer,
@@ -54,26 +54,16 @@ export class GroomingService {
     return this.http.post<GroomingDetail>(`/api/grooming/${id}/deliver`, input);
   }
 
-  commissions(from: string, to: string, groomerId?: number | null): Observable<CommissionReport> {
-    return this.http.get<CommissionReport>('/api/grooming/commissions', {
-      params: commissionParams(from, to, groomerId),
+  /** El dueño ya no puede volver: se agrega (o cambia o quita) la movilidad */
+  changeTransport(id: number, input: TransportInput): Observable<GroomingDetail> {
+    return this.http.patch<GroomingDetail>(`/api/grooming/${id}/transport`, input);
+  }
+
+  /** chargeTransport: ya fueron a recogerlo, la movilidad se cobra igual */
+  cancel(id: number, reason: string, chargeTransport = false): Observable<GroomingDetail> {
+    return this.http.post<GroomingDetail>(`/api/grooming/${id}/cancel`, {
+      reason,
+      ...(chargeTransport ? { chargeTransport } : {}),
     });
   }
-
-  commissionsExcel(from: string, to: string, groomerId?: number | null): Observable<Blob> {
-    return this.http.get('/api/grooming/commissions/excel', {
-      params: commissionParams(from, to, groomerId),
-      responseType: 'blob',
-    });
-  }
-
-  cancel(id: number, reason: string): Observable<GroomingDetail> {
-    return this.http.post<GroomingDetail>(`/api/grooming/${id}/cancel`, { reason });
-  }
-}
-
-function commissionParams(from: string, to: string, groomerId?: number | null): HttpParams {
-  let params = new HttpParams().set('from', from).set('to', to);
-  if (groomerId) params = params.set('groomerId', groomerId);
-  return params;
 }

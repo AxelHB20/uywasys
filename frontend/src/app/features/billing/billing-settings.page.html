@@ -1,10 +1,5 @@
 <section class="space-y-6">
-  <a
-    routerLink="/comprobantes"
-    class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-  >
-    <app-icon name="chevron-left" class="size-4" /> Comprobantes
-  </a>
+  <app-back-link fallback="/comprobantes" fallbackLabel="Comprobantes" />
   <div>
     <h1 class="font-display text-2xl font-semibold text-slate-900">Facturación electrónica</h1>
     <p class="mt-1 max-w-3xl text-slate-600">
@@ -22,6 +17,22 @@
   } @else if (!settings()) {
     <div class="card h-64 animate-pulse" aria-busy="true"></div>
   } @else {
+    @if (!canEdit()) {
+      <div
+        class="flex items-start gap-3 rounded-2xl bg-slate-100 p-4 text-sm text-slate-700 ring-1 ring-slate-200"
+      >
+        <app-icon name="lock" class="mt-0.5 size-5 shrink-0 text-slate-500" />
+        <p>
+          <span class="font-medium text-slate-900"
+            >Solo soporte técnico cambia esta configuración.</span
+          >
+          Así nadie la deja mal por error.
+          @if (usesPse()) {
+            Si el PSE te envió un token nuevo, pégalo en <strong>Actualizar token</strong>.
+          }
+        </p>
+      </div>
+    }
     <form
       [formGroup]="form"
       (ngSubmit)="save()"
@@ -32,23 +43,33 @@
           <h2 id="pse-title" class="text-sm font-semibold text-slate-900">Proveedor</h2>
           <fieldset>
             <legend class="sr-only">Proveedor</legend>
-            <div class="grid gap-3 sm:grid-cols-2">
-              <label
-                class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
+            @if (settings()?.simulationAllowed === false && provider() === 'SIMULATED') {
+              <p
+                class="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200"
               >
-                <input
-                  type="radio"
-                  formControlName="provider"
-                  value="SIMULATED"
-                  class="mt-0.5 size-5 accent-anil-600"
-                />
-                <span>
-                  <span class="block font-medium text-slate-900">Simulación</span>
-                  <span class="block text-sm text-slate-600"
-                    >Numera e imprime sin enviar a SUNAT. Para la demo.</span
-                  >
-                </span>
-              </label>
+                Este servidor es de producción: elige el PSE con el que la clínica tiene contrato.
+                La simulación (comprobantes sin valor tributario) está desactivada.
+              </p>
+            }
+            <div class="grid gap-3 sm:grid-cols-2">
+              @if (settings()?.simulationAllowed !== false) {
+                <label
+                  class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
+                >
+                  <input
+                    type="radio"
+                    formControlName="provider"
+                    value="SIMULATED"
+                    class="mt-0.5 size-5 accent-anil-600"
+                  />
+                  <span>
+                    <span class="block font-medium text-slate-900">Simulación</span>
+                    <span class="block text-sm text-slate-600"
+                      >Numera e imprime sin enviar a SUNAT. Para la demo.</span
+                    >
+                  </span>
+                </label>
+              }
               <label
                 class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
               >
@@ -63,25 +84,63 @@
                   <span class="block text-sm text-slate-600">PSE/OSE autorizado por SUNAT.</span>
                 </span>
               </label>
+              <label
+                class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
+              >
+                <input
+                  type="radio"
+                  formControlName="provider"
+                  value="LUCODE"
+                  class="mt-0.5 size-5 accent-anil-600"
+                />
+                <span>
+                  <span class="block font-medium text-slate-900">Lucode (APISUNAT)</span>
+                  <span class="block text-sm text-slate-600"
+                    >PSE autorizado por SUNAT. El más económico; no pide certificado.</span
+                  >
+                </span>
+              </label>
+              <label
+                class="flex cursor-pointer gap-3 rounded-xl p-4 ring-1 ring-slate-200 has-[:checked]:bg-anil-50 has-[:checked]:ring-anil-500"
+              >
+                <input
+                  type="radio"
+                  formControlName="provider"
+                  value="MIFACT"
+                  class="mt-0.5 size-5 accent-anil-600"
+                />
+                <span>
+                  <span class="block font-medium text-slate-900">Mifact</span>
+                  <span class="block text-sm text-slate-600"
+                    >PSE autorizado por SUNAT. Firma con su certificado; plan anual.</span
+                  >
+                </span>
+              </label>
             </div>
           </fieldset>
 
-          @if (provider() === 'NUBEFACT') {
+          @if (provider() !== 'SIMULATED') {
             <div class="grid gap-4 sm:grid-cols-2">
-              <div class="sm:col-span-2">
-                <label for="bill-url" class="field-label">Ruta (URL de la API)</label>
-                <input
-                  id="bill-url"
-                  formControlName="apiUrl"
-                  class="field-input"
-                  placeholder="https://api.nubefact.com/api/v1/…"
-                  autocomplete="off"
-                  [attr.aria-invalid]="invalid('apiUrl')"
-                />
-                @if (invalid('apiUrl')) {
-                  <p class="field-error">Debe empezar con https://</p>
-                }
-              </div>
+              @if (provider() === 'NUBEFACT' || provider() === 'MIFACT') {
+                <div class="sm:col-span-2">
+                  <label for="bill-url" class="field-label">Ruta (URL de la API)</label>
+                  <input
+                    id="bill-url"
+                    formControlName="apiUrl"
+                    class="field-input"
+                    [placeholder]="
+                      provider() === 'MIFACT'
+                        ? 'Vacío = ambiente demo de Mifact. En producción, la que te entregue Mifact'
+                        : 'https://api.nubefact.com/api/v1/…'
+                    "
+                    autocomplete="off"
+                    [attr.aria-invalid]="invalid('apiUrl')"
+                  />
+                  @if (invalid('apiUrl')) {
+                    <p class="field-error">Debe empezar con https://</p>
+                  }
+                </div>
+              }
               <div class="sm:col-span-2">
                 <label for="bill-token" class="field-label">Token</label>
                 <input
@@ -93,11 +152,22 @@
                   [placeholder]="
                     settings()?.hasToken
                       ? 'Guardado. Escribe uno nuevo solo para cambiarlo'
-                      : 'Cópialo del panel del PSE'
+                      : provider() === 'LUCODE'
+                        ? 'Cópialo de Organizaciones, en el panel de Lucode'
+                        : provider() === 'MIFACT'
+                          ? 'El token que te envió Mifact'
+                          : 'Cópialo del panel del PSE'
                   "
                 />
                 <p class="mt-1.5 text-xs text-slate-500">
                   Se guarda cifrado y nunca vuelve a mostrarse.
+                  @if (provider() === 'LUCODE') {
+                    Sin "Producción" se envía al ambiente de pruebas de Lucode; marcado, a SUNAT.
+                  }
+                  @if (provider() === 'MIFACT') {
+                    Mifact cambia el token cada cierto tiempo (unos 6 meses): cuando te envíe uno
+                    nuevo, pégalo {{ canEdit() ? 'aquí' : 'en "Actualizar token"' }}.
+                  }
                 </p>
               </div>
               <label
@@ -122,6 +192,78 @@
               placeholder="Tal como figura en la ficha RUC"
             />
             <p class="mt-1.5 text-xs text-slate-500">Sale en la boleta y la factura impresas.</p>
+          </div>
+          @if (provider() === 'MIFACT') {
+            <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+              <div>
+                <label for="bill-address" class="field-label">Dirección fiscal</label>
+                <input
+                  id="bill-address"
+                  formControlName="fiscalAddress"
+                  class="field-input"
+                  placeholder="Tal como figura en la ficha RUC"
+                />
+              </div>
+              <div>
+                <label for="bill-ubigeo" class="field-label">Ubigeo</label>
+                <input
+                  id="bill-ubigeo"
+                  formControlName="ubigeo"
+                  class="field-input tabular-nums"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="150101"
+                  [attr.aria-invalid]="invalid('ubigeo')"
+                />
+                @if (invalid('ubigeo')) {
+                  <p class="field-error">6 dígitos</p>
+                }
+              </div>
+              <p class="-mt-2 text-xs text-slate-500 sm:col-span-2">
+                El ubigeo sale en la ficha RUC de SUNAT (ej. 150101 = Lima, Lima, Lima).
+              </p>
+            </div>
+          }
+        </section>
+
+        <section class="card space-y-3 p-6" aria-labelledby="lookup-title">
+          <div>
+            <h2 id="lookup-title" class="text-sm font-semibold text-slate-900">
+              Búsqueda de RUC y DNI
+            </h2>
+            <p class="mt-1 text-sm text-slate-600">
+              Al escribir un RUC o DNI en el cobro, la razón social o el nombre se llenan solos. Los
+              que ya usaste en la clínica siempre se llenan; para los nuevos, pega el token gratuito
+              de APISPERU (apisperu.com → Consultas DNI y RUC, 1000 consultas al mes). Sin token, se
+              escriben a mano.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-0 flex-1">
+              <label for="bill-lookup" class="field-label">Token de APISPERU</label>
+              <input
+                id="bill-lookup"
+                type="password"
+                formControlName="lookupToken"
+                class="field-input"
+                autocomplete="new-password"
+                [placeholder]="
+                  settings()?.hasLookupToken
+                    ? 'Guardado. Escribe uno nuevo solo para cambiarlo'
+                    : 'Opcional'
+                "
+              />
+            </div>
+            @if (settings()?.hasLookupToken && canEdit()) {
+              <button
+                type="button"
+                class="btn btn-ghost"
+                [disabled]="saving()"
+                (click)="clearLookup()"
+              >
+                Quitar
+              </button>
+            }
           </div>
         </section>
 
@@ -158,9 +300,169 @@
             }
           </div>
         </section>
+
+        <section class="card p-6" aria-labelledby="due-title">
+          <h2 id="due-title" class="text-sm font-semibold text-slate-900">Plan y vencimientos</h2>
+          <p class="mt-1 text-sm text-slate-600">
+            El administrador recibe un aviso 30 días antes de cada vencimiento y cuando se usa el 80
+            % de los comprobantes del mes. Déjalo vacío si no aplica.
+          </p>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label for="s-quota" class="field-label">Comprobantes por mes</label>
+              <input
+                id="s-quota"
+                formControlName="monthlyQuota"
+                class="field-input tabular-nums"
+                inputmode="numeric"
+                placeholder="Ej. 300"
+                [attr.aria-invalid]="invalid('monthlyQuota')"
+                aria-describedby="s-quota-help"
+              />
+              @if (invalid('monthlyQuota')) {
+                <p class="field-error">Solo números, sin decimales</p>
+              } @else {
+                <p id="s-quota-help" class="field-hint">
+                  @if (settings()?.monthlyQuota && usesPse()) {
+                    Este mes van {{ settings()?.usedThisMonth ?? 0 }}
+                  } @else {
+                    Del plan contratado con el PSE
+                  }
+                </p>
+              }
+            </div>
+            @for (
+              f of [
+                ['planExpiresOn', 'Plan del PSE vence'],
+                ['domainExpiresOn', 'Dominio vence'],
+                ['serverExpiresOn', 'Servidor vence'],
+              ];
+              track f[0]
+            ) {
+              <div>
+                <label [for]="'s-' + f[0]" class="field-label">{{ f[1] }}</label>
+                <input
+                  [id]="'s-' + f[0]"
+                  type="date"
+                  [formControlName]="f[0]"
+                  class="field-input tabular-nums"
+                />
+              </div>
+            }
+          </div>
+        </section>
       </div>
 
       <aside class="space-y-4 lg:sticky lg:top-24 lg:self-start">
+        @if (usesPse() && settings()?.enabled && settings()?.health; as h) {
+          <section
+            class="card flex items-start gap-3 p-5"
+            aria-labelledby="health-title"
+            [class]="
+              h.state === 'OK' ? '' : h.state === 'UNREACHABLE' ? 'ring-amber-200' : 'ring-rose-200'
+            "
+          >
+            <span
+              class="grid size-9 shrink-0 place-items-center rounded-xl"
+              [class]="
+                h.state === 'OK'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : h.state === 'UNREACHABLE'
+                    ? 'bg-amber-50 text-amber-800'
+                    : 'bg-rose-50 text-rose-700'
+              "
+              aria-hidden="true"
+            >
+              <app-icon [name]="h.state === 'OK' ? 'check' : 'alert'" class="size-5" />
+            </span>
+            <div class="min-w-0 text-sm">
+              <h2 id="health-title" class="font-semibold text-slate-900">
+                Conexión con {{ pseName() }}
+              </h2>
+              <p
+                class="mt-0.5 font-medium"
+                [class]="
+                  h.state === 'OK'
+                    ? 'text-emerald-700'
+                    : h.state === 'UNREACHABLE'
+                      ? 'text-amber-800'
+                      : 'text-rose-700'
+                "
+              >
+                @switch (h.state) {
+                  @case ('OK') {
+                    Funciona
+                  }
+                  @case ('TOKEN') {
+                    El token no funciona
+                  }
+                  @case ('SUSPENDED') {
+                    Servicio suspendido: revisa el pago
+                  }
+                  @case ('UNREACHABLE') {
+                    No responde
+                  }
+                }
+                @if (h.state !== 'OK' && h.since) {
+                  <span class="font-normal"> desde {{ h.since | fecha: 'datetime' }}</span>
+                }
+              </p>
+              @if (h.checkedAt) {
+                <p class="mt-1 text-slate-500">
+                  Revisada {{ h.checkedAt | fecha: 'datetime' }}. Se revisa sola cada 6 horas.
+                </p>
+              }
+              @if (provider() === 'MIFACT' && tokenAgeDays() !== null) {
+                <p class="mt-1 text-slate-500">
+                  Token guardado hace {{ tokenAgeDays() }} días. Mifact lo cambia cada 6 meses más o
+                  menos: se avisa a los 5.
+                </p>
+              }
+              @if (h.state !== 'OK' && h.error) {
+                <p class="mt-2 text-xs break-words text-slate-500">{{ h.error }}</p>
+              }
+            </div>
+          </section>
+        }
+        @if (!canEdit() && usesPse()) {
+          <section class="card space-y-3 p-6" aria-labelledby="token-title">
+            <h2 id="token-title" class="text-sm font-semibold text-slate-900">Actualizar token</h2>
+            <p class="text-sm text-slate-600">
+              Si el PSE te envía un token nuevo, pégalo aquí: se prueba antes de guardarlo y, si no
+              funciona, se queda el anterior. Los comprobantes que esperaban salen solos.
+            </p>
+            <div>
+              <label for="new-token" class="field-label">Token nuevo</label>
+              <input
+                id="new-token"
+                [formControl]="tokenControl"
+                class="field-input font-mono"
+                autocomplete="off"
+                spellcheck="false"
+                [attr.aria-invalid]="tokenControl.invalid && tokenControl.touched"
+                aria-describedby="new-token-error"
+                (keydown.enter)="$event.preventDefault(); saveToken()"
+              />
+              @if (tokenControl.invalid && tokenControl.touched) {
+                <p id="new-token-error" class="field-error">
+                  Pega el token completo que te envió el PSE.
+                </p>
+              }
+            </div>
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              [disabled]="tokenSaving()"
+              (click)="saveToken()"
+            >
+              @if (tokenSaving()) {
+                <app-icon name="loader" class="size-4 animate-spin" /> Probando…
+              } @else {
+                Probar y guardar
+              }
+            </button>
+          </section>
+        }
         <section class="card space-y-4 p-6">
           <label class="flex cursor-pointer items-start gap-3">
             <input
@@ -187,8 +489,40 @@
               </ul>
             </div>
           }
+          @if (confirmChanges(); as changes) {
+            <div
+              class="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+              role="alert"
+            >
+              <p class="font-semibold">Revisa antes de guardar:</p>
+              <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                @for (c of changes; track c) {
+                  <li>{{ c }}</li>
+                }
+              </ul>
+              <div class="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  class="btn btn-primary h-9 px-3 text-sm"
+                  [disabled]="saving()"
+                  (click)="save(true)"
+                >
+                  Confirmar y guardar
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-ghost h-9 px-3 text-sm"
+                  (click)="confirmChanges.set(null)"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          }
           <div class="flex flex-col gap-2">
-            <button type="submit" class="btn btn-primary" [disabled]="saving()">Guardar</button>
+            @if (canEdit()) {
+              <button type="submit" class="btn btn-primary" [disabled]="saving()">Guardar</button>
+            }
             <button
               type="button"
               class="btn btn-secondary"
@@ -202,17 +536,51 @@
             }
           </div>
         </section>
-        <section class="rounded-2xl bg-slate-100 p-5 text-sm text-slate-700">
-          <p class="font-semibold text-slate-900">Al contratar Nubefact</p>
-          <ol class="mt-2 list-decimal space-y-1 pl-5">
-            <li>En su panel, copia la ruta y el token de la cuenta de pruebas.</li>
-            <li>Pégalos aquí, deja "Producción" sin marcar, guarda y prueba la conexión.</li>
-            <li>Emite boletas, facturas y una nota de crédito de prueba.</li>
-            <li>
-              Cuando el PSE te pase a producción, cambia la ruta y el token y marca "Producción".
-            </li>
-          </ol>
-        </section>
+        <!-- Pasos de configuración: solo para quien configura -->
+        @if (canEdit()) {
+          <section class="rounded-2xl bg-slate-100 p-5 text-sm text-slate-700">
+            @if (provider() === 'LUCODE') {
+              <p class="font-semibold text-slate-900">Al contratar Lucode</p>
+              <ol class="mt-2 list-decimal space-y-1 pl-5">
+                <li>Registra la clínica con su RUC y entra a la cuenta de pruebas.</li>
+                <li>En Clave SOL de SUNAT, autoriza a Lucode como PSE (una sola vez).</li>
+                <li>
+                  En Organizaciones, copia el token; pégalo aquí sin marcar "Producción", guarda y
+                  prueba la conexión.
+                </li>
+                <li>Emite boletas, facturas y una nota de crédito de prueba.</li>
+                <li>
+                  Cuando todo salga aceptado, pega el token de producción y marca "Producción".
+                </li>
+              </ol>
+            } @else if (provider() === 'MIFACT') {
+              <p class="font-semibold text-slate-900">Al contratar Mifact</p>
+              <ol class="mt-2 list-decimal space-y-1 pl-5">
+                <li>Mifact te envía el token de la clínica.</li>
+                <li>
+                  Pégalo aquí con la razón social, la dirección fiscal y el ubigeo; deja la ruta
+                  vacía y "Producción" sin marcar, guarda y prueba la conexión.
+                </li>
+                <li>Emite una boleta, una factura y una nota de crédito de prueba.</li>
+                <li>
+                  Cuando Mifact te pase a producción, pega la ruta y el token que te den y marca
+                  "Producción".
+                </li>
+              </ol>
+            } @else {
+              <p class="font-semibold text-slate-900">Al contratar Nubefact</p>
+              <ol class="mt-2 list-decimal space-y-1 pl-5">
+                <li>En su panel, copia la ruta y el token de la cuenta de pruebas.</li>
+                <li>Pégalos aquí, deja "Producción" sin marcar, guarda y prueba la conexión.</li>
+                <li>Emite boletas, facturas y una nota de crédito de prueba.</li>
+                <li>
+                  Cuando el PSE te pase a producción, cambia la ruta y el token y marca
+                  "Producción".
+                </li>
+              </ol>
+            }
+          </section>
+        }
       </aside>
     </form>
   }

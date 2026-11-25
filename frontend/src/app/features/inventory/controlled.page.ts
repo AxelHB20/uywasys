@@ -3,16 +3,16 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ControlledMovement, MOVEMENT_LABELS } from '../../core/services/inventory.models';
 import { InventoryService } from '../../core/services/inventory.service';
-import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { limaDate } from '../../shared/utils/records';
 import { formatQty, unitLabel } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 /** Libro de medicamentos controlados: qué se usó, en quién, quién lo indicó y con qué receta. */
 @Component({
   selector: 'app-controlled-page',
-  imports: [FechaPipe, ReactiveFormsModule, RouterLink, IconComponent],
+  imports: [BackLinkComponent, FechaPipe, ReactiveFormsModule, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './controlled.page.html',
 })

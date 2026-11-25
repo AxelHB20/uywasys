@@ -5,6 +5,8 @@ export interface AuthUser {
   id: number;
   clinicId: number;
   role: Role;
+  /** Soporte técnico: puede cambiar la configuración de facturación y el RUC */
+  support?: boolean;
 }
 
 /** Contenido del token de sesión. */

@@ -16,7 +16,7 @@ export const METHOD_LABELS: Record<PaymentMethod, string> = {
   TRANSFER: 'Transferencia',
 };
 export const PAYMENT_METHODS = Object.keys(METHOD_LABELS) as PaymentMethod[];
-/** Exigen código de operación */
+/** Llevan código de operación (opcional: el dueño no siempre lo tiene) */
 export const NEEDS_CODE: PaymentMethod[] = ['YAPE', 'PLIN', 'TRANSFER'];
 
 export interface PaymentInput {
@@ -45,17 +45,30 @@ export interface SessionSummary {
     collected: number;
     refunded: number;
     net: number;
+    /** Pagos que entraron por este medio */
+    payments: number;
+    /** Yape, Plin o transferencia sin código: revisar en la app al cerrar */
+    withoutCode: number;
   }[];
   expenses: number;
   totals: { collected: number; refunded: number; net: number; receipts: number };
   receipts: {
     id: number;
+    /** Nota de venta interna (NV-000123) */
     code: string;
+    /** La boleta o factura electrónica de ese cobro, si se emitió */
+    document: {
+      type: 'BOLETA' | 'FACTURA' | 'CREDIT_NOTE';
+      code: string;
+      status: 'PENDING' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'ERROR' | string;
+    } | null;
     client: string;
     total: number;
     status: 'ACTIVE' | 'VOID';
     createdAt: string;
     createdBy: string;
+    /** Cómo se pagó; dos o más medios = pago dividido */
+    payments: { method: PaymentMethod; label: string; amount: number; hasCode: boolean }[];
   }[];
   movements: {
     id: number;
@@ -70,12 +83,27 @@ export interface SessionSummary {
   }[];
 }
 
+export type PendingSource = 'CONSULTATION' | 'GROOMING' | 'HOSPITALIZATION' | 'COUNTER';
+
 export interface PendingClient {
   client: { id: number; number: number; name: string; phone: string };
   balance: number;
   charges: number;
   since: string;
+  /** Último cargo: lo de hoy va arriba ("De hoy") */
+  last: string;
+  /** Mascotas de las atenciones con saldo */
+  pets: string[];
+  /** De dónde viene lo que debe */
+  sources: PendingSource[];
 }
+
+export const PENDING_SOURCE_LABELS: Record<PendingSource, string> = {
+  CONSULTATION: 'Consulta',
+  GROOMING: 'Grooming',
+  HOSPITALIZATION: 'Hospitalización',
+  COUNTER: 'Mostrador',
+};
 
 export interface ReceiptTicket {
   id: number;
@@ -114,6 +142,8 @@ export interface ReceiptTicket {
     discount: number;
     total: number;
     paid: number;
+    /** Producto vendido en caja: al anular se puede devolver al stock */
+    returnable?: boolean;
   }[];
   totals: {
     taxed: number;

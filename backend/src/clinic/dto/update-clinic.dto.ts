@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsNumber,
   IsOptional,
@@ -58,4 +59,9 @@ export class UpdateClinicDto {
   @Min(0, { message: 'El tope de descuento no puede ser negativo' })
   @Max(100, { message: 'El tope de descuento no puede pasar de 100 %' })
   maxDiscountPercent?: number;
+
+  /** Mostrar el carnet completo y las recetas en el portal del dueño (si no se envía, no cambia) */
+  @IsOptional()
+  @IsBoolean()
+  portalShowRecords?: boolean;
 }

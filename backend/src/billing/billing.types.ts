@@ -42,6 +42,8 @@ export interface OutgoingDocument {
     docNumber: string;
     name: string;
     address: string | null;
+    /** El PSE le envía el PDF (si lo soporta) */
+    email?: string | null;
   };
   totals: DocumentTotals;
   lines: DocumentLine[];
@@ -50,6 +52,8 @@ export interface OutgoingDocument {
     type: 'BOLETA' | 'FACTURA';
     series: string;
     number: number;
+    /** AAAA-MM-DD del comprobante anulado (Mifact lo exige) */
+    issueDate?: string;
   } | null;
   reason?: string | null;
 }
@@ -58,6 +62,14 @@ export interface ProviderConfig {
   url: string | null;
   token: string | null;
   production: boolean;
+  /** Datos del emisor que algunos PSE piden en cada comprobante (Mifact) */
+  issuer?: {
+    /** RUC de la clínica: con él se prueba la conexión (Mifact valida el token contra el RUC) */
+    ruc?: string | null;
+    legalName: string | null;
+    fiscalAddress: string | null;
+    ubigeo: string | null;
+  };
 }
 
 export interface ProviderOutcome {
@@ -72,13 +84,29 @@ export interface ProviderOutcome {
 }
 
 /** Fallo al hablar con el PSE. retryable = conviene reintentar (caída, tiempo agotado). */
+/**
+ * Qué falló del lado del PSE (no del comprobante):
+ * - auth: el token o la ruta no sirven
+ * - suspended: el PSE cortó el servicio (falta de pago)
+ * - network: el PSE no respondió o tuvo un error suyo
+ * Sin tipo: problema del propio comprobante (datos, duplicado…).
+ */
+export type ProviderErrorKind = 'auth' | 'suspended' | 'network';
+
 export class ProviderError extends Error {
   constructor(
     message: string,
     readonly retryable: boolean,
+    readonly kind: ProviderErrorKind | null = null,
   ) {
     super(message);
   }
+}
+
+/** El tipo de un error cualquiera: lo que no es del PSE se toma como de red (fetch, timeout…) */
+export function providerErrorKind(error: unknown): ProviderErrorKind | null {
+  if (error instanceof ProviderError) return error.kind;
+  return 'network';
 }
 
 export interface BillingProviderClient {

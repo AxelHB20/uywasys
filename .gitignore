@@ -20,3 +20,5 @@ backend/src/generated/
 Thumbs.db
 *.log
 *.tsbuildinfo
+# Capturas del recorrido de QA
+e2e/qa/

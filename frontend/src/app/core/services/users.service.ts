@@ -9,12 +9,12 @@ export interface TeamMember {
   email: string;
   role: Role;
   licenseNumber: string | null;
-  /** Groomers: % de comisión sobre lo cobrado de sus servicios */
-  commissionPercent: number | null;
   active: boolean;
   mustChangePassword: boolean;
   locked: boolean;
   lastLoginAt: string | null;
+  /** Soporte técnico: la clínica no la edita, desactiva ni le cambia la clave */
+  support?: boolean;
 }
 
 export interface NewUser {
@@ -22,11 +22,10 @@ export interface NewUser {
   email: string;
   role: Role;
   licenseNumber: string | null;
-  commissionPercent: number | null;
 }
 
 export type UserChanges = Partial<
-  Pick<TeamMember, 'fullName' | 'role' | 'licenseNumber' | 'commissionPercent' | 'active'>
+  Pick<TeamMember, 'fullName' | 'role' | 'licenseNumber' | 'active'>
 >;
 
 /** Equipo de la clínica (solo administradores). */

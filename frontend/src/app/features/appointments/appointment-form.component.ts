@@ -6,6 +6,8 @@ import {
   input,
   output,
   signal,
+  effect,
+  untracked,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -21,9 +23,20 @@ import {
   timeSlots,
 } from '../../core/services/appointments.models';
 import { AppointmentsService } from '../../core/services/appointments.service';
-import { IconComponent } from '../../shared/ui/icon/icon.component';
-import { PetPickerComponent, PickedPet } from '../../shared/ui/pet-picker/pet-picker.component';
+import {
+  PetPickerComponent,
+  PickedPet,
+  PickedPetComponent,
+} from '../../shared/ui/pet-picker/pet-picker.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import {
+  TransportFieldsComponent,
+  transportGroup,
+  transportInvalid,
+  transportValue,
+} from '../../shared/ui/transport-fields/transport-fields.component';
+import { ImmunizationsService } from '../../core/services/immunizations.service';
+import { VisitsService } from '../../core/services/visits.service';
 import { limaToday } from '../../shared/utils/dates';
 import { apiErrorMessage } from '../../shared/utils/validators';
 
@@ -39,7 +52,7 @@ export interface AppointmentDraft {
 /** Agendar o reprogramar una cita. Si el veterinario ya tiene otra cita, ofrece el sobrecupo. */
 @Component({
   selector: 'app-appointment-form',
-  imports: [ReactiveFormsModule, IconComponent, PetPickerComponent],
+  imports: [ReactiveFormsModule, PetPickerComponent, PickedPetComponent, TransportFieldsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form
@@ -56,16 +69,7 @@ export interface AppointmentDraft {
           >
           <div class="mt-1.5">
             @if (pet(); as p) {
-              <div class="flex items-center gap-3 rounded-xl bg-anil-50 p-3 ring-1 ring-anil-200">
-                <app-icon name="paw" class="size-5 shrink-0 text-anil-700" />
-                <div class="min-w-0 flex-1">
-                  <p class="font-medium text-slate-900">{{ p.petName }}</p>
-                  <p class="truncate text-sm text-slate-600">{{ p.clientName }}</p>
-                </div>
-                <button type="button" class="btn btn-ghost h-10 px-3" (click)="pet.set(null)">
-                  Cambiar
-                </button>
-              </div>
+              <app-picked-pet [pet]="p" (change)="pet.set(null)" />
             } @else {
               <app-pet-picker
                 inputId="appt-pet"
@@ -175,6 +179,13 @@ export interface AppointmentDraft {
           placeholder="Ej.: viene en ayunas, traer análisis"
         />
       </div>
+      <app-transport-fields
+        prefix="appt-mov"
+        [group]="form.controls.move"
+        [clientAddress]="clientAddress()"
+        [lastPrice]="lastTransportPrice()"
+        [submitted]="submitted()"
+      />
 
       @if (overlap(); as message) {
         <div
@@ -194,6 +205,8 @@ export interface AppointmentDraft {
 export class AppointmentFormComponent implements OnInit {
   private readonly api = inject(AppointmentsService);
   private readonly toast = inject(ToastService);
+  private readonly cardsApi = inject(ImmunizationsService);
+  private readonly visitsApi = inject(VisitsService);
 
   readonly staff = input.required<AgendaStaff[]>();
   /** Cita nueva: lo que ya se sabe (día, hora, veterinario, paciente) */
@@ -221,7 +234,33 @@ export class AppointmentFormComponent implements OnInit {
     vetId: new FormControl<number | null>(null),
     reason: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(200)] }),
     notes: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(300)] }),
+    move: transportGroup(),
   });
+  /** Para la movilidad: dirección del dueño y lo que pagó la última vez */
+  protected readonly clientAddress = signal('');
+  protected readonly lastTransportPrice = signal<number | null>(null);
+  protected readonly submitted = signal(false);
+
+  constructor() {
+    effect(() => {
+      const petId = this.pet()?.petId ?? this.editing()?.pet.id;
+      if (petId) untracked(() => this.loadOwner(petId));
+    });
+  }
+
+  private loadOwner(petId: number): void {
+    this.cardsApi.card(petId).subscribe({
+      next: (card) => {
+        const c = card.pet.client;
+        this.clientAddress.set([c.address, c.district].filter(Boolean).join(', '));
+        this.visitsApi.lastTransportPrice(c.id).subscribe({
+          next: ({ price }) => this.lastTransportPrice.set(price),
+          error: () => undefined,
+        });
+      },
+      error: () => undefined,
+    });
+  }
 
   ngOnInit(): void {
     const a = this.editing();
@@ -235,6 +274,14 @@ export class AppointmentFormComponent implements OnInit {
         vetId: a.vet?.id ?? null,
         reason: a.reason ?? '',
         notes: a.notes ?? '',
+        move: {
+          transport: a.transport ?? 'NONE',
+          transportAddress: a.transportAddress ?? '',
+          transportPrice:
+            a.transportPrice === null || a.transportPrice === undefined
+              ? null
+              : Number(a.transportPrice),
+        },
       });
       return;
     }
@@ -267,7 +314,8 @@ export class AppointmentFormComponent implements OnInit {
       this.petMissing.set(true);
       return;
     }
-    if (this.form.invalid) {
+    this.submitted.set(true);
+    if (this.form.invalid || transportInvalid(this.form.controls.move)) {
       this.form.markAllAsTouched();
       return;
     }
@@ -279,6 +327,7 @@ export class AppointmentFormComponent implements OnInit {
       type: v.type,
       reason: v.reason.trim() || null,
       notes: v.notes.trim() || null,
+      ...transportValue(this.form.controls.move),
       ...(allowOverlap ? { allowOverlap: true } : {}),
     };
     this.saving = true;

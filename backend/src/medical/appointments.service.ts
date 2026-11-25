@@ -10,12 +10,15 @@ import { clinicDay, startOfDayIn } from '../common/time/clinic-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type {
   AppointmentStatus,
+  GroomingTransport,
   Role,
   Species,
   VisitType,
 } from '../generated/prisma/enums.js';
 import { addDays } from '../inventory/expiry.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { clientsWithPush, reminderMarks } from '../reminders/reminder-marks.js';
+import type { ReminderMark } from '../reminders/reminder-marks.js';
 import { OPEN_STATUSES, QueueService } from '../queue/queue.service.js';
 import type {
   CancelAppointmentDto,
@@ -37,6 +40,9 @@ const SELECT = {
   type: true,
   reason: true,
   notes: true,
+  transport: true,
+  transportAddress: true,
+  transportPrice: true,
   status: true,
   cancelReason: true,
   queueEntryId: true,
@@ -62,6 +68,10 @@ export interface AppointmentView {
   type: VisitType;
   reason: string | null;
   notes: string | null;
+  transport: GroomingTransport;
+  transportAddress: string | null;
+  /** Decimal: llega como texto en el JSON */
+  transportPrice: Prisma.Decimal | null;
   status: AppointmentStatus;
   cancelReason: string | null;
   queueEntryId: number | null;
@@ -76,6 +86,10 @@ export interface AppointmentView {
   client: { id: number; name: string; phone: string };
   vet: { id: number; fullName: string } | null;
   createdBy: { id: number; fullName: string };
+  /** Avisos ya hechos de esta cita (WhatsApp desde recepción o automático) */
+  reminded?: ReminderMark[];
+  /** El dueño activó los avisos en su portal: le llega solo */
+  autoNotice?: boolean;
 }
 
 export interface AgendaStaff {
@@ -124,7 +138,7 @@ export class AppointmentsService {
       throw new BadRequestException(
         `Consulta hasta ${MAX_RANGE_DAYS} días a la vez`,
       );
-    return this.prisma.appointment.findMany({
+    const rows = await this.prisma.appointment.findMany({
       where: {
         clinicId,
         startsAt: {
@@ -137,6 +151,22 @@ export class AppointmentsService {
       select: SELECT,
       orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
     });
+    const [marks, withPush] = await Promise.all([
+      reminderMarks(
+        this.prisma,
+        clinicId,
+        'APPOINTMENT',
+        rows.map((r) => r.id),
+      ),
+      clientsWithPush(this.prisma, clinicId, [
+        ...new Set(rows.map((r) => r.client.id)),
+      ]),
+    ]);
+    return rows.map((r) => ({
+      ...r,
+      reminded: marks.get(r.id) ?? [],
+      autoNotice: withPush.has(r.client.id),
+    }));
   }
 
   async create(
@@ -187,6 +217,7 @@ export class AppointmentsService {
         type: dto.type ?? 'CONSULTATION',
         reason: dto.reason ?? null,
         notes: dto.notes ?? null,
+        ...transportFields(dto),
         createdById: actor.id,
       },
       select: SELECT,
@@ -235,6 +266,7 @@ export class AppointmentsService {
         ...(dto.type ? { type: dto.type } : {}),
         ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+        ...(dto.transport !== undefined ? transportFields(dto) : {}),
         ...(moved ? { status: 'SCHEDULED' as const } : {}),
       },
       select: SELECT,
@@ -278,6 +310,12 @@ export class AppointmentsService {
         petId: current.petId,
         type: current.type,
         reason: current.reason ?? 'Cita',
+        transport: current.transport,
+        transportAddress: current.transportAddress,
+        transportPrice:
+          current.transportPrice === null
+            ? null
+            : Number(current.transportPrice),
       });
       queueEntryId = entry.id;
     } catch (error) {
@@ -350,6 +388,9 @@ export class AppointmentsService {
         vetId: true,
         type: true,
         reason: true,
+        transport: true,
+        transportAddress: true,
+        transportPrice: true,
         pet: { select: { name: true } },
       },
     });
@@ -460,4 +501,21 @@ function hour(at: Date, timeZone: string): string {
     minute: '2-digit',
     hourCycle: 'h23',
   }).format(at);
+}
+
+/** Movilidad de la cita: sin movilidad no guarda dirección ni precio */
+function transportFields(dto: {
+  transport?: GroomingTransport;
+  transportAddress?: string | null;
+  transportPrice?: number | null;
+}) {
+  const transport = dto.transport ?? 'NONE';
+  if (transport === 'NONE')
+    return { transport, transportAddress: null, transportPrice: null };
+  return {
+    transport,
+    transportAddress: dto.transportAddress?.trim().slice(0, 200) ?? null,
+    transportPrice:
+      dto.transportPrice && dto.transportPrice > 0 ? dto.transportPrice : null,
+  };
 }

@@ -4,6 +4,7 @@ import type {
   ChargeKind,
   ChargeStatus,
   GroomingStatus,
+  HospitalizationStatus,
   PetSize,
   Species,
   VisitStatus,
@@ -54,6 +55,7 @@ export const CHARGE_SELECT = {
   voidReason: true,
   createdBy: { select: { id: true, fullName: true } },
   pet: { select: { id: true, name: true } },
+  careService: { select: { systemKey: true } },
   shortages: {
     select: {
       quantity: true,
@@ -92,6 +94,8 @@ export interface ChargeView {
   createdBy: { id: number; fullName: string };
   voidedAt: Date | null;
   voidReason: string | null;
+  /** Movilidad (recojo o entrega): su precio se cambia en caja mientras no se cobre */
+  transport: boolean;
   /** Insumos que se usaron sin stock registrado */
   shortages: {
     product: string;
@@ -107,6 +111,7 @@ export function toChargeView(row: ChargeRow): ChargeView {
     kind: row.kind,
     visitId: row.visitId,
     pet: row.pet,
+    transport: row.careService?.systemKey === 'TRANSPORT',
     careServiceId: row.careServiceId,
     productId: row.productId,
     presentationId: row.presentationId,
@@ -205,6 +210,7 @@ export const VISIT_DETAIL_SELECT = {
     orderBy: { id: 'asc' },
   },
   grooming: { select: { id: true, number: true, status: true, size: true } },
+  hospitalization: { select: { id: true, number: true, status: true } },
 } satisfies Prisma.VisitSelect;
 
 type SummaryRow = Prisma.VisitGetPayload<{
@@ -231,6 +237,8 @@ export interface VisitSummary {
   attendedBy: { id: number; fullName: string };
   /** Suma de los cargos no anulados */
   total: number;
+  /** Lo que falta cobrar de esos cargos (solo en la lista) */
+  pending?: number;
 }
 
 export interface VisitDetail extends Omit<VisitSummary, 'pet' | 'client'> {
@@ -274,10 +282,27 @@ export interface VisitDetail extends Omit<VisitSummary, 'pet' | 'client'> {
     status: GroomingStatus;
     size: PetSize;
   } | null;
+  /** Si es un internamiento: se maneja desde Hospitalización y se cierra al dar de alta */
+  hospitalization: {
+    id: number;
+    number: number;
+    status: HospitalizationStatus;
+  } | null;
 }
 
-export function toVisitSummary(row: SummaryRow, total: number): VisitSummary {
-  return { ...row, weightKg: num(row.weightKg), total };
+export function toVisitSummary(
+  row: SummaryRow,
+  total: number,
+  pending?: number,
+): VisitSummary {
+  return {
+    ...row,
+    weightKg: num(row.weightKg),
+    total,
+    ...(pending === undefined
+      ? {}
+      : { pending: Math.round(pending * 100) / 100 }),
+  };
 }
 
 export function toVisitDetail(row: DetailRow): VisitDetail {
@@ -320,6 +345,7 @@ export async function lockVisit(
   pet_id: number;
   client_id: number;
   queue_entry_id: number | null;
+  type: VisitType;
 } | null> {
   const rows = await tx.$queryRaw<
     {
@@ -328,8 +354,119 @@ export async function lockVisit(
       pet_id: number;
       client_id: number;
       queue_entry_id: number | null;
+      type: VisitType;
     }[]
-  >`SELECT id, status::text AS status, pet_id, client_id, queue_entry_id
+  >`SELECT id, status::text AS status, pet_id, client_id, queue_entry_id, type::text AS type
     FROM visits WHERE id = ${id} AND clinic_id = ${clinicId} FOR UPDATE`;
   return rows[0] ?? null;
+}
+
+/** Lo que el veterinario necesita ver del paciente mientras atiende */
+export interface VisitContext {
+  /** Última consulta u hospitalización de la mascota (el groomer: su último grooming) */
+  previous: {
+    id: number;
+    type: VisitType;
+    openedAt: Date;
+    reason: string | null;
+    diagnosis: string | null;
+    attendedBy: string;
+  } | null;
+  /** Último peso tomado antes de esta atención */
+  previousWeight: { kg: number; at: Date } | null;
+  /** Vacunas y antiparasitarios con el refuerzo vencido (lo último de cada uno) */
+  overdue: { name: string; kind: string; nextDueAt: string }[];
+}
+
+/** Una atención en la historia completa (para imprimir o derivar) */
+export const VISIT_HISTORY_SELECT = {
+  id: true,
+  type: true,
+  status: true,
+  openedAt: true,
+  closedAt: true,
+  reason: true,
+  weightKg: true,
+  temperatureC: true,
+  anamnesis: true,
+  heartRate: true,
+  respiratoryRate: true,
+  capillaryRefillS: true,
+  mucosa: true,
+  hydration: true,
+  bodyCondition: true,
+  physicalExam: true,
+  diagnosis: true,
+  diagnosisDefinitive: true,
+  notes: true,
+  attendedBy: { select: { id: true, fullName: true } },
+  addenda: {
+    select: {
+      id: true,
+      text: true,
+      createdAt: true,
+      author: { select: { id: true, fullName: true } },
+    },
+    orderBy: { id: 'asc' },
+  },
+  immunizations: { select: IMMUNIZATION_SELECT, orderBy: { id: 'asc' } },
+  prescriptions: {
+    select: PRESCRIPTION_SUMMARY_SELECT,
+    orderBy: { id: 'asc' },
+  },
+} satisfies Prisma.VisitSelect;
+
+type HistoryRow = Prisma.VisitGetPayload<{
+  select: typeof VISIT_HISTORY_SELECT;
+}>;
+
+export type VisitHistoryItem = Omit<
+  HistoryRow,
+  | 'weightKg'
+  | 'temperatureC'
+  | 'capillaryRefillS'
+  | 'immunizations'
+  | 'prescriptions'
+> & {
+  weightKg: number | null;
+  temperatureC: number | null;
+  capillaryRefillS: number | null;
+  immunizations: ImmunizationView[];
+  prescriptions: PrescriptionSummary[];
+};
+
+export function toVisitHistoryItem(row: HistoryRow): VisitHistoryItem {
+  return {
+    ...row,
+    weightKg: num(row.weightKg),
+    temperatureC: num(row.temperatureC),
+    capillaryRefillS: num(row.capillaryRefillS),
+    immunizations: row.immunizations.map(toImmunizationView),
+    prescriptions: row.prescriptions.map(toPrescriptionSummary),
+  };
+}
+
+/** Historia clínica completa de una mascota */
+export interface PetHistory {
+  clinic: {
+    name: string;
+    address: string | null;
+    phone: string | null;
+    logoUrl: string | null;
+  };
+  pet: {
+    id: number;
+    number: number;
+    name: string;
+    species: string;
+    breed: string | null;
+    sex: string | null;
+    birthDate: string | null;
+    allergies: string | null;
+  };
+  client: { id: number; name: string; phone: string };
+  /** Pesos tomados en las atenciones, del más antiguo al más reciente */
+  weights: { at: Date; kg: number }[];
+  /** Consultas e internamientos (sin anuladas ni grooming), de la más reciente a la más antigua */
+  visits: VisitHistoryItem[];
 }

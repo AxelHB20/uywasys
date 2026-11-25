@@ -122,6 +122,16 @@ class ProductFields {
   @IsBoolean()
   controlled?: boolean;
 
+  /** Se cobra al cliente; por defecto todo menos los insumos */
+  @IsOptional()
+  @IsBoolean()
+  chargeable?: boolean;
+
+  /** Tiene lote y vencimiento; por defecto todo menos los accesorios */
+  @IsOptional()
+  @IsBoolean()
+  tracksExpiry?: boolean;
+
   @IsOptional()
   @Matches(/^[A-Z0-9]{2,3}$/, {
     message: 'La unidad SUNAT no es válida (ej.: NIU)',
@@ -212,6 +222,11 @@ export class PurchaseDto {
   @MaxLength(120)
   supplier?: string | null;
 
+  /** Proveedor de la lista (si viene, manda sobre el texto) */
+  @ValidateIf(notNull)
+  @IsInt({ message: 'Elige el proveedor' })
+  supplierId?: number | null;
+
   @Transform(emptyToNull)
   @ValidateIf(notNull)
   @IsString()
@@ -289,14 +304,23 @@ export class ListProductsQuery {
   @IsIn(CATEGORIES)
   category?: ProductCategory;
 
-  /** low = stock bajo · expiring = vence en 60 días o ya venció */
+  /**
+   * low = stock bajo · expiring = vence en 60 días o ya venció · expired = vencidos ·
+   * exp30 = vence en 30 días · exp60 = vence en 31 a 60 días (lotes con stock)
+   */
   @IsOptional()
-  @IsIn(['all', 'low', 'expiring'])
-  filter?: 'all' | 'low' | 'expiring';
+  @IsIn(['all', 'low', 'expiring', 'expired', 'exp30', 'exp60'])
+  filter?: 'all' | 'low' | 'expiring' | 'expired' | 'exp30' | 'exp60';
 
   @IsOptional()
   @IsIn(['active', 'inactive', 'all'])
   status?: 'active' | 'inactive' | 'all';
+
+  /** Solo lo que se cobra al cliente (buscadores de cobro) */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  chargeable?: boolean;
 
   @IsOptional()
   @Type(() => Number)

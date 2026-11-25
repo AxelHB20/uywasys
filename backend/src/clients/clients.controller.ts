@@ -35,6 +35,7 @@ import {
   CreateClientDto,
   ListClientsQuery,
   LookupClientQuery,
+  LookupPhoneQuery,
   UpdateClientDto,
 } from './dto/client.dto.js';
 import { AnonymizeClientDto } from './dto/privacy.dto.js';
@@ -61,6 +62,16 @@ export class ClientsController {
       version: CONSENT_VERSION,
       text: CONSENT_TEXT,
       marketingText: MARKETING_CONSENT_TEXT,
+    };
+  }
+
+  @Get('lookup-phone')
+  async lookupPhone(
+    @CurrentUser() user: AuthUser,
+    @Query() query: LookupPhoneQuery,
+  ) {
+    return {
+      client: await this.clients.lookupPhone(user.clinicId, query.phone),
     };
   }
 

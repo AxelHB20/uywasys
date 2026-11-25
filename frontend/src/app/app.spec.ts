@@ -64,17 +64,17 @@ describe('App', () => {
       .expectOne('/api/health')
       .flush({ status: 'ok', database: 'up', time: '2026-10-27T19:00:00Z' });
     http.expectOne('/api/clinic/setup').flush({ profileComplete: false, teamMembers: 0 });
-    http
-      .expectOne('/api/dashboard')
-      .flush({
-        day: '2026-10-27',
-        queue: { arrived: 0, waiting: 0, inProgress: 0, urgent: 0, done: 0, items: [] },
-        clients: { active: 0, newThisMonth: 0 },
-        pets: { active: 0 },
-    inventory: { expiring: 0, lowStock: 0 },
-    sales: { total: 0, receipts: 0 },
-        recentClients: [],
-      });
+    http.expectOne('/api/dashboard').flush({
+      day: '2026-10-27',
+      queue: { arrived: 0, waiting: 0, inProgress: 0, urgent: 0, done: 0, items: [] },
+      clients: { active: 0, newThisMonth: 0 },
+      pets: { active: 0 },
+      inventory: { expiring: 0, lowStock: 0 },
+      sales: { total: 0, collected: 0, refunded: 0, receipts: 0 },
+      recentClients: [],
+    });
+    // Lo cobrado en el mes (solo el administrador); si falla, el inicio sigue igual
+    http.expectOne('/api/reports/month').flush(null, { status: 500, statusText: 'Error' });
     await fixture.whenStable();
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
@@ -106,17 +106,15 @@ describe('App', () => {
       .expectOne('/api/health')
       .flush({ status: 'ok', database: 'up', time: '2026-10-27T19:00:00Z' });
     http.expectNone('/api/clinic/setup');
-    http
-      .expectOne('/api/dashboard')
-      .flush({
-        day: '2026-10-27',
-        queue: { arrived: 0, waiting: 0, inProgress: 0, urgent: 0, done: 0, items: [] },
-        clients: { active: 0, newThisMonth: 0 },
-        pets: { active: 0 },
-    inventory: { expiring: 0, lowStock: 0 },
-    sales: { total: 0, receipts: 0 },
-        recentClients: [],
-      });
+    http.expectOne('/api/dashboard').flush({
+      day: '2026-10-27',
+      queue: { arrived: 0, waiting: 0, inProgress: 0, urgent: 0, done: 0, items: [] },
+      clients: { active: 0, newThisMonth: 0 },
+      pets: { active: 0 },
+      inventory: { expiring: 0, lowStock: 0 },
+      sales: { total: 0, collected: 0, refunded: 0, receipts: 0 },
+      recentClients: [],
+    });
     await fixture.whenStable();
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('aside')?.textContent,

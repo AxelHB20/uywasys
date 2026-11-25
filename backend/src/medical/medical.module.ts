@@ -3,6 +3,8 @@ import { QueueModule } from '../queue/queue.module.js';
 import { VisitsModule } from '../visits/visits.module.js';
 import { AttachmentsController } from './attachments.controller.js';
 import { AttachmentsService } from './attachments.service.js';
+import { ClinicalTemplatesController } from './clinical-templates.controller.js';
+import { ClinicalTemplatesService } from './clinical-templates.service.js';
 import { ConsentsController } from './consents.controller.js';
 import { ConsentsService } from './consents.service.js';
 import { AppointmentsController } from './appointments.controller.js';
@@ -15,6 +17,8 @@ import { PrescriptionsController } from './prescriptions.controller.js';
 import { PrescriptionsService } from './prescriptions.service.js';
 
 /** Fase 5: módulo médico (vacunas, recetas, citas, presupuestos, adjuntos y consentimientos). */
+import { LabOrdersController } from './lab-orders.controller.js';
+import { LabOrdersService } from './lab-orders.service.js';
 @Module({
   imports: [VisitsModule, QueueModule],
   controllers: [
@@ -24,6 +28,8 @@ import { PrescriptionsService } from './prescriptions.service.js';
     EstimatesController,
     AttachmentsController,
     ConsentsController,
+    ClinicalTemplatesController,
+    LabOrdersController,
   ],
   providers: [
     ImmunizationsService,
@@ -32,6 +38,10 @@ import { PrescriptionsService } from './prescriptions.service.js';
     EstimatesService,
     AttachmentsService,
     ConsentsService,
+    ClinicalTemplatesService,
+    LabOrdersService,
   ],
+  /** El inicio muestra las citas de hoy y los refuerzos que tocan, con la misma lógica */
+  exports: [AppointmentsService, ImmunizationsService],
 })
 export class MedicalModule {}

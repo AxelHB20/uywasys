@@ -11,6 +11,7 @@ import type { Request } from 'express';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
 import { Roles } from '../common/auth/roles.decorator.js';
+import { CLINICAL_ROLES } from '../common/auth/staff-roles.js';
 import {
   CreatePrescriptionDto,
   VoidPrescriptionDto,
@@ -34,6 +35,7 @@ export class PrescriptionsController {
     return this.prescriptions.create(user, id, dto, req.ip);
   }
 
+  @Roles(...CLINICAL_ROLES)
   @Get('prescriptions/:id')
   get(
     @CurrentUser() user: AuthUser,

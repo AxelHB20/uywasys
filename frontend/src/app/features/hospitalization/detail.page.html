@@ -1,0 +1,1147 @@
+<section class="space-y-6">
+  <app-back-link fallback="/hospitalizacion" fallbackLabel="Hospitalización" />
+
+  @if (loading() && !data()) {
+    <div class="card space-y-3 p-6" aria-busy="true" aria-label="Cargando internamiento">
+      <div class="h-6 w-64 animate-pulse rounded bg-slate-100"></div>
+      <div class="h-4 w-40 animate-pulse rounded bg-slate-100"></div>
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
+    </div>
+  } @else if (data(); as d) {
+    <!-- Encabezado -->
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex min-w-0 items-center gap-4">
+        <span
+          class="grid size-14 shrink-0 place-items-center rounded-2xl bg-anil-600 text-white"
+          aria-hidden="true"
+        >
+          <app-icon [name]="icons[d.pet.species]" class="size-7" />
+        </span>
+        <div class="min-w-0">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            {{ d.code }} · Ingresó {{ d.admittedAt | fecha: 'datetime' }}
+          </p>
+          <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
+            {{ d.pet.name }}
+            @if (d.cage) {
+              <span
+                class="ml-1 align-middle rounded-lg bg-slate-100 px-2 py-0.5 text-sm font-semibold text-slate-700"
+                >{{ d.cage }}</span
+              >
+            }
+          </h1>
+          <p class="mt-0.5 text-sm text-slate-600">
+            {{ species[d.pet.species] }}
+            @if (d.pet.breed) {
+              · {{ d.pet.breed }}
+            }
+            @if (d.pet.weightKg) {
+              · {{ d.pet.weightKg }} kg
+            }
+            ·
+            <a
+              [routerLink]="['/clientes', d.client.id]"
+              class="font-medium text-anil-700 hover:underline"
+              >{{ d.client.name }}</a
+            >
+            @if (d.client.phone) {
+              <span class="tabular-nums"> · {{ formatPhone(d.client.phone) }}</span>
+            }
+          </p>
+        </div>
+      </div>
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <app-badge [tone]="statusTone[d.status]">{{ statusLabels[d.status] }}</app-badge>
+        @if (active()) {
+          <a
+            [routerLink]="['/mascotas', d.pet.id, 'consentimiento']"
+            [queryParams]="{ atencion: d.visitId, tipo: 'HOSPITALIZATION' }"
+            class="btn btn-ghost"
+          >
+            <app-icon name="pen-line" class="size-4" /> Consentimiento
+          </a>
+        }
+        <a [routerLink]="['/atenciones', d.visitId]" class="btn btn-secondary">
+          <app-icon name="receipt" class="size-4" /> Atención y cuenta
+        </a>
+        @if (active() && canManage()) {
+          <button type="button" class="btn btn-primary" (click)="askDischarge()">
+            <app-icon name="check" class="size-4" /> Dar de alta
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Alertas del paciente -->
+    @if (d.pet.aggressive || d.pet.allergies) {
+      <div class="grid gap-3 sm:grid-cols-2" role="alert">
+        @if (d.pet.aggressive) {
+          <div class="flex gap-3 rounded-2xl bg-rose-50 p-4 text-rose-900 ring-1 ring-rose-200">
+            <app-icon name="alert" class="mt-0.5 size-5 shrink-0 text-rose-600" />
+            <p><span class="font-semibold">Agresivo.</span> Manipular con precaución.</p>
+          </div>
+        }
+        @if (d.pet.allergies) {
+          <div class="flex gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900 ring-1 ring-amber-200">
+            <app-icon name="alert" class="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <p><span class="font-semibold">Alergias:</span> {{ d.pet.allergies }}</p>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Vino con entrega a casa: al darle de alta se lo llevan -->
+    @if (d.homeDelivery; as home) {
+      @if (!home.deliveredAt) {
+        <div
+          class="flex flex-col gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200 sm:flex-row sm:items-center"
+        >
+          <app-icon name="map-pin" class="size-5 shrink-0 text-amber-600" />
+          <p class="min-w-0 flex-1">
+            <span class="font-semibold">{{ transportLabels[home.transport] }}:</span>
+            al darle de alta, se lleva a su casa.
+            @if (home.address) {
+              <span class="block text-amber-800">{{ home.address }}</span>
+            }
+          </p>
+          @if (!active() && canDeliver()) {
+            <button
+              type="button"
+              class="btn btn-secondary shrink-0"
+              [disabled]="saving()"
+              (click)="deliveredHome(home.queueEntryId)"
+            >
+              Entregado en casa
+            </button>
+          }
+        </div>
+      }
+    }
+
+    @if (!active()) {
+      <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 ring-1 ring-slate-200">
+        <p class="font-medium text-slate-900">
+          {{ d.status === 'DECEASED' ? 'Falleció' : 'Dado de alta' }}
+          {{ d.dischargedAt | fecha: 'datetime' }}
+          @if (d.dischargedBy) {
+            · {{ d.dischargedBy.fullName }}
+          }
+          @if (d.daysCharged) {
+            · {{ d.daysCharged }} {{ d.daysCharged === 1 ? 'día cobrado' : 'días cobrados' }}
+          }
+        </p>
+        @if (d.dischargeNotes) {
+          <p class="mt-1 whitespace-pre-line">{{ d.dischargeNotes }}</p>
+        }
+      </div>
+    }
+
+    <!-- Datos del internamiento -->
+    <dl class="card grid grid-cols-2 gap-x-6 gap-y-4 p-5 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="col-span-2 sm:col-span-3 lg:col-span-2">
+        <dt class="text-xs font-medium text-slate-500">Motivo y diagnóstico</dt>
+        <dd class="mt-0.5 text-sm text-slate-900">
+          {{ d.reason }}
+          @if (d.diagnosis) {
+            <span class="block text-slate-700">Dx: {{ d.diagnosis }}</span>
+          }
+        </dd>
+      </div>
+      <div>
+        <dt class="text-xs font-medium text-slate-500">Estancia</dt>
+        <dd class="mt-0.5 text-sm font-semibold text-slate-900">
+          {{ active() ? 'Día ' + d.days : d.days + (d.days === 1 ? ' día' : ' días') }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-xs font-medium text-slate-500">Responsable</dt>
+        <dd class="mt-0.5 truncate text-sm text-slate-900">{{ d.vet.fullName }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs font-medium text-slate-500">Cuenta</dt>
+        <dd class="mt-0.5 text-sm text-slate-900 tabular-nums">
+          {{ money(d.account.total) }}
+          @if (d.account.pending > 0) {
+            <span class="block text-xs text-amber-800"
+              >{{ money(d.account.pending) }} por cobrar</span
+            >
+          }
+        </dd>
+      </div>
+      <div class="flex items-start justify-end">
+        @if (active() && canManage()) {
+          <button type="button" class="btn btn-ghost h-10 px-3" (click)="askEdit()">
+            <app-icon name="pencil" class="size-4" /> Editar
+          </button>
+        }
+      </div>
+    </dl>
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)] lg:items-start">
+      <div class="min-w-0 space-y-6">
+        <!-- Hoja de tratamiento -->
+        <section class="card p-5 sm:p-6" aria-labelledby="sheet-title">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="sheet-title" class="font-display text-lg font-semibold text-slate-900">
+                Hoja de tratamiento
+              </h2>
+              <p class="mt-0.5 text-sm text-slate-600">
+                Toca una hora para registrar la dosis. Últimas 24 h y próximas 24 h.
+              </p>
+            </div>
+            @if (active() && canManage()) {
+              <button type="button" class="btn btn-primary h-10 px-3.5" (click)="askOrder()">
+                <app-icon name="plus" class="size-4" /> Nueva indicación
+              </button>
+            }
+          </div>
+
+          <ul
+            class="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-600"
+            aria-label="Leyenda"
+          >
+            @for (s of legend; track s) {
+              <li class="inline-flex items-center gap-1.5">
+                <span
+                  class="grid size-5 place-items-center rounded-md ring-1"
+                  [class]="slotStyle[s].chip"
+                  aria-hidden="true"
+                >
+                  @if (slotStyle[s].icon; as ic) {
+                    <app-icon [name]="ic" class="size-3" />
+                  }
+                </span>
+                {{ slotLabels[s] }}
+              </li>
+            }
+          </ul>
+
+          @if (active() && overdue().length; as count) {
+            @let first = overdue()[0];
+            <div
+              class="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-900 ring-1 ring-rose-200"
+              role="status"
+            >
+              <app-icon name="alert" class="size-5 shrink-0 text-rose-600" />
+              <p class="min-w-0 flex-1">
+                <span class="font-semibold"
+                  >{{ count }} {{ count === 1 ? 'dosis atrasada' : 'dosis atrasadas' }}.</span
+                >
+                La más antigua: {{ first.o.description }}, la de {{ when(first.s.at) }}.
+              </p>
+              @if (canRecord(first.s)) {
+                <button
+                  type="button"
+                  class="btn h-9 bg-white px-3 text-rose-800 ring-1 ring-rose-300 hover:bg-rose-100"
+                  (click)="askDose(first.o, first.s)"
+                >
+                  Registrar esa dosis
+                </button>
+              }
+            </div>
+          }
+
+          @if (!activeOrders().length) {
+            <div
+              class="mt-5 rounded-2xl border border-dashed border-slate-300 px-5 py-8 text-center"
+            >
+              <app-icon name="clipboard-list" class="mx-auto size-7 text-slate-400" />
+              <p class="mt-3 font-medium text-slate-900">Sin indicaciones activas</p>
+              <p class="mt-1 text-sm text-slate-600">
+                @if (active() && canManage()) {
+                  Agrega medicamentos, fluidos, alimentación o controles con su frecuencia.
+                } @else {
+                  El veterinario agrega las indicaciones con su frecuencia.
+                }
+              </p>
+            </div>
+          } @else {
+            <ol class="mt-4 divide-y divide-slate-100 border-t border-slate-100">
+              @for (o of activeOrders(); track o.id) {
+                <li class="py-4">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900">
+                        <span
+                          class="mr-1.5 inline-flex rounded-md bg-anil-50 px-1.5 py-0.5 align-[1px] text-xs font-medium text-anil-700"
+                          >{{ kindLabels[o.kind] }}</span
+                        >
+                        {{ o.description }}
+                        @if (o.dose) {
+                          <span class="font-normal text-slate-700"> · {{ o.dose }}</span>
+                        }
+                        @if (o.route) {
+                          <span class="font-normal text-slate-700"> · {{ o.route }}</span>
+                        }
+                      </p>
+                      <p class="text-sm text-slate-600">
+                        {{ frequencyLabel(o.everyHours) }} · desde {{ when(o.startsAt) }}
+                        @if (o.endsAt) {
+                          · hasta {{ when(o.endsAt) }}
+                        }
+                      </p>
+                      @if (o.notes) {
+                        <p class="mt-1 text-sm text-slate-700">{{ o.notes }}</p>
+                      }
+                    </div>
+                    @if (active() && canManage()) {
+                      <button
+                        type="button"
+                        class="btn btn-ghost h-9 px-2.5 text-xs text-slate-500 hover:text-rose-700"
+                        [disabled]="saving()"
+                        (click)="stopOrder(o)"
+                        [attr.aria-label]="'Suspender ' + o.description"
+                      >
+                        <app-icon name="ban" class="size-4" /> Suspender
+                      </button>
+                    }
+                  </div>
+
+                  @if (o.slots.length) {
+                    <div
+                      class="slot-row -mx-1 mt-3 flex snap-x scroll-px-1 gap-1.5 overflow-x-auto px-1 pb-2 [mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%-28px),transparent)]"
+                      [attr.data-target]="targetIndex(o)"
+                      role="list"
+                      [attr.aria-label]="'Horas de ' + o.description"
+                    >
+                      @for (s of o.slots; track s.at; let i = $index) {
+                        @if (newDay(o.slots, i)) {
+                          <span
+                            class="flex shrink-0 items-center px-1 text-[11px] font-semibold tracking-wide text-slate-500 uppercase"
+                            role="presentation"
+                            >{{ day(s.at) }}</span
+                          >
+                        }
+                        <span role="listitem" class="shrink-0" [attr.data-slot]="i">
+                          <button
+                            type="button"
+                            class="flex h-12 min-w-16 flex-col items-center justify-center rounded-xl px-2 text-xs ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-anil-500 disabled:cursor-default"
+                            [class]="slotStyle[s.state].chip"
+                            [disabled]="!canRecord(s)"
+                            [attr.title]="slotTitle(o, s)"
+                            [attr.aria-label]="slotTitle(o, s)"
+                            (click)="askDose(o, s)"
+                          >
+                            <span class="font-semibold tabular-nums">{{ hourOf(s.at) }}</span>
+                            <span class="flex items-center gap-0.5 text-[10px]">
+                              @if (slotStyle[s.state].icon; as ic) {
+                                <app-icon [name]="ic" class="size-3" />
+                              }
+                              {{ slotLabels[s.state] }}
+                            </span>
+                          </button>
+                        </span>
+                      }
+                    </div>
+                  } @else {
+                    <p class="mt-3 text-sm text-slate-600">Sin horas en las próximas 24 h.</p>
+                  }
+                </li>
+              }
+            </ol>
+          }
+
+          @if (stoppedOrders().length) {
+            <button
+              type="button"
+              class="mt-4 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+              [attr.aria-expanded]="showStopped()"
+              (click)="showStopped.set(!showStopped())"
+            >
+              <app-icon
+                name="chevron-down"
+                class="size-4 transition-transform"
+                [class.rotate-180]="showStopped()"
+              />
+              {{ active() ? 'Suspendidas o terminadas' : 'Indicaciones' }} ({{
+                stoppedOrders().length
+              }})
+            </button>
+            @if (showStopped()) {
+              <ul class="mt-2 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+                @for (o of stoppedOrders(); track o.id) {
+                  <li class="px-4 py-3 text-sm">
+                    <p class="text-slate-800">
+                      <span class="font-medium">{{ o.description }}</span>
+                      @if (o.dose) {
+                        · {{ o.dose }}
+                      }
+                      · {{ frequencyLabel(o.everyHours) }}
+                    </p>
+                    <p class="text-xs text-slate-500">
+                      {{ when(o.startsAt) }} →
+                      {{ o.stoppedAt ? when(o.stoppedAt) : o.endsAt ? when(o.endsAt) : '' }}
+                      · {{ givenCount(o) }} dadas
+                    </p>
+                  </li>
+                }
+              </ul>
+            }
+          }
+        </section>
+
+        <!-- Evolución -->
+        <section class="card p-5 sm:p-6" aria-labelledby="evolution-title">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="evolution-title" class="font-display text-lg font-semibold text-slate-900">
+              Evolución
+            </h2>
+            <div
+              role="radiogroup"
+              aria-label="Mostrar"
+              class="flex gap-1 rounded-xl bg-slate-100 p-1 text-sm"
+            >
+              @for (f of filters; track f.value) {
+                <button
+                  type="button"
+                  role="radio"
+                  [attr.aria-checked]="filter() === f.value"
+                  class="min-h-9 rounded-lg px-3 font-medium transition-colors"
+                  [class]="
+                    filter() === f.value
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  "
+                  (click)="filter.set(f.value); showAll.set(false)"
+                >
+                  {{ f.label }}
+                </button>
+              }
+            </div>
+          </div>
+          @if (active()) {
+            <form class="mt-4" (submit)="$event.preventDefault(); saveNote()" novalidate>
+              <label for="hz-note" class="field-label">Nota de evolución</label>
+              <textarea
+                id="hz-note"
+                [formControl]="note"
+                rows="2"
+                maxlength="500"
+                class="field-input h-auto py-2.5"
+                placeholder="Cómo está: ánimo, apetito, vómitos, deposiciones, orina"
+                [attr.aria-invalid]="bad(note)"
+              ></textarea>
+              @if (bad(note)) {
+                <p class="field-error">Escribe la nota (hasta 500 caracteres).</p>
+              }
+              <div class="mt-2 flex justify-end">
+                <button type="submit" class="btn btn-secondary h-10" [disabled]="saving()">
+                  <app-icon name="plus" class="size-4" /> Agregar nota
+                </button>
+              </div>
+            </form>
+          }
+
+          @if (timeline().length) {
+            <ol class="mt-5 space-y-4" aria-label="Registro del internamiento">
+              @for (e of shown(); track e.id; let i = $index) {
+                @if (entryDay(shown(), i); as label) {
+                  <li
+                    class="flex items-center gap-3 pt-1 text-xs font-semibold text-slate-500 first:pt-0"
+                    role="presentation"
+                  >
+                    <span class="first-letter:uppercase">{{ label }}</span>
+                    <span class="h-px flex-1 bg-slate-200"></span>
+                  </li>
+                }
+                <li class="flex gap-3">
+                  <span
+                    class="grid size-8 shrink-0 place-items-center rounded-lg"
+                    [class]="
+                      e.kind === 'VITALS'
+                        ? 'bg-rose-50 text-rose-700'
+                        : e.kind === 'NOTE'
+                          ? 'bg-anil-50 text-anil-700'
+                          : e.skipped
+                            ? 'bg-slate-100 text-slate-600'
+                            : 'bg-emerald-50 text-emerald-700'
+                    "
+                    aria-hidden="true"
+                  >
+                    <app-icon [name]="entryIcon(e)" class="size-4" />
+                  </span>
+                  <div class="min-w-0 flex-1 text-sm">
+                    <p class="text-slate-900">
+                      @switch (e.kind) {
+                        @case ('DOSE') {
+                          <span class="font-medium">{{ e.skipped ? 'Omitida' : 'Dada' }}:</span>
+                          {{ e.order?.description }}
+                          @if (e.scheduledAt) {
+                            <span class="text-slate-600"
+                              >(la de las {{ hourOf(e.scheduledAt) }})</span
+                            >
+                          }
+                        }
+                        @case ('VITALS') {
+                          <span class="font-medium">Signos:</span> {{ vitalsText(e) }}
+                        }
+                        @default {
+                          <span class="whitespace-pre-line">{{ e.notes }}</span>
+                        }
+                      }
+                    </p>
+                    @if (e.kind !== 'NOTE' && e.notes) {
+                      <p class="text-slate-700">{{ e.notes }}</p>
+                    }
+                    <p class="text-xs text-slate-500">{{ when(e.at) }} · {{ e.by.fullName }}</p>
+                  </div>
+                </li>
+              }
+            </ol>
+            @if (timeline().length > shown().length) {
+              <button type="button" class="btn btn-ghost mt-3 w-full" (click)="showAll.set(true)">
+                Ver todo ({{ timeline().length }})
+              </button>
+            }
+          } @else {
+            <p class="mt-4 text-sm text-slate-600">Aún no hay registros.</p>
+          }
+        </section>
+      </div>
+
+      <!-- Signos vitales -->
+      <aside class="space-y-6 lg:sticky lg:top-24">
+        <section class="card p-5" aria-labelledby="vitals-title">
+          <div class="flex items-center justify-between gap-2">
+            <h2 id="vitals-title" class="font-display text-lg font-semibold text-slate-900">
+              Signos vitales
+            </h2>
+            @if (active()) {
+              <button type="button" class="btn btn-secondary h-10 px-3" (click)="askVitals()">
+                <app-icon name="plus" class="size-4" /> Registrar
+              </button>
+            }
+          </div>
+          @if (lastVitals(); as v) {
+            @if (staleVitals()) {
+              <p
+                class="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200"
+              >
+                <app-icon name="clock" class="mt-px size-3.5 shrink-0" />
+                Último control {{ relative(v.at) }} ({{ when(v.at) }}): toca registrar
+              </p>
+            } @else {
+              <p class="mt-1 text-xs text-slate-500">
+                Último control {{ relative(v.at) }} ({{ when(v.at) }})
+              </p>
+            }
+            <dl class="mt-4 grid grid-cols-2 gap-3">
+              <div
+                class="rounded-xl p-3 ring-1"
+                [class]="
+                  tempFlag(v.temperatureC) === 'high'
+                    ? 'bg-rose-50 ring-rose-200'
+                    : tempFlag(v.temperatureC) === 'low'
+                      ? 'bg-sky-50 ring-sky-200'
+                      : 'bg-slate-50 ring-slate-200'
+                "
+              >
+                <dt class="flex items-center gap-1 text-xs font-medium text-slate-600">
+                  <app-icon name="thermometer" class="size-3.5" /> Temperatura
+                </dt>
+                <dd class="mt-1 font-display text-xl font-semibold text-slate-900 tabular-nums">
+                  {{ v.temperatureC ?? '—' }}<span class="text-sm font-normal"> °C</span>
+                  @if (tempFlag(v.temperatureC); as f) {
+                    <span
+                      class="ml-1 align-middle text-xs font-semibold"
+                      [class]="f === 'high' ? 'text-rose-700' : 'text-sky-700'"
+                      >{{ f === 'high' ? 'Alta' : 'Baja' }}</span
+                    >
+                  }
+                </dd>
+              </div>
+              @let heartRateFlag = vitalFlag('heartRate', v.heartRate);
+              <div
+                class="rounded-xl p-3 ring-1"
+                [class]="
+                  heartRateFlag?.level === 'danger'
+                    ? 'bg-rose-50 ring-rose-200'
+                    : heartRateFlag
+                      ? 'bg-amber-50 ring-amber-200'
+                      : 'bg-slate-50 ring-slate-200'
+                "
+              >
+                <dt class="flex items-center gap-1 text-xs font-medium text-slate-600">
+                  <app-icon name="heart-pulse" class="size-3.5" /> FC
+                </dt>
+                <dd class="mt-1 font-display text-xl font-semibold text-slate-900 tabular-nums">
+                  {{ v.heartRate ?? '—' }}<span class="text-sm font-normal"> lpm</span>
+                </dd>
+                @if (heartRateFlag; as f) {
+                  <p
+                    class="mt-0.5 text-[11px] leading-tight font-medium"
+                    [class]="f.level === 'danger' ? 'text-rose-700' : 'text-amber-800'"
+                  >
+                    {{ f.text }}
+                  </p>
+                }
+              </div>
+              @let respiratoryRateFlag = vitalFlag('respiratoryRate', v.respiratoryRate);
+              <div
+                class="rounded-xl p-3 ring-1"
+                [class]="
+                  respiratoryRateFlag?.level === 'danger'
+                    ? 'bg-rose-50 ring-rose-200'
+                    : respiratoryRateFlag
+                      ? 'bg-amber-50 ring-amber-200'
+                      : 'bg-slate-50 ring-slate-200'
+                "
+              >
+                <dt class="text-xs font-medium text-slate-600">FR</dt>
+                <dd class="mt-1 font-display text-xl font-semibold text-slate-900 tabular-nums">
+                  {{ v.respiratoryRate ?? '—' }}<span class="text-sm font-normal"> rpm</span>
+                </dd>
+                @if (respiratoryRateFlag; as f) {
+                  <p
+                    class="mt-0.5 text-[11px] leading-tight font-medium"
+                    [class]="f.level === 'danger' ? 'text-rose-700' : 'text-amber-800'"
+                  >
+                    {{ f.text }}
+                  </p>
+                }
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                <dt class="text-xs font-medium text-slate-600">Mucosas</dt>
+                <dd class="mt-1 truncate text-base font-semibold text-slate-900">
+                  {{ v.mucosa ?? '—' }}
+                </dd>
+              </div>
+            </dl>
+            @if (d.vitals.length >= 2) {
+              <div class="mt-5">
+                <p class="text-xs font-medium text-slate-600">
+                  Temperatura · <span class="text-emerald-700">franja normal</span>
+                </p>
+                <app-temperature-chart class="mt-2" [vitals]="d.vitals" [species]="d.pet.species" />
+              </div>
+            }
+            <div class="mt-4 overflow-x-auto">
+              <table class="w-full text-sm">
+                <caption class="sr-only">
+                  Últimos controles de signos vitales
+                </caption>
+                <thead>
+                  <tr class="text-left text-xs text-slate-500">
+                    <th scope="col" class="py-1.5 font-medium">Hora</th>
+                    <th scope="col" class="py-1.5 text-right font-medium">T°</th>
+                    <th scope="col" class="py-1.5 text-right font-medium">FC</th>
+                    <th scope="col" class="py-1.5 text-right font-medium">FR</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 tabular-nums">
+                  @for (r of d.vitals.slice(0, 6); track r.at) {
+                    <tr>
+                      <th scope="row" class="py-1.5 text-left font-normal text-slate-600">
+                        {{ when(r.at) }}
+                      </th>
+                      <td
+                        class="py-1.5 text-right"
+                        [class]="
+                          tempFlag(r.temperatureC) === 'high'
+                            ? 'font-semibold text-rose-700'
+                            : tempFlag(r.temperatureC) === 'low'
+                              ? 'font-semibold text-sky-700'
+                              : 'text-slate-900'
+                        "
+                      >
+                        {{ r.temperatureC ?? '—' }}
+                      </td>
+                      <td class="py-1.5 text-right text-slate-900">{{ r.heartRate ?? '—' }}</td>
+                      <td class="py-1.5 text-right text-slate-900">
+                        {{ r.respiratoryRate ?? '—' }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <p class="mt-3 text-sm text-slate-600">
+              Aún no hay controles. Registra temperatura, frecuencia cardiaca y respiratoria.
+            </p>
+          }
+        </section>
+      </aside>
+    </div>
+  }
+</section>
+
+<!-- Nueva indicación -->
+<app-modal
+  [open]="modal() === 'order'"
+  title="Nueva indicación"
+  description="Se agrega a la hoja con sus horas a partir de la primera dosis."
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  <form
+    id="order-form"
+    [formGroup]="orderForm"
+    (ngSubmit)="saveOrder()"
+    novalidate
+    class="space-y-4"
+  >
+    <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div>
+        <label for="or-kind" class="field-label">Tipo</label>
+        <select id="or-kind" formControlName="kind" class="field-input">
+          @for (k of kinds; track k) {
+            <option [value]="k">{{ kindLabels[k] }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="or-desc" class="field-label">Indicación</label>
+        <input
+          id="or-desc"
+          formControlName="description"
+          class="field-input"
+          maxlength="150"
+          autocomplete="off"
+          placeholder="Ej.: Metronidazol, Lactato de Ringer, Control de glucosa"
+          [attr.aria-invalid]="bad(orderForm.controls.description)"
+        />
+        @if (bad(orderForm.controls.description)) {
+          <p class="field-error">Describe la indicación.</p>
+        }
+      </div>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="or-dose" class="field-label">Dosis</label>
+        <input
+          id="or-dose"
+          formControlName="dose"
+          class="field-input"
+          maxlength="80"
+          autocomplete="off"
+          placeholder="Ej.: 15 mg/kg, 40 ml/h"
+        />
+      </div>
+      <div>
+        <label for="or-route" class="field-label">Vía</label>
+        <input
+          id="or-route"
+          formControlName="route"
+          class="field-input"
+          maxlength="40"
+          list="or-routes"
+          autocomplete="off"
+        />
+        <datalist id="or-routes">
+          @for (r of routes; track r) {
+            <option [value]="r"></option>
+          }
+        </datalist>
+      </div>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div>
+        <label for="or-every" class="field-label">Frecuencia</label>
+        <select id="or-every" formControlName="everyHours" class="field-input">
+          @for (o of everyOptions; track o.label) {
+            <option [ngValue]="o.value">{{ o.label }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="or-start" class="field-label">Primera dosis</label>
+        <input
+          id="or-start"
+          type="datetime-local"
+          formControlName="startsAt"
+          class="field-input"
+          [attr.aria-invalid]="bad(orderForm.controls.startsAt)"
+        />
+      </div>
+      <div>
+        <label for="or-days" class="field-label"
+          >Días <span class="font-normal text-slate-500">(opc.)</span></label
+        >
+        <input
+          id="or-days"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="60"
+          formControlName="durationDays"
+          class="field-input"
+          placeholder="Hasta el alta"
+        />
+      </div>
+    </div>
+    <div>
+      <label for="or-notes" class="field-label"
+        >Notas <span class="font-normal text-slate-500">(opcional)</span></label
+      >
+      <input
+        id="or-notes"
+        formControlName="notes"
+        class="field-input"
+        maxlength="300"
+        autocomplete="off"
+        placeholder="Ej.: diluir en 10 ml de suero, pasar lento"
+      />
+    </div>
+  </form>
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" [disabled]="saving()" (click)="closeModal()">
+      Cancelar
+    </button>
+    <button type="submit" form="order-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Agregar a la hoja
+    </button>
+  </div>
+</app-modal>
+
+<!-- Registrar dosis -->
+<app-modal
+  [open]="modal() === 'dose'"
+  title="Registrar dosis"
+  [description]="
+    dosing()
+      ? dosing()!.order.description +
+        (dosing()!.order.dose ? ' · ' + dosing()!.order.dose : '') +
+        (dosing()!.order.route ? ' · ' + dosing()!.order.route : '') +
+        ' — la de las ' +
+        hourOf(dosing()!.slot.at)
+      : ''
+  "
+  (closed)="closeModal()"
+>
+  <form id="dose-form" [formGroup]="doseForm" (ngSubmit)="saveDose()" novalidate class="space-y-4">
+    <fieldset>
+      <legend class="sr-only">Resultado</legend>
+      <div class="grid gap-2 sm:grid-cols-2">
+        <label
+          class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-4 ring-1 ring-slate-200 has-checked:bg-emerald-50 has-checked:ring-emerald-300"
+        >
+          <input
+            type="radio"
+            formControlName="skipped"
+            [value]="false"
+            class="accent-emerald-600"
+          />
+          <span class="font-medium text-slate-900">Se dio</span>
+        </label>
+        <label
+          class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-4 ring-1 ring-slate-200 has-checked:bg-slate-100 has-checked:ring-slate-400"
+        >
+          <input type="radio" formControlName="skipped" [value]="true" class="accent-slate-600" />
+          <span class="font-medium text-slate-900">No se dio</span>
+        </label>
+      </div>
+    </fieldset>
+    <div>
+      <label for="ds-notes" class="field-label">
+        Nota
+        <span class="font-normal text-slate-500">{{
+          doseForm.controls.skipped.value ? '(¿por qué no se dio?)' : '(opcional)'
+        }}</span>
+      </label>
+      <input
+        id="ds-notes"
+        formControlName="notes"
+        class="field-input"
+        maxlength="500"
+        autocomplete="off"
+        [placeholder]="doseForm.controls.skipped.value ? 'Ej.: vomitó, en ayuno por cirugía' : ''"
+        [attr.aria-invalid]="bad(doseForm.controls.notes)"
+      />
+      @if (bad(doseForm.controls.notes)) {
+        <p class="field-error">Escribe por qué no se dio.</p>
+      }
+    </div>
+  </form>
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" [disabled]="saving()" (click)="closeModal()">
+      Cancelar
+    </button>
+    <button type="submit" form="dose-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Registrar
+    </button>
+  </div>
+</app-modal>
+
+<!-- Signos vitales -->
+<app-modal
+  [open]="modal() === 'vitals'"
+  title="Registrar signos vitales"
+  description="Completa lo que mediste; lo demás puede quedar vacío."
+  (closed)="closeModal()"
+>
+  <form
+    id="vitals-form"
+    [formGroup]="vitalsForm"
+    (ngSubmit)="saveVitals()"
+    novalidate
+    class="space-y-4"
+  >
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label for="vt-temp" class="field-label">Temperatura (°C)</label>
+        <input
+          id="vt-temp"
+          type="number"
+          inputmode="decimal"
+          step="0.1"
+          formControlName="temperatureC"
+          class="field-input"
+          [attr.aria-invalid]="bad(vitalsForm.controls.temperatureC)"
+        />
+        @if (bad(vitalsForm.controls.temperatureC)) {
+          <p class="field-error">Entre 30 y 45 °C.</p>
+        }
+      </div>
+      <div>
+        <label for="vt-hr" class="field-label">FC (lpm)</label>
+        <input
+          id="vt-hr"
+          type="number"
+          inputmode="numeric"
+          formControlName="heartRate"
+          class="field-input"
+          [attr.aria-invalid]="bad(vitalsForm.controls.heartRate)"
+        />
+        @if (bad(vitalsForm.controls.heartRate)) {
+          <p class="field-error">Entre 20 y 400.</p>
+        }
+      </div>
+      <div>
+        <label for="vt-rr" class="field-label">FR (rpm)</label>
+        <input
+          id="vt-rr"
+          type="number"
+          inputmode="numeric"
+          formControlName="respiratoryRate"
+          class="field-input"
+          [attr.aria-invalid]="bad(vitalsForm.controls.respiratoryRate)"
+        />
+        @if (bad(vitalsForm.controls.respiratoryRate)) {
+          <p class="field-error">Entre 4 y 200.</p>
+        }
+      </div>
+      <div>
+        <label for="vt-w" class="field-label">Peso (kg)</label>
+        <input
+          id="vt-w"
+          type="number"
+          inputmode="decimal"
+          step="0.01"
+          formControlName="weightKg"
+          class="field-input"
+        />
+      </div>
+    </div>
+    <div>
+      <label for="vt-muc" class="field-label">Mucosas</label>
+      <select id="vt-muc" formControlName="mucosa" class="field-input">
+        <option value="">—</option>
+        @for (m of mucosaOptions; track m) {
+          <option [value]="m">{{ m }}</option>
+        }
+      </select>
+    </div>
+    <div>
+      <label for="vt-notes" class="field-label"
+        >Nota <span class="font-normal text-slate-500">(opcional)</span></label
+      >
+      <input
+        id="vt-notes"
+        formControlName="notes"
+        class="field-input"
+        maxlength="500"
+        autocomplete="off"
+      />
+    </div>
+  </form>
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" [disabled]="saving()" (click)="closeModal()">
+      Cancelar
+    </button>
+    <button type="submit" form="vitals-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Registrar
+    </button>
+  </div>
+</app-modal>
+
+<!-- Editar -->
+<app-modal [open]="modal() === 'edit'" title="Editar internamiento" (closed)="closeModal()">
+  <form id="edit-form" [formGroup]="editForm" (ngSubmit)="saveEdit()" novalidate class="space-y-4">
+    <div>
+      <label for="ed-cage" class="field-label">Jaula o box</label>
+      <input
+        id="ed-cage"
+        formControlName="cage"
+        class="field-input"
+        maxlength="30"
+        autocomplete="off"
+      />
+    </div>
+    <div>
+      <label for="ed-dx" class="field-label">Diagnóstico</label>
+      <input
+        id="ed-dx"
+        formControlName="diagnosis"
+        class="field-input"
+        maxlength="300"
+        autocomplete="off"
+      />
+    </div>
+  </form>
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" [disabled]="saving()" (click)="closeModal()">
+      Cancelar
+    </button>
+    <button type="submit" form="edit-form" class="btn btn-primary" [disabled]="saving()">
+      Guardar
+    </button>
+  </div>
+</app-modal>
+
+<!-- Alta -->
+<app-modal
+  [open]="modal() === 'discharge'"
+  title="Dar de alta"
+  description="Se cobran los días de estancia, se suspenden las indicaciones y se cierra la atención. Lo pendiente queda por cobrar en caja."
+  [dismissible]="false"
+  (closed)="closeModal()"
+>
+  @if (data(); as d) {
+    <form
+      id="discharge-form"
+      [formGroup]="dischargeForm"
+      (ngSubmit)="saveDischarge()"
+      novalidate
+      class="space-y-4"
+    >
+      <fieldset>
+        <legend class="field-label">Resultado</legend>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <label
+            class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-4 ring-1 ring-slate-200 has-checked:bg-emerald-50 has-checked:ring-emerald-300"
+          >
+            <input
+              type="radio"
+              formControlName="outcome"
+              value="DISCHARGED"
+              class="accent-emerald-600"
+            />
+            <span class="font-medium text-slate-900">Alta médica</span>
+          </label>
+          <label
+            class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-4 ring-1 ring-slate-200 has-checked:bg-slate-100 has-checked:ring-slate-400"
+          >
+            <input
+              type="radio"
+              formControlName="outcome"
+              value="DECEASED"
+              class="accent-slate-600"
+            />
+            <span class="font-medium text-slate-900">Falleció</span>
+          </label>
+        </div>
+      </fieldset>
+      @if (dischargeForm.controls.outcome.value === 'DECEASED') {
+        <p class="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="note">
+          {{ d.pet.name }} quedará registrado como fallecido y dejará de aparecer en recordatorios.
+        </p>
+      }
+      <div class="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div>
+          <label for="dc-service" class="field-label">Estancia a cobrar</label>
+          <select id="dc-service" formControlName="careServiceId" class="field-input">
+            <option [ngValue]="null">No cobrar estancia</option>
+            @for (s of stayServices(); track s.id) {
+              <option [ngValue]="s.id">{{ s.name }} · {{ money(s.price) }}</option>
+            }
+          </select>
+          @if (!stayServices().length) {
+            <p class="field-hint">
+              Crea un servicio de categoría «Hospitalización» en
+              <a routerLink="/servicios" class="font-medium text-anil-700 hover:underline"
+                >Servicios</a
+              >.
+            </p>
+          }
+        </div>
+        <div>
+          <label for="dc-days" class="field-label">Días</label>
+          <input
+            id="dc-days"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            max="90"
+            formControlName="days"
+            class="field-input"
+          />
+        </div>
+      </div>
+      <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm ring-1 ring-slate-200">
+        <p class="flex justify-between gap-3">
+          <span class="text-slate-600">Cuenta actual</span>
+          <span class="tabular-nums text-slate-900">{{ money(d.account.total) }}</span>
+        </p>
+        <p class="flex justify-between gap-3">
+          <span class="text-slate-600">Estancia</span>
+          <span class="tabular-nums text-slate-900">+ {{ money(stayCharge()) }}</span>
+        </p>
+        <p class="mt-1 flex justify-between gap-3 border-t border-slate-200 pt-1.5 font-semibold">
+          <span class="text-slate-900">Total de la atención</span>
+          <span class="tabular-nums text-slate-900">{{
+            money(d.account.total + stayCharge())
+          }}</span>
+        </p>
+      </div>
+      <div>
+        <label for="dc-notes" class="field-label">
+          {{
+            dischargeForm.controls.outcome.value === 'DECEASED'
+              ? 'Observaciones'
+              : 'Indicaciones para casa'
+          }}
+          <span class="font-normal text-slate-500">(opcional)</span>
+        </label>
+        <textarea
+          id="dc-notes"
+          formControlName="notes"
+          rows="3"
+          maxlength="1000"
+          class="field-input h-auto py-2.5"
+          placeholder="Medicación, dieta, cuándo volver a control"
+        ></textarea>
+      </div>
+    </form>
+  }
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" [disabled]="saving()" (click)="closeModal()">
+      Cancelar
+    </button>
+    <button type="submit" form="discharge-form" class="btn btn-primary" [disabled]="saving()">
+      @if (saving()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      {{
+        dischargeForm.controls.outcome.value === 'DECEASED'
+          ? 'Registrar fallecimiento'
+          : 'Dar de alta'
+      }}
+    </button>
+  </div>
+</app-modal>

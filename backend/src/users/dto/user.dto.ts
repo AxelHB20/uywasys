@@ -7,11 +7,8 @@ import {
   IsString,
   Length,
   Matches,
-  Max,
   MaxLength,
   ValidateIf,
-  IsNumber,
-  Min,
 } from 'class-validator';
 import type { Role } from '../../generated/prisma/enums.js';
 
@@ -51,16 +48,6 @@ export class CreateUserDto {
     message: 'La colegiatura solo admite números, letras y guiones',
   })
   licenseNumber?: string | null;
-
-  /** Groomers: % de comisión sobre lo cobrado de sus servicios (null = sin comisión) */
-  @ValidateIf((_, v) => v !== null && v !== undefined)
-  @IsNumber(
-    { maxDecimalPlaces: 2 },
-    { message: 'La comisión admite hasta 2 decimales' },
-  )
-  @Min(0, { message: 'La comisión no puede ser negativa' })
-  @Max(100, { message: 'La comisión no puede pasar de 100 %' })
-  commissionPercent?: number | null;
 }
 
 export class UpdateUserDto {
@@ -80,16 +67,6 @@ export class UpdateUserDto {
     message: 'La colegiatura solo admite números, letras y guiones',
   })
   licenseNumber?: string | null;
-
-  /** Groomers: % de comisión sobre lo cobrado de sus servicios (null = sin comisión) */
-  @ValidateIf((_, v) => v !== null && v !== undefined)
-  @IsNumber(
-    { maxDecimalPlaces: 2 },
-    { message: 'La comisión admite hasta 2 decimales' },
-  )
-  @Min(0, { message: 'La comisión no puede ser negativa' })
-  @Max(100, { message: 'La comisión no puede pasar de 100 %' })
-  commissionPercent?: number | null;
 
   @IsOptional()
   @IsBoolean({ message: 'El estado debe ser activo o inactivo' })

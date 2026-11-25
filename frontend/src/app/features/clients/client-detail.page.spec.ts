@@ -18,6 +18,10 @@ const client: ClientDetail = {
   address: null,
   district: null,
   notes: null,
+  invoiceRuc: null,
+  invoiceName: null,
+  invoiceAddress: null,
+  invoiceEmail: null,
   active: true,
   consentAt: '2026-10-27T15:00:00Z',
   consentVersion: 'v1',
@@ -56,7 +60,26 @@ describe('ClientDetailPage (ficha)', () => {
 
   beforeAll(stubDialog);
 
-  function render(role: 'RECEPTION' | 'GROOMER' | 'VET' | 'ADMIN', data: ClientDetail = client) {
+  const visit = (id: number, petId = 3, petName = 'Toby') => ({
+    id,
+    type: 'CONSULTATION',
+    status: 'CLOSED',
+    reason: `Control ${id}`,
+    weightKg: null,
+    openedAt: '2026-10-27T15:00:00Z',
+    closedAt: '2026-10-27T15:20:00Z',
+    queueEntryId: null,
+    pet: { id: petId, number: 45, name: petName, species: 'DOG' },
+    client: { id: 7, number: 12, name: 'Rosa Quispe' },
+    attendedBy: { id: 2, fullName: 'Dra. Ruiz' },
+    total: 60,
+  });
+
+  function render(
+    role: 'RECEPTION' | 'GROOMER' | 'VET' | 'ADMIN',
+    data: ClientDetail = client,
+    extra: { visits?: unknown[]; inProgress?: { visitId: number; petName: string }[] } = {},
+  ) {
     TestBed.configureTestingModule({
       imports: [ClientDetailPage],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -94,12 +117,13 @@ describe('ClientDetailPage (ficha)', () => {
         },
       ],
       pendingTotal: 40,
+      inProgress: extra.inProgress ?? [],
       receipts: [],
     });
     http
       .expectOne((r) => r.url === '/api/visits' && r.params.get('clientId') === '7')
       .flush({
-        items: [
+        items: extra.visits ?? [
           {
             id: 21,
             type: 'CONSULTATION',
@@ -115,9 +139,20 @@ describe('ClientDetailPage (ficha)', () => {
             total: 60,
           },
         ],
-        total: 1,
+        total: extra.visits?.length ?? 1,
         page: 1,
         pageSize: 20,
+      });
+    fixture.detectChanges();
+    // La tarjeta del portal consulta su estado (no la hay en una ficha anonimizada)
+    for (const req of http.match('/api/clients/7/portal'))
+      req.flush({
+        active: false,
+        createdAt: null,
+        expiresAt: null,
+        lastViewedAt: null,
+        viewCount: 0,
+        createdBy: null,
       });
     fixture.detectChanges();
     return fixture;
@@ -257,5 +292,165 @@ describe('ClientDetailPage (ficha)', () => {
       .filter((b) => !b.closest('dialog'))
       .map((b) => b.textContent?.trim());
     expect(labels).not.toContain('Editar');
+  });
+
+  const pet = (id: number, name: string, over: Partial<ClientDetail['pets'][number]> = {}) => ({
+    ...client.pets[0],
+    id,
+    number: 40 + id,
+    name,
+    allergies: null,
+    aggressive: false,
+    aggressiveNote: null,
+    ...over,
+  });
+
+  it('recepción agenda desde la mascota y el ⋯ trae ingreso a grooming y editar', () => {
+    const fixture = render('RECEPTION');
+    const el: HTMLElement = fixture.nativeElement;
+    const schedule = [...el.querySelectorAll<HTMLAnchorElement>('a')].find(
+      (a) => a.textContent?.trim() === 'Agendar',
+    )!;
+    expect(schedule.getAttribute('href')).toBe(
+      '/citas?nueva=1&petId=3&mascota=Toby&cliente=Rosa%20Quispe',
+    );
+    el.querySelector<HTMLButtonElement>('[aria-label="Más acciones para Toby"]')!.click();
+    fixture.detectChanges();
+    const menu = el.querySelector('[role="menu"]')!;
+    expect(menu.textContent).toContain('Ingreso a grooming');
+    expect(menu.textContent).toContain('Editar mascota');
+    expect(menu.querySelector('a[href="/grooming/ingreso?petId=3"]')).not.toBeNull();
+    // Esc lo cierra
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(el.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('el veterinario ve Atender y agenda desde el ⋯', () => {
+    const fixture = render('VET');
+    const el: HTMLElement = fixture.nativeElement;
+    el.querySelector<HTMLButtonElement>('[aria-label="Más acciones para Toby"]')!.click();
+    fixture.detectChanges();
+    expect(el.querySelector('[role="menu"]')?.textContent).toContain('Agendar cita');
+  });
+
+  it('muestra la próxima cita y avisa si una atención sigue abierta', () => {
+    const startsAt = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    const el: HTMLElement = render(
+      'RECEPTION',
+      {
+        ...client,
+        pets: [
+          {
+            ...client.pets[0],
+            nextAppointment: {
+              id: 9,
+              startsAt,
+              type: 'CONSULTATION',
+              reason: 'Control',
+              vet: null,
+            },
+          },
+        ],
+      },
+      { inProgress: [{ visitId: 21, petName: 'Toby' }] },
+    ).nativeElement;
+    expect(el.textContent).toContain('Próxima cita:');
+    expect(el.textContent).toMatch(/Próxima cita:\s+\S+ \d+ · \d{2}:\d{2} · Control/);
+    expect(el.textContent).toContain('Toby sigue en atención.');
+  });
+
+  it('desde 4 mascotas: buscar y filtrar, con las mismas tarjetas', () => {
+    const fixture = render('RECEPTION', {
+      ...client,
+      pets: [
+        pet(1, 'Manchas', { aggressive: true }),
+        pet(2, 'Michina', { species: 'CAT' }),
+        pet(3, 'Bobby'),
+        pet(4, 'Luna', { allergies: 'Pollo' }),
+      ],
+    });
+    const el: HTMLElement = fixture.nativeElement;
+    const names = () => [...el.querySelectorAll('h3')].map((h) => h.textContent?.trim());
+    expect(names()).toEqual(['Manchas', 'Michina', 'Bobby', 'Luna']);
+    const search = el.querySelector<HTMLInputElement>('#pet-search')!;
+    search.value = 'mich';
+    search.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(names()).toEqual(['Michina']);
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Con alerta'))!.click();
+    fixture.detectChanges();
+    expect(names()).toEqual(['Manchas', 'Luna']);
+    [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Gatos'))!.click();
+    fixture.detectChanges();
+    expect(names()).toEqual(['Michina']);
+  });
+
+  it('con 3 mascotas o menos no hay buscador', () => {
+    const el: HTMLElement = render('RECEPTION').nativeElement;
+    expect(el.querySelector('#pet-search')).toBeNull();
+  });
+
+  it('atenciones: las 5 últimas, "Ver las N" y filtro por mascota', () => {
+    const visits = [1, 2, 3, 4, 5, 6, 7].map((n) =>
+      visit(n, n <= 5 ? 3 : 8, n <= 5 ? 'Toby' : 'Luna'),
+    );
+    const fixture = render('RECEPTION', client, { visits });
+    const el: HTMLElement = fixture.nativeElement;
+    const rows = () => el.querySelectorAll('a[href^="/atenciones/"]').length;
+    expect(rows()).toBe(5);
+    [...el.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Ver las 7 atenciones'))!
+      .click();
+    fixture.detectChanges();
+    expect(rows()).toBe(7);
+    [...el.querySelectorAll('button')]
+      .find((b) => b.textContent?.trim().startsWith('Luna'))!
+      .click();
+    fixture.detectChanges();
+    expect(rows()).toBe(2);
+  });
+
+  it('editar: la factura se agrega aparte y el RUC trae la razón social sin cambiar el nombre', async () => {
+    const fixture = render('RECEPTION');
+    const el: HTMLElement = fixture.nativeElement;
+    [...el.querySelectorAll('button')]
+      .find((b) => !b.closest('dialog') && b.textContent?.trim() === 'Editar')!
+      .click();
+    fixture.detectChanges();
+    expect(el.querySelector('#e-invoice-ruc')).toBeNull();
+    [...el.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Agregar RUC para facturas'))!
+      .click();
+    fixture.detectChanges();
+    const ruc = el.querySelector<HTMLInputElement>('#e-invoice-ruc')!;
+    ruc.value = '20601234565';
+    ruc.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 300));
+    http
+      .expectOne((r) => r.url === '/api/billing/lookup' && r.params.get('number') === '20601234565')
+      .flush({
+        name: 'ALBERGUE PATITAS S.A.C.',
+        address: 'Jr. Arequipa 618',
+        status: 'ACTIVO',
+        condition: 'HABIDO',
+        source: 'APISPERU',
+      });
+    fixture.detectChanges();
+    expect(el.querySelector('#e-invoice-card')?.textContent).toContain('ALBERGUE PATITAS S.A.C.');
+    expect(el.querySelector<HTMLInputElement>('#e-name')?.value ?? 'Rosa Quispe').toBe(
+      'Rosa Quispe',
+    );
+    el.querySelector<HTMLButtonElement>('button[type="submit"][form="client-form"]')!.click();
+    const req = http.expectOne('/api/clients/7');
+    expect(req.request.body).toMatchObject({
+      name: 'Rosa Quispe',
+      invoiceRuc: '20601234565',
+      invoiceName: 'ALBERGUE PATITAS S.A.C.',
+      invoiceAddress: 'Jr. Arequipa 618',
+    });
+    req.flush(client);
   });
 });

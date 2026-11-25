@@ -1,13 +1,21 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { NotificationToastsComponent } from '../notifications/notification-toasts.component';
 import { HeaderComponent } from '../header/header.component';
 import { LayoutService } from '../layout.service';
 import { SidebarComponent } from '../sidebar/sidebar.component';
+import { SystemBannersComponent } from '../notifications/system-banners.component';
 
 /** Estructura principal de la app: menú lateral fijo + barra superior + contenido. */
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, SidebarComponent, HeaderComponent],
+  imports: [
+    RouterOutlet,
+    SidebarComponent,
+    HeaderComponent,
+    NotificationToastsComponent,
+    SystemBannersComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <a
@@ -24,6 +32,8 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
       [class]="layout.collapsed() ? 'lg:pl-24' : 'lg:pl-72'"
     >
       <app-header />
+      <app-notification-toasts />
+      <app-system-banners />
       <main
         id="contenido"
         tabindex="-1"

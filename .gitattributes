@@ -9,3 +9,5 @@ deploy/backup/crontab text eol=lf
 deploy/Caddyfile text eol=lf
 *.Dockerfile text eol=lf
 Dockerfile text eol=lf
+# Los .bat de Windows necesitan CRLF (con LF, "goto" y las etiquetas fallan)
+*.bat text eol=crlf

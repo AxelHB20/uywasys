@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Body,
   Controller,
   Get,
@@ -13,7 +14,7 @@ import type { Request } from 'express';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
 import { Roles } from '../common/auth/roles.decorator.js';
-import { FRONT_DESK_ROLES } from '../common/auth/staff-roles.js';
+import { CASH_ROLES, FRONT_DESK_ROLES } from '../common/auth/staff-roles.js';
 import { ChargesService } from './charges.service.js';
 import type {
   ClientAccount,
@@ -24,6 +25,7 @@ import {
   CreateChargesDto,
   ListShortagesQuery,
   ResolveShortageDto,
+  TransportPriceDto,
   VoidChargeDto,
 } from './dto/charge.dto.js';
 import {
@@ -33,7 +35,13 @@ import {
   OpenVisitDto,
   UpdateVisitDto,
 } from './dto/visit.dto.js';
-import type { ChargeView, VisitDetail } from './visit.views.js';
+import type {
+  ChargeView,
+  PetHistory,
+  VisitContext,
+  VisitDetail,
+} from './visit.views.js';
+import { TransportService } from './transport.service.js';
 import { VisitsService } from './visits.service.js';
 
 /** Atenciones. Todo el personal consulta; atienden veterinario, recepción y administrador. */
@@ -43,7 +51,36 @@ export class VisitsController {
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: ListVisitsQuery) {
-    return this.visits.list(user.clinicId, query);
+    return this.visits.list(user.clinicId, query, user.role);
+  }
+
+  @Get('diagnoses')
+  diagnoses(@CurrentUser() user: AuthUser): Promise<string[]> {
+    return this.visits.diagnoses(user.clinicId, user.role);
+  }
+
+  @Get('pet/:petId/weights')
+  weights(
+    @CurrentUser() user: AuthUser,
+    @Param('petId', ParseIntPipe) petId: number,
+  ): Promise<{ at: Date; kg: number }[]> {
+    return this.visits.weights(user.clinicId, petId, user.role);
+  }
+
+  @Get('pet/:petId/history')
+  history(
+    @CurrentUser() user: AuthUser,
+    @Param('petId', ParseIntPipe) petId: number,
+  ): Promise<PetHistory> {
+    return this.visits.history(user.clinicId, petId, user.role);
+  }
+
+  @Get(':id/context')
+  context(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<VisitContext> {
+    return this.visits.context(user.clinicId, id, user.role);
   }
 
   @Get(':id')
@@ -51,7 +88,7 @@ export class VisitsController {
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
   ): Promise<VisitDetail> {
-    return this.visits.get(user.clinicId, id);
+    return this.visits.get(user.clinicId, id, user.role);
   }
 
   @Roles(...FRONT_DESK_ROLES)
@@ -61,6 +98,11 @@ export class VisitsController {
     @Body() dto: OpenVisitDto,
     @Req() req: Request,
   ): Promise<VisitDetail> {
+    // La consulta queda a nombre de quien la abre: recepción no atiende pacientes
+    if (user.role === 'RECEPTION')
+      throw new ForbiddenException(
+        'La consulta la abre el veterinario. Pasa al paciente a "En espera".',
+      );
     return this.visits.open(user, dto, req.ip);
   }
 
@@ -110,7 +152,10 @@ export class VisitsController {
 /** Cargos y cuenta del cliente. */
 @Controller()
 export class ChargesController {
-  constructor(private readonly charges: ChargesService) {}
+  constructor(
+    private readonly charges: ChargesService,
+    private readonly transport: TransportService,
+  ) {}
 
   @Roles(...FRONT_DESK_ROLES)
   @Post('charges')
@@ -131,6 +176,26 @@ export class ChargesController {
     @Req() req: Request,
   ): Promise<ChargeView> {
     return this.charges.void(user, id, dto, req.ip);
+  }
+
+  @Roles(...CASH_ROLES)
+  @Patch('charges/:id/transport-price')
+  transportPrice(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: TransportPriceDto,
+    @Req() req: Request,
+  ): Promise<ChargeView> {
+    return this.transport.changePrice(user, id, dto.price, req.ip);
+  }
+
+  /** Último precio de movilidad del cliente: se propone al marcar la movilidad */
+  @Get('clients/:id/transport-price')
+  async lastTransportPrice(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{ price: number | null }> {
+    return { price: await this.transport.lastPrice(user.clinicId, id) };
   }
 
   @Get('clients/:id/account')

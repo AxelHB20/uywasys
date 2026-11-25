@@ -95,6 +95,6 @@ describe('ConsentSignPage (consentimiento informado)', () => {
     });
     req.flush({ id: 5, code: 'CI-00001' });
     await fixture.whenStable();
-    expect(navigate).toHaveBeenCalledWith(['/consentimientos', 5]);
+    expect(navigate).toHaveBeenCalledWith(['/consentimientos', 5], { replaceUrl: true });
   });
 });

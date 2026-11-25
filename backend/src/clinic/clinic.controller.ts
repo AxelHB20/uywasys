@@ -16,8 +16,13 @@ import type { AuthUser } from '../common/auth/auth-user.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
 import { Roles } from '../common/auth/roles.decorator.js';
 import { ClinicService, MAX_LOGO_BYTES } from './clinic.service.js';
-import type { ClinicProfile, SetupStatus } from './clinic.service.js';
+import type {
+  ClinicProfile,
+  SetupStatus,
+  StorageUsage,
+} from './clinic.service.js';
 import { OpeningHoursDto } from './dto/opening-hours.dto.js';
+import type { OpeningHours } from './opening-hours.js';
 import { UpdateClinicDto } from './dto/update-clinic.dto.js';
 
 /** Lo que entrega multer para el archivo subido (se guarda en memoria, nunca en disco). */
@@ -54,6 +59,19 @@ export class ClinicController {
     @Req() req: Request,
   ): Promise<ClinicProfile> {
     return this.clinic.updateHours(user, dto.days, req.ip);
+  }
+
+  /** Espacio que ocupan las fotos y archivos de la clínica (para vigilar el disco). */
+  @Roles('ADMIN')
+  @Get('storage')
+  storage(@CurrentUser() user: AuthUser): Promise<StorageUsage> {
+    return this.clinic.storage(user.clinicId);
+  }
+
+  /** Horario de atención (la agenda lo usa para sombrear lo que está cerrado; cualquier rol). */
+  @Get('hours')
+  hours(@CurrentUser() user: AuthUser): Promise<OpeningHours> {
+    return this.clinic.openingHours(user.clinicId);
   }
 
   /** Avance de "Primeros pasos" en el dashboard (lo ve cualquier rol). */

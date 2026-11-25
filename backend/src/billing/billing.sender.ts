@@ -8,6 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { documentCode, ProviderError } from './billing.types.js';
 import { BillingService } from './billing.service.js';
+import { BillingHealthStore } from './billing-health.js';
+import { providerErrorKind } from './billing.types.js';
 
 /** Esperas entre reintentos (minutos). Tras el último, queda en ERROR para reintentar a mano. */
 export const RETRY_MINUTES = [1, 5, 15, 30, 60, 180, 360, 720];
@@ -34,6 +36,7 @@ export class BillingSender implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly billing: BillingService,
+    private readonly health: BillingHealthStore,
     config: ConfigService,
   ) {
     // En las pruebas se llama a tick() a mano para controlar el momento
@@ -122,6 +125,7 @@ export class BillingSender implements OnModuleInit, OnModuleDestroy {
           status: outcome.status,
           attempts,
           lastError: null,
+          errorKind: null,
           sunatDescription: outcome.description ?? null,
           hash: outcome.hash ?? undefined,
           qrText: outcome.qrText ?? undefined,
@@ -134,6 +138,8 @@ export class BillingSender implements OnModuleInit, OnModuleDestroy {
             outcome.status === 'SENT' ? minutes(QUERY_MINUTES) : null,
         },
       });
+      // El PSE respondió: la conexión está bien (si estaba caída, se reanuda la cola)
+      await this.recordHealth(job.clinicId, job.provider, null);
       if (outcome.status === 'REJECTED')
         this.logger.warn(
           `SUNAT rechazó ${code}: ${outcome.description ?? 'sin detalle'}`,
@@ -151,11 +157,30 @@ export class BillingSender implements OnModuleInit, OnModuleDestroy {
           status: job.status === 'SENT' ? 'SENT' : 'ERROR',
           attempts,
           lastError: message,
+          errorKind: providerErrorKind(error),
           nextAttemptAt: retryable && wait ? minutes(wait) : null,
         },
       });
+      await this.recordHealth(job.clinicId, job.provider, error);
       this.logger.warn(
         `No se pudo enviar ${code} (intento ${attempts}): ${message}`,
+      );
+    }
+  }
+
+  /** Nunca deja que un fallo al guardar la salud corte la cola */
+  private async recordHealth(
+    clinicId: number,
+    provider: string,
+    error: unknown,
+  ): Promise<void> {
+    if (provider === 'SIMULATED') return;
+    try {
+      await this.health.record(clinicId, error, 'send');
+    } catch (e) {
+      this.logger.error(
+        'No se pudo guardar el estado de la facturación',
+        e instanceof Error ? e.stack : String(e),
       );
     }
   }

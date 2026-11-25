@@ -1,21 +1,22 @@
 <section class="space-y-5">
   <!-- Encabezado -->
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <h1 class="font-display text-2xl font-semibold text-slate-900">Grooming</h1>
-      <p class="mt-1 text-sm text-slate-500">
+      <p class="mt-1 text-sm text-pretty text-slate-600">
         @if (isToday()) {
-          {{ counts().active }} en el tablero · {{ counts().delivered }} entregados hoy
+          Tablero del día: arrastra la tarjeta o usa "Pasar a" para avanzar cada mascota.
         } @else {
-          {{ counts().delivered }} entregados el {{ dayLabel() }}
-        }
-        @if (counts().revenue > 0) {
-          · <span class="tabular-nums">{{ money(counts().revenue) }}</span>
+          Historial del {{ dayLabel() }}: {{ counts().delivered }}
+          {{ counts().delivered === 1 ? 'entregado' : 'entregados' }}
+          @if (counts().revenue > 0) {
+            · <span class="tabular-nums">{{ money(counts().revenue) }}</span>
+          }
         }
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div class="flex items-center rounded-xl bg-white ring-1 ring-slate-200">
+      <div class="flex items-center rounded-xl bg-white shadow-xs ring-1 ring-slate-200">
         <button
           type="button"
           class="grid size-10 place-items-center rounded-l-xl text-slate-600 hover:bg-slate-50"
@@ -37,22 +38,26 @@
           <app-icon name="chevron-right" class="size-4" />
         </button>
       </div>
-      @if (canSeeCommissions()) {
-        <a routerLink="/grooming/comisiones" class="btn btn-secondary">Comisiones</a>
-      }
       @if (canEdit() && isToday()) {
         <a routerLink="/grooming/ingreso" class="btn btn-primary">
           <app-icon name="plus" class="size-4" /> Nuevo ingreso
         </a>
       }
     </div>
-  </div>
+  </header>
 
   @if (loading()) {
-    <div class="grid gap-4 lg:grid-cols-4" aria-busy="true" aria-label="Cargando tablero">
-      @for (s of statuses; track s) {
-        <div class="h-64 animate-pulse rounded-2xl bg-slate-100"></div>
-      }
+    <div class="space-y-5" aria-busy="true" aria-label="Cargando tablero">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        @for (s of statuses; track s) {
+          <div class="card h-24 animate-pulse bg-slate-50"></div>
+        }
+      </div>
+      <div class="grid gap-4 lg:grid-cols-4">
+        @for (s of statuses; track s) {
+          <div class="h-72 animate-pulse rounded-2xl bg-slate-100"></div>
+        }
+      </div>
     </div>
   } @else if (loadError(); as error) {
     <div class="card flex flex-col items-center px-6 py-12 text-center">
@@ -62,6 +67,78 @@
     </div>
   } @else {
     @if (isToday()) {
+      <!-- Indicadores del día -->
+      <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Resumen del día">
+        <li class="card p-4">
+          <p
+            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            <span class="size-2 rounded-full bg-anil-500" aria-hidden="true"></span> En el tablero
+          </p>
+          <p class="mt-1.5 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+            {{ counts().active }}
+          </p>
+          <p class="text-xs text-slate-500">{{ counts().inProgress }} en baño o corte</p>
+        </li>
+        <li class="card p-4">
+          <p
+            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            <span class="size-2 rounded-full bg-emerald-500" aria-hidden="true"></span> Listos
+          </p>
+          <p class="mt-1.5 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+            {{ counts().ready }}
+          </p>
+          <p class="text-xs text-slate-500">
+            @if (counts().ready) {
+              {{ counts().notified }} de {{ counts().ready }} avisados
+            } @else {
+              Ninguno por entregar
+            }
+          </p>
+        </li>
+        <li
+          class="card p-4"
+          [class.ring-rose-200]="counts().late > 0"
+          [class.bg-rose-50]="counts().late > 0"
+        >
+          <p
+            class="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase"
+            [class]="counts().late ? 'text-rose-700' : 'text-slate-500'"
+          >
+            <app-icon name="clock" class="size-3.5" /> Atrasados
+          </p>
+          <p
+            class="mt-1.5 font-display text-2xl font-semibold tabular-nums"
+            [class]="counts().late ? 'text-rose-800' : 'text-slate-900'"
+          >
+            {{ counts().late }}
+          </p>
+          <p class="text-xs" [class]="counts().late ? 'text-rose-700' : 'text-slate-500'">
+            {{ counts().late ? 'Pasó su hora de recojo' : 'Todo a tiempo' }}
+          </p>
+        </li>
+        <li class="card p-4">
+          <p
+            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            <span class="size-2 rounded-full bg-slate-400" aria-hidden="true"></span> Entregados
+          </p>
+          <p class="mt-1.5 font-display text-2xl font-semibold text-slate-900 tabular-nums">
+            {{ counts().delivered }}
+          </p>
+          <p class="text-xs text-slate-500 tabular-nums">
+            Servicios del día {{ money(counts().revenue) }}
+            @if (counts().pending > 0) {
+              ·
+              <span class="font-medium text-amber-800"
+                >{{ money(counts().pending) }} por cobrar</span
+              >
+            }
+          </p>
+        </li>
+      </ul>
+
       <!-- Pestañas en el celular -->
       <div class="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 lg:hidden" role="tablist">
         @for (col of columns(); track col.status) {
@@ -69,7 +146,7 @@
             type="button"
             role="tab"
             [attr.aria-selected]="tab() === col.status"
-            class="flex min-h-10 flex-col items-center justify-center rounded-lg px-1 text-xs font-medium"
+            class="flex min-h-11 flex-col items-center justify-center rounded-lg px-1 text-xs font-medium"
             [class]="tab() === col.status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'"
             (click)="tab.set(col.status)"
           >
@@ -80,11 +157,10 @@
       </div>
 
       <!-- Tablero -->
-      <div class="grid gap-4 lg:grid-cols-4" cdkDropListGroup>
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-4" cdkDropListGroup>
         @for (col of columns(); track col.status) {
           <section
-            class="flex min-h-40 flex-col rounded-2xl bg-slate-50/80 p-3 ring-1 lg:min-h-[60vh]"
-            [class]="columnStyle[col.status].ring"
+            class="flex min-h-40 min-w-0 flex-col rounded-2xl bg-slate-100/70 p-2.5 lg:min-h-[58vh]"
             [class.max-lg:hidden]="tab() !== col.status"
             [attr.aria-label]="statusLabels[col.status]"
             cdkDropList
@@ -93,91 +169,139 @@
             [cdkDropListDisabled]="!canEdit()"
             (cdkDropListDropped)="drop($event)"
           >
-            <h2 class="mb-3 flex items-center gap-2 px-1 text-sm font-semibold text-slate-700">
-              <span class="size-2.5 rounded-full" [class]="columnStyle[col.status].dot"></span>
-              {{ statusLabels[col.status] }}
+            <h2 class="mb-2.5 flex items-center gap-2.5 px-1.5 pt-0.5">
               <span
-                class="ml-auto rounded-full bg-white px-2 text-xs tabular-nums ring-1 ring-slate-200"
+                class="grid size-7 place-items-center rounded-lg"
+                [class]="columnStyle[col.status].tile"
+                aria-hidden="true"
+              >
+                <app-icon [name]="columnStyle[col.status].icon" class="size-4" />
+              </span>
+              <span class="text-sm font-semibold text-slate-800">{{
+                statusLabels[col.status]
+              }}</span>
+              <span
+                class="ml-auto grid h-6 min-w-6 place-items-center rounded-full bg-white px-1.5 text-xs font-semibold text-slate-600 tabular-nums shadow-xs"
                 >{{ col.items.length }}</span
               >
             </h2>
             <ul class="flex flex-1 flex-col gap-2.5" role="list">
               @for (c of col.items; track c.id) {
+                @let pk = pickup(c);
+                @let chips = serviceChips(c);
                 <li
                   cdkDrag
+                  [cdkDragStartDelay]="{ touch: 250, mouse: 0 }"
                   [cdkDragData]="c"
                   [cdkDragDisabled]="!canEdit() || busyId() === c.id"
-                  class="cursor-grab rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200 active:cursor-grabbing"
+                  class="cursor-grab rounded-xl border-l-[3px] bg-white p-3 shadow-sm ring-1 ring-slate-200/80 transition-shadow hover:shadow-md active:cursor-grabbing"
+                  [class]="columnStyle[col.status].accent"
                   [class.opacity-60]="busyId() === c.id"
                   [attr.aria-label]="c.pet.name + ', ' + statusLabels[c.status]"
                 >
                   <div
                     *cdkDragPlaceholder
-                    class="h-24 rounded-xl border-2 border-dashed border-anil-300 bg-anil-50/50"
+                    class="h-28 rounded-xl border-2 border-dashed border-anil-300 bg-anil-50/50"
                   ></div>
                   <button
                     type="button"
-                    class="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600"
+                    class="block w-full rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600"
                     (click)="open(c)"
                   >
-                    <span class="flex items-start gap-2">
-                      <app-icon
-                        [name]="speciesIcons[c.pet.species]"
-                        class="mt-0.5 size-4 shrink-0 text-slate-400"
-                      />
+                    <span class="flex items-start gap-2.5">
+                      <span
+                        class="grid size-9 shrink-0 place-items-center rounded-xl"
+                        [class]="columnStyle[col.status].tile"
+                        aria-hidden="true"
+                      >
+                        <app-icon [name]="speciesIcons[c.pet.species]" class="size-5" />
+                      </span>
                       <span class="min-w-0 flex-1">
-                        <span class="block truncate font-semibold text-slate-900">{{
-                          c.pet.name
-                        }}</span>
+                        <span class="flex items-center gap-1.5">
+                          <span class="truncate font-semibold text-slate-900">{{
+                            c.pet.name
+                          }}</span>
+                          <span
+                            class="shrink-0 rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-medium text-slate-600"
+                            >{{ sizeLabels[c.size] }}</span
+                          >
+                        </span>
                         <span class="block truncate text-xs text-slate-500">
-                          {{ sizeLabels[c.size] }}{{ c.pet.breed ? ' · ' + c.pet.breed : '' }} ·
-                          {{ c.client.name }}
+                          {{ c.pet.breed ? c.pet.breed + ' · ' : '' }}{{ c.client.name }}
                         </span>
                       </span>
-                      <span
-                        class="shrink-0 text-xs text-slate-500 tabular-nums"
-                        title="Tiempo en este estado"
-                        >{{ elapsed(c) }}</span
-                      >
                     </span>
-                    <span class="mt-2 line-clamp-2 block text-sm text-slate-700">{{
-                      servicesLine(c)
-                    }}</span>
+
+                    <span class="mt-2.5 flex flex-wrap gap-1">
+                      @for (s of chips.shown; track $index) {
+                        <span
+                          class="max-w-full truncate rounded-md bg-slate-50 px-1.5 py-0.5 text-xs text-slate-700 ring-1 ring-slate-200"
+                          >{{ s }}</span
+                        >
+                      }
+                      @if (chips.more) {
+                        <span class="rounded-md px-1.5 py-0.5 text-xs font-medium text-slate-500"
+                          >+{{ chips.more }}</span
+                        >
+                      }
+                    </span>
+
                     @if (flags(c).length || c.pet.allergies) {
-                      <span class="mt-2 flex flex-wrap gap-1">
+                      <span class="mt-1.5 flex flex-wrap gap-1">
                         @for (f of flags(c); track f) {
                           <span
-                            class="rounded-md px-1.5 py-0.5 text-[11px] font-semibold"
+                            class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold"
                             [class]="
                               f === 'Agresivo'
                                 ? 'bg-rose-100 text-rose-800'
                                 : 'bg-amber-100 text-amber-800'
                             "
-                            >{{ f }}</span
+                            ><app-icon name="alert" class="size-3" />{{ f }}</span
                           >
                         }
                         @if (c.pet.allergies) {
                           <span
-                            class="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
-                            >Alergias</span
+                            class="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                            ><app-icon name="alert" class="size-3" />Alergias</span
                           >
                         }
                       </span>
                     }
-                    <span class="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                      <span class="inline-flex items-center gap-1 truncate">
-                        <app-icon name="user" class="size-3.5" />
-                        {{ c.groomer?.fullName ?? 'Sin asignar' }}
-                      </span>
-                      @if (c.promisedAt) {
+
+                    <span
+                      class="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5 text-xs"
+                    >
+                      @if (c.groomer) {
                         <span
-                          class="ml-auto inline-flex items-center gap-1 tabular-nums"
-                          [class]="late(c) ? 'font-semibold text-rose-700' : ''"
+                          class="grid size-6 shrink-0 place-items-center rounded-full bg-anil-100 text-[10px] font-semibold text-anil-800"
+                          aria-hidden="true"
+                          >{{ initials(c.groomer.fullName) }}</span
                         >
-                          <app-icon name="clock" class="size-3.5" /> {{ clock(c.promisedAt) }}
-                        </span>
+                        <span class="min-w-0 truncate text-slate-600">{{
+                          c.groomer.fullName
+                        }}</span>
+                      } @else {
+                        <span
+                          class="grid size-6 shrink-0 place-items-center rounded-full text-slate-400 ring-1 ring-slate-300 ring-dashed"
+                          aria-hidden="true"
+                          ><app-icon name="user" class="size-3"
+                        /></span>
+                        <span class="text-slate-500">Sin asignar</span>
                       }
+                      <span
+                        class="ml-auto shrink-0 text-slate-400 tabular-nums"
+                        title="Tiempo en este estado"
+                        >{{ elapsed(c) }}</span
+                      >
                     </span>
+                    @if (pk) {
+                      <span
+                        class="mt-2 flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ring-1 ring-inset"
+                        [class]="pickupClass[pk.tone]"
+                      >
+                        <app-icon name="clock" class="size-3.5" /> {{ pk.text }}
+                      </span>
+                    }
                   </button>
                   @if (canEdit()) {
                     <div class="mt-3 flex gap-2">
@@ -189,6 +313,7 @@
                           (click)="move(c, next)"
                         >
                           Pasar a {{ statusLabels[next] }}
+                          <app-icon name="chevron-right" class="size-4 text-slate-400" />
                         </button>
                       } @else {
                         @if (whatsapp(c); as link) {
@@ -201,7 +326,10 @@
                             (click)="notified(c)"
                             [attr.aria-label]="'Avisar por WhatsApp a ' + c.client.name"
                           >
-                            <app-icon name="message-circle" class="size-4" />
+                            <app-icon
+                              [name]="c.notifiedAt ? 'check' : 'message-circle'"
+                              class="size-4"
+                            />
                             {{ c.notifiedAt ? 'Avisado' : 'Avisar' }}
                           </a>
                         }
@@ -219,8 +347,9 @@
                 </li>
               } @empty {
                 <li
-                  class="grid flex-1 place-items-center rounded-xl border-2 border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-400"
+                  class="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-500"
                 >
+                  <app-icon [name]="columnStyle[col.status].icon" class="size-5 text-slate-300" />
                   {{ columnStyle[col.status].empty }}
                 </li>
               }
@@ -233,22 +362,36 @@
     <!-- Entregados y cancelados -->
     @if (finished().length || !isToday()) {
       <section class="card overflow-hidden" aria-labelledby="done-title">
-        <h2 id="done-title" class="px-5 pt-4 font-display text-base font-semibold text-slate-900">
-          {{ isToday() ? 'Entregados hoy' : 'Servicios del día' }}
-        </h2>
+        <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+          <h2 id="done-title" class="font-display text-base font-semibold text-slate-900">
+            {{ isToday() ? 'Entregados hoy' : 'Servicios del día' }}
+          </h2>
+          @if (finished().length) {
+            <span class="text-sm text-slate-500 tabular-nums">{{ finished().length }}</span>
+          }
+        </div>
         @if (finished().length) {
-          <ul class="mt-2 divide-y divide-slate-100" role="list">
+          <ul class="divide-y divide-slate-100" role="list">
             @for (c of finished(); track c.id) {
-              <li>
+              <li class="flex items-center transition-colors hover:bg-slate-50">
                 <button
                   type="button"
-                  class="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-slate-50"
+                  class="flex min-w-0 flex-1 items-center gap-3 py-3 pl-5 text-left"
+                  [class.pr-5]="!(canCollect() && c.pending > 0 && c.status === 'DELIVERED')"
+                  [class.pr-3]="canCollect() && c.pending > 0 && c.status === 'DELIVERED'"
                   (click)="open(c)"
                 >
-                  <app-icon
-                    [name]="speciesIcons[c.pet.species]"
-                    class="size-4 shrink-0 text-slate-400"
-                  />
+                  <span
+                    class="grid size-9 shrink-0 place-items-center rounded-xl"
+                    [class]="
+                      c.status === 'CANCELLED'
+                        ? 'bg-slate-100 text-slate-400'
+                        : 'bg-emerald-50 text-emerald-700'
+                    "
+                    aria-hidden="true"
+                  >
+                    <app-icon [name]="speciesIcons[c.pet.species]" class="size-4.5" />
+                  </span>
                   <span class="min-w-0 flex-1">
                     <span
                       class="block truncate font-medium text-slate-900"
@@ -265,25 +408,37 @@
                             ? clock(c.cancelledAt)
                             : ''
                       }}
+                      @if (c.groomer) {
+                        · {{ c.groomer.fullName }}
+                      }
                     </span>
                   </span>
                   @if (c.pending > 0 && c.status === 'DELIVERED') {
                     <span
-                      class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 tabular-nums"
+                      class="rounded-full bg-maiz-100 px-2 py-0.5 text-xs font-semibold text-amber-900 tabular-nums ring-1 ring-amber-600/20 ring-inset"
                     >
                       Por cobrar {{ money(c.pending) }}
                     </span>
                   } @else if (c.status === 'DELIVERED') {
-                    <span class="text-sm font-medium text-slate-900 tabular-nums">{{
+                    <span class="text-sm font-semibold text-slate-900 tabular-nums">{{
                       money(c.total)
                     }}</span>
                   }
                 </button>
+                @if (canCollect() && c.pending > 0 && c.status === 'DELIVERED') {
+                  <a
+                    routerLink="/caja"
+                    [queryParams]="{ cobrar: c.client.id }"
+                    class="btn btn-secondary mr-5 h-9 shrink-0 px-3 text-xs text-anil-700"
+                    [attr.aria-label]="'Cobrar ' + money(c.pending) + ' a ' + c.client.name"
+                    >Cobrar</a
+                  >
+                }
               </li>
             }
           </ul>
         } @else {
-          <p class="px-5 pt-1 pb-5 text-sm text-slate-500">No hubo servicios ese día.</p>
+          <p class="px-5 py-6 text-center text-sm text-slate-500">No hubo servicios ese día.</p>
         }
       </section>
     }
@@ -343,12 +498,58 @@
               <dd class="text-slate-900">{{ d.belongings }}</dd>
             </div>
           }
-          <div>
-            <dt class="text-xs text-slate-500">Movilidad</dt>
-            <dd class="text-slate-900">
-              {{ transportLabels[d.transport]
-              }}{{ d.transportAddress ? ': ' + d.transportAddress : '' }}
-            </dd>
+          <div class="sm:col-span-2">
+            <!-- Al editar, el título lo pone el propio campo -->
+            <dt class="text-xs text-slate-500" [class.sr-only]="editingMove()">Movilidad</dt>
+            @if (editingMove()) {
+              <dd class="mt-1 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                <app-transport-fields
+                  prefix="bd-mov"
+                  [group]="moveForm"
+                  [clientAddress]="moveAddress()"
+                  [lastPrice]="moveLastPrice()"
+                  [submitted]="moveSubmitted()"
+                />
+                <div class="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-secondary h-10"
+                    (click)="editingMove.set(false)"
+                  >
+                    Volver
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-primary h-10"
+                    [disabled]="moveSaving()"
+                    (click)="saveMove(d)"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </dd>
+            } @else {
+              <dd class="flex items-start justify-between gap-3 text-slate-900">
+                <span class="min-w-0">
+                  {{ transportLabels[d.transport] }}
+                  @if (d.transportPrice) {
+                    · <span class="tabular-nums">{{ money(d.transportPrice) }}</span>
+                  }
+                  @if (d.transportAddress) {
+                    <span class="block text-slate-600">{{ d.transportAddress }}</span>
+                  }
+                </span>
+                @if (canCancel() && d.status !== 'DELIVERED' && d.status !== 'CANCELLED') {
+                  <button
+                    type="button"
+                    class="btn btn-ghost -mt-1 h-9 shrink-0 px-2.5 text-sm"
+                    (click)="startMove(d)"
+                  >
+                    {{ d.transport === 'NONE' ? 'Agregar' : 'Cambiar' }}
+                  </button>
+                }
+              </dd>
+            }
           </div>
           <div>
             <dt class="text-xs text-slate-500">Ingresó</dt>
@@ -576,6 +777,24 @@
     />
     @if (cancelReason.invalid && cancelReason.touched) {
       <p class="field-error">Escribe el motivo (mínimo 3 letras)</p>
+    }
+    @if (cancelling()?.transportPrice) {
+      <label
+        class="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-800 ring-1 ring-slate-200"
+      >
+        <input
+          type="checkbox"
+          [formControl]="chargeTransport"
+          class="mt-0.5 size-5 shrink-0 rounded accent-anil-600"
+        />
+        <span>
+          <span class="font-medium">Cobrar la movilidad igual</span>
+          ({{ money(cancelling()!.transportPrice!) }})
+          <span class="block text-slate-600"
+            >Si ya fueron a recogerlo. Si no, se quita con los demás cargos.</span
+          >
+        </span>
+      </label>
     }
   </form>
   <ng-container modal-actions>

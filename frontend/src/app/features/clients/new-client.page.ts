@@ -2,16 +2,19 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  OnInit,
   afterNextRender,
   computed,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { catchError, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, of, switchMap } from 'rxjs';
+import { BillingService } from '../../core/services/billing.service';
 import {
   DOCUMENT_LABELS,
   DOCUMENT_SHORT,
@@ -34,6 +37,7 @@ import {
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { PetFieldsComponent } from './pet-fields/pet-fields.component';
 import { createPetForm, toPetInput } from './pet-fields/pet-form';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 type DocChoice = DocumentType | 'NONE';
 type Duplicate = { id: number; name: string; phone: string; active: boolean };
@@ -43,15 +47,16 @@ const DOC_CHOICES: DocChoice[] = ['DNI', 'CE', 'RUC', 'PASSPORT', 'NONE'];
 /** Registro rápido: dueño + mascota en una sola pantalla (meta: menos de 1 minuto). */
 @Component({
   selector: 'app-new-client-page',
-  imports: [ReactiveFormsModule, RouterLink, IconComponent, PetFieldsComponent],
+  imports: [BackLinkComponent, ReactiveFormsModule, RouterLink, IconComponent, PetFieldsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './new-client.page.html',
 })
-export class NewClientPage {
+export class NewClientPage implements OnInit {
   private readonly clients = inject(ClientsService);
   private readonly queue = inject(QueueService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly billing = inject(BillingService);
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly docInput = viewChild<ElementRef<HTMLInputElement>>('docInput');
 
@@ -97,6 +102,21 @@ export class NewClientPage {
   protected readonly includePet = signal(true);
   protected readonly saving = signal<'save' | 'queue' | null>(null);
   protected readonly duplicate = signal<Duplicate | null>(null);
+  /** Nombre que llegó solo con el DNI o el RUC (si se corrige a mano, ya no se pisa) */
+  protected readonly autoName = signal<string | null>(null);
+  protected readonly nameValue = toSignal(this.form.controls.name.valueChanges, {
+    initialValue: '',
+  });
+  protected readonly nameFound = computed(
+    () => !!this.autoName() && this.nameValue() === this.autoName(),
+  );
+  /** El celular ya es de otro cliente: se avisa, no bloquea (puede ser un familiar) */
+  protected readonly phoneOwner = signal<{
+    id: number;
+    name: string;
+    active: boolean;
+    pets: string[];
+  } | null>(null);
   protected readonly consentText = toSignal(
     this.clients.consentText().pipe(catchError(() => of(null))),
   );
@@ -116,7 +136,44 @@ export class NewClientPage {
       this.docInput()?.nativeElement.focus();
     });
     this.form.controls.docNumber.valueChanges.subscribe(() => this.duplicate.set(null));
+    // DNI o RUC completo: avisa si ya es cliente y, si no, trae el nombre (la clínica o APISPERU)
+    this.form.controls.docNumber.valueChanges
+      .pipe(
+        map((value) => normalizeDocNumber(value)),
+        debounceTime(300),
+        distinctUntilChanged(),
+      )
+      .subscribe(() => this.checkDuplicate(true));
+    this.form.controls.phone.valueChanges
+      .pipe(
+        map((value) => normalizePhone(value)),
+        debounceTime(300),
+        distinctUntilChanged(),
+        switchMap((phone) =>
+          /^9\d{8}$/.test(phone)
+            ? this.clients.lookupPhone(phone).pipe(catchError(() => of({ client: null })))
+            : of({ client: null }),
+        ),
+      )
+      .subscribe(({ client }) => this.phoneOwner.set(client));
     afterNextRender(() => this.docInput()?.nativeElement.focus());
+  }
+
+  /** ?buscar=… (desde "Agregar a la cola" sin resultados): lo escrito no se vuelve a teclear */
+  readonly buscar = input<string>();
+
+  ngOnInit(): void {
+    const q = this.buscar()?.trim();
+    if (!q) return;
+    const digits = q.replace(/[\s-]/g, '');
+    if (/^9\d{8}$/.test(digits)) this.form.controls.phone.setValue(digits);
+    else if (/^\d{8}$/.test(digits)) {
+      this.form.controls.docType.setValue('DNI');
+      this.form.controls.docNumber.setValue(digits);
+    } else if (/^(10|20)\d{9}$/.test(digits)) {
+      this.form.controls.docType.setValue('RUC');
+      this.form.controls.docNumber.setValue(digits);
+    } else if (!/\d/.test(q)) this.form.controls.name.setValue(q.slice(0, 150));
   }
 
   private currentDocType(): DocumentType | null {
@@ -124,15 +181,39 @@ export class NewClientPage {
     return type && type !== 'NONE' ? type : null;
   }
 
-  /** Al salir del campo: si el documento ya está registrado, se avisa antes de llenar el resto. */
-  protected checkDuplicate(): void {
+  /**
+   * Al completar o salir del documento: si ya está registrado, se avisa antes de llenar el resto;
+   * si no, con DNI o RUC el nombre se llena solo (se puede corregir).
+   */
+  protected checkDuplicate(fill = false): void {
     const type = this.currentDocType();
     const number = normalizeDocNumber(this.form.controls.docNumber.value);
     if (!type || !isValidDocument(type, number)) return;
     this.clients
       .lookup(type, number)
       .pipe(catchError(() => of({ client: null })))
-      .subscribe(({ client }) => this.duplicate.set(client));
+      .subscribe(({ client }) => {
+        this.duplicate.set(client);
+        if (!client && fill && (type === 'DNI' || type === 'RUC')) this.fillName(type, number);
+      });
+  }
+
+  private fillName(type: 'DNI' | 'RUC', number: string): void {
+    const name = this.form.controls.name;
+    // No pisa lo que recepción ya escribió a mano
+    if (name.value.trim() && name.value !== this.autoName()) return;
+    this.billing
+      .lookup(type, number)
+      .pipe(catchError(() => of(null)))
+      .subscribe((found) => {
+        if (normalizeDocNumber(this.form.controls.docNumber.value) !== number) return;
+        if (!found?.name || (name.value.trim() && name.value !== this.autoName())) return;
+        const value = found.name.slice(0, 150);
+        this.autoName.set(value);
+        name.setValue(value);
+        if (found.address && type === 'RUC' && !this.form.controls.address.value)
+          this.form.controls.address.setValue(found.address.slice(0, 200));
+      });
   }
 
   protected togglePet(include: boolean): void {
@@ -188,7 +269,7 @@ export class NewClientPage {
               this.toast.error(
                 `Cliente guardado, pero no se pudo poner en cola: ${apiErrorMessage(error)}`,
               );
-              this.router.navigate(['/clientes', client.id]);
+              this.router.navigate(['/clientes', client.id], { replaceUrl: true });
             },
           });
       },
@@ -206,7 +287,7 @@ export class NewClientPage {
 
   private done(clientId: number, message: string): void {
     this.toast.success(message);
-    this.router.navigate(['/clientes', clientId]);
+    this.router.navigate(['/clientes', clientId], { replaceUrl: true });
   }
 
   /** Lleva el foco al primer elemento que coincida; si no es enfocable (un error de la especie), lo muestra. */

@@ -30,10 +30,14 @@ export function matchFields(field: string, confirm: string): ValidatorFn {
 }
 
 /** Mensaje de error de la API, o uno genérico. */
+/** Error pensado para mostrarse tal cual (p. ej. una foto que no se pudo preparar) */
+export class UserFacingError extends Error {}
+
 export function apiErrorMessage(
   error: unknown,
   fallback = 'No se pudo completar la acción. Inténtalo de nuevo.',
 ): string {
+  if (error instanceof UserFacingError) return error.message;
   const body =
     (error as {
       error?: { message?: string; errors?: string[]; reference?: string };

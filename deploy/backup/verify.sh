@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
-# Prueba de restauración: restaura el último respaldo en una base temporal y compara
-# cuántos registros tiene contra la base en uso. Un respaldo que nunca se probó no es un respaldo.
-# Uso (una vez al mes, con la clave PRIVADA solo durante la prueba):
-#   docker compose -f deploy/docker-compose.yml run --rm -v /ruta/clave.agekey:/key:ro backup verify.sh /key
+# Prueba de restauración: revisa que el repositorio esté sano, restaura el último respaldo en
+# una base temporal y compara cuántos registros tiene contra la base en uso.
+# Un respaldo que nunca se probó no es un respaldo. Uso (al instalar y una vez al año):
+#   uywa run --rm backup verify.sh
 set -euo pipefail
+source /usr/local/bin/restic-env.sh
 
-KEY="${1:?Indica la ruta de la clave privada de age}"
-DIR="${BACKUP_DIR:-/backups}"
 TEST_DB="uywasys_prueba_restauracion"
-latest="$(ls -1t "$DIR"/uywasys_*.dump.age 2>/dev/null | head -n1 || true)"
-[ -n "$latest" ] || { echo "[prueba] no hay respaldos en $DIR"; exit 1; }
 
-echo "[prueba] restaurando $(basename "$latest") en la base temporal $TEST_DB"
+echo "[prueba] revisando el repositorio"
+restic check --quiet
+restic snapshots --host "$RESTIC_HOST" --tag diario --compact | tail -n 4
+
+echo "[prueba] restaurando el último respaldo en la base temporal $TEST_DB"
 dropdb --if-exists "$TEST_DB"
 createdb "$TEST_DB"
 trap 'dropdb --if-exists "$TEST_DB"' EXIT
-age -d -i "$KEY" "$latest" | pg_restore --no-owner --no-privileges --exit-on-error -d "$TEST_DB"
+restic dump --host "$RESTIC_HOST" --tag diario latest /uywasys.sql |
+  psql -q -v ON_ERROR_STOP=1 --single-transaction -d "$TEST_DB" >/dev/null
 
 status=0
-for table in clinics users clients pets visits charges receipts stock_movements audit_logs; do
+for table in clinics users clients pets visits charges receipts payments electronic_documents \
+  immunizations prescriptions appointments hospitalizations grooming_sessions consents \
+  attachment_files stock_movements portal_links audit_logs; do
   live="$(psql -Atc "SELECT count(*) FROM $table")"
   restored="$(psql -d "$TEST_DB" -Atc "SELECT count(*) FROM $table")"
   mark="ok"
@@ -26,7 +30,7 @@ for table in clinics users clients pets visits charges receipts stock_movements 
   if [ "$restored" -gt "$live" ] || { [ "$live" -gt 0 ] && [ "$restored" -eq 0 ]; }; then
     mark="REVISAR"; status=1
   fi
-  printf '[prueba] %-16s respaldo %-8s en uso %-8s %s\n' "$table" "$restored" "$live" "$mark"
+  printf '[prueba] %-20s respaldo %-8s en uso %-8s %s\n' "$table" "$restored" "$live" "$mark"
 done
 
 [ "$status" -eq 0 ] && echo "[prueba] el respaldo se restaura bien" || echo "[prueba] hay diferencias: revisa"

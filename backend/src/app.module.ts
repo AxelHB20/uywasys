@@ -13,11 +13,16 @@ import { AuditModule } from './common/audit/audit.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { GroomingModule } from './grooming/grooming.module.js';
+import { HospitalizationModule } from './hospitalization/hospitalization.module.js';
 import { HealthModule } from './health/health.module.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { PetsModule } from './pets/pets.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
+import { PortalModule } from './portal/portal.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
+import { RemindersModule } from './reminders/reminders.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { UsersModule } from './users/users.module.js';
 import { VisitsModule } from './visits/visits.module.js';
 
@@ -51,7 +56,12 @@ import { VisitsModule } from './visits/visits.module.js';
     CashModule,
     ActivityModule,
     MedicalModule,
+    PortalModule,
+    RemindersModule,
+    NotificationsModule,
     GroomingModule,
+    HospitalizationModule,
+    ReportsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

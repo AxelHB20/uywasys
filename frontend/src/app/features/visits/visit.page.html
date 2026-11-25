@@ -1,19 +1,11 @@
 <section class="space-y-6">
   @if (visit(); as v) {
-    <a
-      [routerLink]="v.status === 'OPEN' && v.queueEntryId ? '/cola' : '/atenciones'"
-      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-    >
-      <app-icon name="chevron-left" class="size-4" />
-      {{ v.status === 'OPEN' && v.queueEntryId ? 'Cola de hoy' : 'Atenciones' }}
-    </a>
+    <app-back-link
+      [fallback]="v.status === 'OPEN' && v.queueEntryId ? '/cola' : '/atenciones'"
+      [fallbackLabel]="v.status === 'OPEN' && v.queueEntryId ? 'Cola de hoy' : 'Atenciones'"
+    />
   } @else {
-    <a
-      routerLink="/atenciones"
-      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-    >
-      <app-icon name="chevron-left" class="size-4" /> Atenciones
-    </a>
+    <app-back-link fallback="/atenciones" fallbackLabel="Atenciones" />
   }
 
   @if (loading() && !visit()) {
@@ -65,17 +57,76 @@
           </p>
         </div>
       </div>
-      <div class="flex shrink-0 flex-wrap items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2 max-sm:w-full">
         <app-badge [tone]="statusTone[v.status]">{{ statusLabels[v.status] }}</app-badge>
+        <span class="flex-1 sm:hidden" aria-hidden="true"></span>
         @if (v.grooming; as g) {
           <a routerLink="/grooming" class="btn btn-secondary">
             <app-icon name="scissors" class="size-4" /> Tablero de grooming
           </a>
+        } @else if (v.hospitalization; as h) {
+          <a [routerLink]="['/hospitalizacion', h.id]" class="btn btn-primary">
+            <app-icon name="bed" class="size-4" /> Hoja de hospitalización
+          </a>
         } @else if (editable()) {
-          <button type="button" class="btn btn-ghost" (click)="askCancel()">Cancelar</button>
-          <button type="button" class="btn btn-primary" (click)="askClose()">
-            <app-icon name="check" class="size-4" /> Cerrar atención
-          </button>
+          <div class="relative" data-more-menu>
+            <button
+              type="button"
+              class="btn btn-ghost size-11 px-0"
+              aria-label="Más acciones"
+              aria-haspopup="menu"
+              [attr.aria-expanded]="moreOpen()"
+              aria-controls="visit-more"
+              (click)="moreOpen.set(!moreOpen())"
+            >
+              <app-icon name="more-horizontal" class="size-5" />
+            </button>
+            @if (moreOpen()) {
+              <div
+                class="fixed inset-0 z-30"
+                aria-hidden="true"
+                (click)="moreOpen.set(false)"
+              ></div>
+              <div
+                id="visit-more"
+                role="menu"
+                class="absolute right-0 z-40 mt-2 w-56 rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-slate-200"
+                (keydown.escape)="moreOpen.set(false)"
+              >
+                @if (isConsultation() && canPrescribe()) {
+                  <!-- En celular "Guardar como plantilla" vive aquí para no ocupar otra fila -->
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium text-slate-800 hover:bg-slate-50 sm:hidden"
+                    (click)="moreOpen.set(false); askSaveTemplate()"
+                  >
+                    <app-icon name="save" class="size-4 text-slate-500" /> Guardar como plantilla
+                  </button>
+                }
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium text-rose-700 hover:bg-rose-50"
+                  (click)="moreOpen.set(false); askCancel()"
+                >
+                  <app-icon name="ban" class="size-4" /> Cancelar atención
+                </button>
+              </div>
+            }
+          </div>
+          @if (isConsultation() && canPrescribe()) {
+            <button type="button" class="btn btn-secondary max-sm:px-3" (click)="askAdmit()">
+              <app-icon name="bed" class="size-4" /> Internar
+            </button>
+          }
+          @if (canClose()) {
+            <button type="button" class="btn btn-primary max-sm:px-3" (click)="askClose()">
+              <app-icon name="check" class="size-4" /> Cerrar<span class="max-sm:hidden">
+                atención</span
+              >
+            </button>
+          }
         }
       </div>
     </div>
@@ -91,6 +142,25 @@
           <strong>GR-{{ v.grooming.number.toString().padStart(5, '0') }}</strong
           >: se cierra al entregar la mascota desde el tablero. Aquí puedes agregar servicios o
           productos (toman el precio de su tamaño).
+        </span>
+      </p>
+    }
+
+    @if (v.hospitalization; as h) {
+      <p
+        class="flex gap-3 rounded-2xl bg-anil-50 p-4 text-sm text-anil-900 ring-1 ring-anil-200"
+        role="status"
+      >
+        <app-icon name="bed" class="mt-0.5 size-5 shrink-0 text-anil-600" />
+        <span>
+          Internamiento
+          <strong>HZ-{{ h.number.toString().padStart(5, '0') }}</strong>
+          @if (v.status === 'OPEN') {
+            : las indicaciones, dosis y signos se registran en la hoja de hospitalización; se cierra
+            al dar de alta. Aquí se cargan medicamentos, insumos y procedimientos a la cuenta.
+          } @else {
+            : dado de alta.
+          }
         </span>
       </p>
     }
@@ -121,22 +191,41 @@
         class="flex flex-col gap-3 rounded-2xl bg-anil-50 p-4 ring-1 ring-anil-200 sm:flex-row sm:items-center sm:justify-between"
         role="status"
       >
-        <div class="flex items-start gap-3">
+        <div class="flex min-w-0 items-start gap-3">
           <app-icon name="clipboard-list" class="mt-0.5 size-5 shrink-0 text-anil-600" />
-          <p class="text-sm text-anil-950">
-            <span class="font-semibold">{{ v.pet.name }} tiene un presupuesto aceptado.</span>
-            @for (e of acceptedEstimates(); track e.id; let last = $last) {
-              {{ e.code }} · {{ e.title }} · {{ money(e.total) }}{{ last ? '' : ';' }}
-            }
-          </p>
+          <div class="min-w-0 text-sm text-anil-950">
+            <p class="font-semibold">
+              {{ v.pet.name }} tiene
+              {{
+                acceptedEstimates().length === 1
+                  ? 'un presupuesto aceptado'
+                  : acceptedEstimates().length + ' presupuestos aceptados'
+              }}
+            </p>
+            <ul class="mt-1.5 space-y-1.5">
+              @for (e of acceptedEstimates(); track e.id) {
+                <li class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span
+                    >{{ e.code }} · {{ e.title }} ·
+                    <span class="font-medium tabular-nums">{{ money(e.total) }}</span></span
+                  >
+                  <a
+                    [routerLink]="['/presupuestos', e.id]"
+                    class="text-xs font-medium text-anil-700 underline-offset-2 hover:underline"
+                    >Ver detalle</a
+                  >
+                </li>
+              }
+            </ul>
+          </div>
         </div>
-        <a
-          [routerLink]="['/presupuestos', acceptedEstimates()[0].id]"
-          [queryParams]="{ atencion: v.id }"
-          class="btn btn-primary h-10 shrink-0"
-        >
-          Cargar a esta atención
-        </a>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          @for (e of acceptedEstimates(); track e.id) {
+            <button type="button" class="btn btn-primary h-10" (click)="askLoadEstimate(e)">
+              {{ acceptedEstimates().length === 1 ? 'Cargar a esta atención' : 'Cargar ' + e.code }}
+            </button>
+          }
+        </div>
       </div>
     }
 
@@ -150,7 +239,15 @@
       </p>
     }
 
-    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] lg:items-start">
+    @if (context(); as ctx) {
+      <div class="lg:hidden">
+        <ng-container
+          [ngTemplateOutlet]="patientCard"
+          [ngTemplateOutletContext]="{ $implicit: ctx, v: v, idPrefix: 'top-' }"
+        />
+      </div>
+    }
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
       <div class="min-w-0 space-y-6">
         <!-- Consulta (SOAP) o notas del servicio -->
         <section class="card p-5 sm:p-6" aria-labelledby="notes-title">
@@ -158,11 +255,41 @@
             <h2 id="notes-title" class="font-display text-lg font-semibold text-slate-900">
               {{ isConsultation() ? 'Consulta' : 'Signos y notas' }}
             </h2>
-            @if (isConsultation()) {
+            @if (isConsultation() && editable() && !triageOnly()) {
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-secondary h-10 px-3"
+                  (click)="modal.set('template')"
+                >
+                  <app-icon name="book-open" class="size-4" /> Usar plantilla
+                </button>
+                @if (canPrescribe()) {
+                  <button
+                    type="button"
+                    class="btn btn-ghost h-10 px-3 max-sm:hidden"
+                    (click)="askSaveTemplate()"
+                  >
+                    <app-icon name="save" class="size-4" /> Guardar como plantilla
+                  </button>
+                }
+              </div>
+            } @else if (isConsultation()) {
               <p class="text-xs text-slate-500">Método SOAP</p>
             }
           </div>
           <form [formGroup]="notesForm" (ngSubmit)="saveNotes()" novalidate class="mt-4 space-y-6">
+            @if (triageOnly() && editable()) {
+              <p
+                class="flex items-start gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200"
+              >
+                <app-icon name="lock" class="mt-0.5 size-4 shrink-0 text-slate-500" />
+                <span
+                  >Recepción registra el <strong>motivo, peso y temperatura</strong>. La anamnesis,
+                  el examen, el diagnóstico y el plan los escribe el veterinario.</span
+                >
+              </p>
+            }
             <div>
               <label for="v-reason" class="field-label">Motivo</label>
               <input
@@ -200,7 +327,13 @@
                   <span class="soap-letter" aria-hidden="true">O</span> Examen físico
                 </legend>
               }
-              <div class="mt-1.5 grid grid-cols-2 gap-4" [class.sm:grid-cols-4]="isConsultation()">
+              <!-- 4 columnas con espacio; en tablet acostada (dos columnas de página) van 2 para que no se encimen -->
+              <div
+                class="mt-1.5 grid grid-cols-2 gap-4"
+                [class.sm:grid-cols-4]="isConsultation()"
+                [class.lg:grid-cols-2]="isConsultation()"
+                [class.xl:grid-cols-4]="isConsultation()"
+              >
                 <div>
                   <label for="v-weight" class="field-label">Peso (kg)</label>
                   <input
@@ -211,11 +344,35 @@
                     min="0"
                     formControlName="weightKg"
                     class="field-input tabular-nums"
+                    [class.!border-amber-500]="weightSuspicious()"
+                    [class.!bg-amber-50]="weightSuspicious()"
                     [placeholder]="v.pet.weightKg ? 'Antes: ' + v.pet.weightKg : ''"
                     [attr.aria-invalid]="invalid(notesForm.controls.weightKg)"
                   />
                   @if (invalid(notesForm.controls.weightKg)) {
                     <p class="field-error">Peso válido, hasta 2 decimales</p>
+                  } @else if (weightSuspicious() && context()?.previousWeight; as pw) {
+                    <!-- Casi seguro un punto decimal corrido: el peso se usa para las dosis -->
+                    <p
+                      class="mt-1.5 flex items-start gap-1 text-xs font-medium text-amber-800"
+                      role="status"
+                    >
+                      <app-icon name="alert" class="mt-px size-3.5 shrink-0 text-amber-600" />
+                      ¿Seguro? Antes pesaba {{ context()!.previousWeight!.kg }} kg
+                    </p>
+                  } @else if (context()?.previousWeight; as pw) {
+                    <p class="mt-1.5 text-xs text-slate-600">
+                      Antes: <span class="tabular-nums">{{ pw.kg }} kg</span>&ngsp;
+                      @if (weightChange(); as w) {
+                        <span
+                          class="font-medium tabular-nums"
+                          [class]="
+                            w.pct <= -10 || w.pct >= 10 ? 'text-amber-800' : 'text-slate-700'
+                          "
+                          >({{ signed(w.diff) }} kg)</span
+                        >
+                      }
+                    </p>
                   }
                 </div>
                 <div>
@@ -226,11 +383,20 @@
                     inputmode="decimal"
                     step="0.1"
                     formControlName="temperatureC"
+                    [class.border-amber-500]="vital('temperatureC')?.level === 'warn'"
+                    [class.border-rose-500]="vital('temperatureC')?.level === 'danger'"
                     class="field-input tabular-nums"
                     [attr.aria-invalid]="invalid(notesForm.controls.temperatureC)"
                   />
                   @if (invalid(notesForm.controls.temperatureC)) {
                     <p class="field-error">Entre 30 y 45 °C, con 1 decimal</p>
+                  } @else if (vital('temperatureC'); as hint) {
+                    <p
+                      class="mt-1.5 flex items-start gap-1.5 text-xs font-medium"
+                      [class]="hint.level === 'danger' ? 'text-rose-700' : 'text-amber-800'"
+                    >
+                      <app-icon name="alert" class="mt-px size-3.5 shrink-0" />{{ hint.text }}
+                    </p>
                   }
                 </div>
                 @if (isConsultation()) {
@@ -244,11 +410,20 @@
                       inputmode="numeric"
                       step="1"
                       formControlName="heartRate"
+                      [class.border-amber-500]="vital('heartRate')?.level === 'warn'"
+                      [class.border-rose-500]="vital('heartRate')?.level === 'danger'"
                       class="field-input tabular-nums"
                       [attr.aria-invalid]="invalid(notesForm.controls.heartRate)"
                     />
                     @if (invalid(notesForm.controls.heartRate)) {
                       <p class="field-error">Entre 10 y 400</p>
+                    } @else if (vital('heartRate'); as hint) {
+                      <p
+                        class="mt-1.5 flex items-start gap-1.5 text-xs font-medium"
+                        [class]="hint.level === 'danger' ? 'text-rose-700' : 'text-amber-800'"
+                      >
+                        <app-icon name="alert" class="mt-px size-3.5 shrink-0" />{{ hint.text }}
+                      </p>
                     }
                   </div>
                   <div>
@@ -261,11 +436,20 @@
                       inputmode="numeric"
                       step="1"
                       formControlName="respiratoryRate"
+                      [class.border-amber-500]="vital('respiratoryRate')?.level === 'warn'"
+                      [class.border-rose-500]="vital('respiratoryRate')?.level === 'danger'"
                       class="field-input tabular-nums"
                       [attr.aria-invalid]="invalid(notesForm.controls.respiratoryRate)"
                     />
                     @if (invalid(notesForm.controls.respiratoryRate)) {
                       <p class="field-error">Entre 4 y 200</p>
+                    } @else if (vital('respiratoryRate'); as hint) {
+                      <p
+                        class="mt-1.5 flex items-start gap-1.5 text-xs font-medium"
+                        [class]="hint.level === 'danger' ? 'text-rose-700' : 'text-amber-800'"
+                      >
+                        <app-icon name="alert" class="mt-px size-3.5 shrink-0" />{{ hint.text }}
+                      </p>
                     }
                   </div>
                   <div>
@@ -278,11 +462,20 @@
                       inputmode="decimal"
                       step="0.5"
                       formControlName="capillaryRefillS"
+                      [class.border-amber-500]="vital('capillaryRefillS')?.level === 'warn'"
+                      [class.border-rose-500]="vital('capillaryRefillS')?.level === 'danger'"
                       class="field-input tabular-nums"
                       [attr.aria-invalid]="invalid(notesForm.controls.capillaryRefillS)"
                     />
                     @if (invalid(notesForm.controls.capillaryRefillS)) {
                       <p class="field-error">Entre 0 y 10, con 1 decimal</p>
+                    } @else if (vital('capillaryRefillS'); as hint) {
+                      <p
+                        class="mt-1.5 flex items-start gap-1.5 text-xs font-medium"
+                        [class]="hint.level === 'danger' ? 'text-rose-700' : 'text-amber-800'"
+                      >
+                        <app-icon name="alert" class="mt-px size-3.5 shrink-0" />{{ hint.text }}
+                      </p>
                     }
                   </div>
                   <div>
@@ -353,12 +546,18 @@
                   <label for="v-dx" class="sr-only">Diagnóstico</label>
                   <input
                     id="v-dx"
+                    list="v-dx-list"
                     formControlName="diagnosis"
                     class="field-input mt-0 sm:flex-1"
                     autocomplete="off"
                     maxlength="300"
                     placeholder="Ej.: gastroenteritis aguda"
                   />
+                  <datalist id="v-dx-list">
+                    @for (d of diagnosisOptions(); track d) {
+                      <option [value]="d"></option>
+                    }
+                  </datalist>
                   <label
                     class="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2.5 self-start sm:self-auto rounded-xl px-3 text-sm text-slate-700 ring-1 ring-slate-300 has-[:checked]:bg-emerald-50 has-[:checked]:text-emerald-800 has-[:checked]:ring-emerald-300 has-[:disabled]:cursor-default"
                   >
@@ -399,17 +598,44 @@
             </fieldset>
 
             @if (editable()) {
-              <div class="flex items-center justify-end gap-3">
-                @if (notesForm.dirty) {
-                  <span class="text-xs text-amber-700">Cambios sin guardar</span>
+              <div class="flex flex-wrap items-center justify-end gap-3">
+                <p class="flex items-center gap-1.5 text-sm" role="status" aria-live="polite">
+                  @switch (saveState()) {
+                    @case ('saving') {
+                      <app-icon name="loader" class="size-4 animate-spin text-slate-500" />
+                      <span class="text-slate-600">Guardando…</span>
+                    }
+                    @case ('error') {
+                      <app-icon name="alert" class="size-4 text-rose-600" />
+                      <span class="font-medium text-rose-700">No se pudo guardar</span>
+                    }
+                    @case ('invalid') {
+                      <app-icon name="alert" class="size-4 text-amber-700" />
+                      <span class="font-medium text-amber-800"
+                        >Corrige lo marcado para guardar</span
+                      >
+                    }
+                    @default {
+                      @if (notesForm.dirty) {
+                        <span class="text-slate-600">Cambios sin guardar</span>
+                      } @else if (savedLabel(); as label) {
+                        <app-icon name="check" class="size-4 text-emerald-600" />
+                        <span class="text-slate-600">{{ label }}</span>
+                      } @else {
+                        <span class="text-slate-600">Se guarda solo mientras escribes</span>
+                      }
+                    }
+                  }
+                </p>
+                @if (notesForm.dirty || saveState() === 'error') {
+                  <button
+                    type="submit"
+                    class="btn btn-secondary"
+                    [disabled]="saveState() === 'saving'"
+                  >
+                    {{ saveState() === 'error' ? 'Reintentar' : 'Guardar ahora' }}
+                  </button>
                 }
-                <button
-                  type="submit"
-                  class="btn btn-secondary"
-                  [disabled]="saving() || !notesForm.dirty"
-                >
-                  Guardar
-                </button>
               </div>
             }
           </form>
@@ -452,7 +678,7 @@
                     <button
                       type="button"
                       class="btn btn-secondary"
-                      [disabled]="saving()"
+                      [disabled]="saving() || !addendumText()"
                       (click)="saveAddendum()"
                     >
                       Agregar adenda
@@ -479,7 +705,7 @@
               <a [routerLink]="['/mascotas', v.pet.id]" class="btn btn-ghost h-10 px-3">
                 <app-icon name="file-text" class="size-4" /> Carnet
               </a>
-              @if (editable() && !addingVaccine()) {
+              @if (editable() && canPrescribe() && !addingVaccine()) {
                 <button
                   type="button"
                   class="btn btn-secondary h-10"
@@ -500,14 +726,16 @@
               />
             </div>
           }
-          <div class="mt-2">
-            <app-immunization-list
-              [items]="v.immunizations"
-              [canVoid]="editable()"
-              empty="No se aplicó ninguna en esta atención."
-              (changed)="onImmunization($event)"
-            />
-          </div>
+          @if (v.immunizations.length) {
+            <div class="mt-2">
+              <app-immunization-list
+                [items]="v.immunizations"
+                [canVoid]="editable()"
+                empty=""
+                (changed)="onImmunization($event)"
+              />
+            </div>
+          }
         </section>
 
         <!-- Recetas -->
@@ -549,8 +777,44 @@
           </section>
         }
 
+        <!-- Exámenes -->
+        @if (
+          canSeeRecord() &&
+          v.type !== 'GROOMING' &&
+          (labOrders().length || (editable() && canPrescribe()))
+        ) {
+          <section class="card p-5 sm:p-6" aria-labelledby="lab-title">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 id="lab-title" class="font-display text-lg font-semibold text-slate-900">
+                  Exámenes
+                </h2>
+                <p class="mt-0.5 text-sm text-slate-500">
+                  Hemograma, bioquímico, rayos X… El resultado lo revisa el veterinario antes de
+                  avisar.
+                </p>
+              </div>
+              @if (editable() && canPrescribe()) {
+                <button type="button" class="btn btn-secondary h-10" (click)="labs.openOrder()">
+                  <app-icon name="plus" class="size-4" /> Pedir examen
+                </button>
+              }
+            </div>
+            <app-lab-orders
+              #labs
+              [orders]="labOrders()"
+              [visitId]="v.id"
+              [quiet]="true"
+              emptyText=""
+              (changed)="onLab()"
+            />
+          </section>
+        }
+
         <!-- Archivos y consentimientos -->
-        <app-pet-documents [petId]="v.pet.id" [visitId]="v.id" />
+        @if (canSeeRecord()) {
+          <app-pet-documents [petId]="v.pet.id" [visitId]="v.id" />
+        }
 
         <!-- Cargos -->
         <section class="card overflow-hidden" aria-labelledby="charges-title">
@@ -558,9 +822,20 @@
             <h2 id="charges-title" class="font-display text-lg font-semibold text-slate-900">
               Servicios y productos
             </h2>
-            <p class="font-display text-lg font-semibold text-slate-900 tabular-nums">
-              {{ money(v.total) }}
-            </p>
+            <div class="text-right">
+              <p class="font-display text-lg font-semibold text-slate-900 tabular-nums">
+                {{ money(v.total) }}
+              </p>
+              @if (pending() > 0 && pending() < v.total) {
+                <p class="text-sm font-medium text-amber-800 tabular-nums">
+                  Por cobrar {{ money(pending()) }}
+                </p>
+              } @else if (pending() > 0) {
+                <p class="text-sm font-medium text-amber-800">Por cobrar</p>
+              } @else if (v.total > 0) {
+                <p class="text-sm font-medium text-emerald-700">Pagado</p>
+              }
+            </div>
           </div>
 
           @if (shortages().length) {
@@ -593,20 +868,23 @@
                         · receta {{ c.prescriptionRef }}
                       }
                     </p>
-                    <p class="text-xs text-slate-400">{{ c.createdBy.fullName }}</p>
+                    <p class="text-xs text-slate-500">{{ c.createdBy.fullName }}</p>
                   </div>
                   <div class="text-right">
                     <p class="font-semibold text-slate-900 tabular-nums">{{ money(c.total) }}</p>
-                    <app-badge [tone]="chargeTone[c.status]" class="mt-1">{{
-                      c.status === 'PENDING' && c.paidAmount
-                        ? 'Abonó ' + money(c.paidAmount)
-                        : chargeLabels[c.status]
-                    }}</app-badge>
+                    <!-- "Por cobrar" va una sola vez junto al total; aquí solo lo pagado -->
+                    @if (c.status === 'PAID' || c.paidAmount) {
+                      <app-badge [tone]="chargeTone[c.status]" class="mt-1">{{
+                        c.status === 'PENDING'
+                          ? 'Abonó ' + money(c.paidAmount)
+                          : chargeLabels[c.status]
+                      }}</app-badge>
+                    }
                   </div>
                   @if (canVoid(c)) {
                     <button
                       type="button"
-                      class="btn btn-ghost size-10 shrink-0 px-0 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                      class="btn btn-ghost size-11 shrink-0 px-0 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
                       [attr.aria-label]="'Quitar ' + c.description"
                       title="Quitar"
                       (click)="askVoid(c)"
@@ -644,7 +922,7 @@
                 <label for="v-search" class="sr-only">Buscar servicio o producto</label>
                 <app-icon
                   name="search"
-                  class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+                  class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-500"
                 />
                 <input
                   id="v-search"
@@ -658,6 +936,26 @@
                   [attr.aria-expanded]="serviceOptions().length + productOptions().length > 0"
                 />
               </div>
+              @if (groomingHint(); as name) {
+                <div
+                  class="mt-2 flex flex-wrap items-center gap-3 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-900 ring-1 ring-violet-200"
+                  role="note"
+                >
+                  <app-icon name="scissors" class="size-4 shrink-0 text-violet-700" />
+                  <p class="min-w-0 flex-1">
+                    <strong class="font-semibold">{{ name }}</strong> se registra en Grooming: ahí
+                    lo atiende un groomer y se entrega la mascota con su constancia. La consulta
+                    sigue abierta.
+                  </p>
+                  <a
+                    routerLink="/grooming/ingreso"
+                    [queryParams]="{ petId: v.pet.id }"
+                    class="btn btn-secondary h-9 shrink-0 px-3 text-xs"
+                  >
+                    Enviar a grooming
+                  </a>
+                </div>
+              }
               @if (serviceOptions().length || productOptions().length) {
                 <ul
                   id="v-results"
@@ -723,7 +1021,7 @@
                         </p>
                         <button
                           type="button"
-                          class="btn btn-ghost size-10 shrink-0 px-0 text-slate-500"
+                          class="btn btn-ghost size-11 shrink-0 px-0 text-slate-500"
                           [attr.aria-label]="
                             'Quitar ' + g.controls.option.value.description + ' de la lista'
                           "
@@ -821,20 +1119,74 @@
                     Registrar {{ lines.length === 1 ? 'cargo' : lines.length + ' cargos' }}
                   </button>
                 </div>
-              } @else if (!activeCharges().length) {
-                <p class="mt-3 text-sm text-slate-500">
-                  Busca lo que se le hizo o se le vendió. Los insumos de cada servicio se descuentan
-                  solos del inventario.
-                </p>
               }
+              <div
+                class="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-slate-200/70 pt-4 text-sm"
+              >
+                <p class="text-slate-500">
+                  Los insumos (jeringas, guantes, gasas…) no se cobran: se descuentan solos con cada
+                  servicio.
+                </p>
+                @if (canPrescribe()) {
+                  <button
+                    type="button"
+                    class="inline-flex h-10 items-center gap-2 rounded-lg px-3 font-medium text-anil-700 ring-1 ring-anil-200 hover:bg-anil-50"
+                    (click)="modal.set('supplies')"
+                  >
+                    <app-icon name="package" class="size-4" /> Insumos usados (sin cobrar)
+                  </button>
+                }
+              </div>
             </div>
           }
         </section>
       </div>
 
       <!-- Resumen -->
-      <aside class="space-y-6 lg:sticky lg:top-24">
-        <section class="card p-5" aria-labelledby="summary-title">
+      <!-- La columna se estira al alto de la consulta para que el resumen quede fijo al bajar -->
+      <aside class="space-y-6">
+        @if (context(); as ctx) {
+          <div class="hidden lg:block">
+            <ng-container
+              [ngTemplateOutlet]="patientCard"
+              [ngTemplateOutletContext]="{ $implicit: ctx, v: v, idPrefix: 'side-' }"
+            />
+          </div>
+        }
+        @if (hasInstructions() && canSeeRecord()) {
+          <section class="card p-5" aria-labelledby="owner-title">
+            <h2
+              id="owner-title"
+              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+              Para el dueño
+            </h2>
+            <p class="mt-2 text-sm text-slate-600">
+              Indicaciones con el diagnóstico, el tratamiento, la receta y las vacunas de hoy.
+            </p>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              @if (ownerLink(); as link) {
+                <a [href]="link" target="_blank" rel="noopener" class="btn btn-secondary px-3">
+                  <app-icon name="message-circle" class="size-4" /> WhatsApp
+                </a>
+              }
+              <button
+                type="button"
+                class="btn btn-secondary px-3"
+                [class.col-span-2]="!ownerLink()"
+                (click)="printOwner()"
+              >
+                <app-icon name="file-text" class="size-4" /> Imprimir
+              </button>
+            </div>
+            @if (!ownerPhone()) {
+              <p class="mt-2 text-xs text-amber-800">
+                El celular del dueño no sirve para WhatsApp: corrígelo en su ficha.
+              </p>
+            }
+          </section>
+        }
+        <section class="card p-5 lg:sticky lg:top-24" aria-labelledby="summary-title">
           <h2
             id="summary-title"
             class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
@@ -876,6 +1228,42 @@
               </dd>
             </div>
           </dl>
+          <!-- La cuenta a la vista mientras se escribe la consulta: el detalle sigue abajo -->
+          @if (activeCharges().length) {
+            <ul
+              class="mt-4 space-y-1.5 border-t border-slate-100 pt-3 text-sm"
+              aria-label="Cargos de la atención"
+            >
+              @for (c of activeCharges().slice(0, 4); track c.id) {
+                <li class="flex justify-between gap-3">
+                  <span class="min-w-0 truncate text-slate-700">{{ c.description }}</span>
+                  <span class="shrink-0 text-slate-900 tabular-nums">{{ money(c.total) }}</span>
+                </li>
+              }
+            </ul>
+          }
+          @if (activeCharges().length > 4 || editable()) {
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+              @if (activeCharges().length > 4) {
+                <button
+                  type="button"
+                  class="min-h-11 font-medium text-slate-600 hover:text-slate-900"
+                  (click)="goToCharges(false)"
+                >
+                  y {{ activeCharges().length - 4 }} más
+                </button>
+              }
+              @if (editable()) {
+                <button
+                  type="button"
+                  class="ml-auto inline-flex min-h-11 items-center gap-1 font-medium text-anil-700 hover:text-anil-800"
+                  (click)="goToCharges(true)"
+                >
+                  <app-icon name="plus" class="size-4" /> Agregar
+                </button>
+              }
+            </div>
+          }
           @if (canCollect() && pending() > 0 && v.status === 'CLOSED') {
             <a
               routerLink="/caja"
@@ -893,6 +1281,80 @@
   }
 </section>
 
+<!-- Cargar un presupuesto aceptado sin salir de la atención -->
+<app-modal
+  [open]="!!estimateToLoad()"
+  title="Cargar presupuesto a esta atención"
+  description="Las líneas entran como cargos con el precio presupuestado y descuentan sus insumos."
+  [dismissible]="false"
+  (closed)="cancelLoadEstimate()"
+>
+  @if (estimateToLoad(); as e) {
+    <div class="space-y-4">
+      <div class="rounded-xl ring-1 ring-slate-200">
+        <p class="border-b border-slate-100 px-4 py-2.5 text-sm font-medium text-slate-900">
+          {{ e.code }} · {{ e.title }}
+        </p>
+        <ul class="divide-y divide-slate-100 text-sm">
+          @for (i of e.items; track i.id) {
+            <li class="flex items-start justify-between gap-3 px-4 py-2">
+              <span class="min-w-0 text-slate-700">
+                {{ i.description }}
+                @if (i.quantity !== 1) {
+                  <span class="text-slate-500">× {{ formatQty(i.quantity) }}</span>
+                }
+                @if (i.controlled) {
+                  <span class="ml-1 text-xs font-medium text-rose-700">controlado</span>
+                }
+              </span>
+              <span class="shrink-0 text-slate-900 tabular-nums">{{ money(i.total) }}</span>
+            </li>
+          }
+        </ul>
+        <p class="flex items-baseline justify-between rounded-b-xl bg-slate-50 px-4 py-2.5 text-sm">
+          <span class="font-medium text-slate-700">Total</span>
+          <span class="font-semibold text-slate-900 tabular-nums">{{ money(e.total) }}</span>
+        </p>
+      </div>
+      @if (estimateHasControlled()) {
+        <div>
+          <label for="estimate-rx" class="field-label"
+            >N.º de receta <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="estimate-rx"
+            [formControl]="estimateRx"
+            class="field-input"
+            maxlength="60"
+            autocomplete="off"
+            placeholder="Ej.: RX-00012"
+            [attr.aria-invalid]="estimateRx.invalid && estimateRx.touched"
+          />
+          @if (estimateRx.invalid && estimateRx.touched) {
+            <p class="field-error">Escribe el número de la receta retenida</p>
+          } @else {
+            <p class="field-hint">Incluye un medicamento controlado: va con su receta retenida.</p>
+          }
+        </div>
+      }
+    </div>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="cancelLoadEstimate()">Volver</button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      [disabled]="loadingEstimate()"
+      (click)="confirmLoadEstimate()"
+    >
+      @if (loadingEstimate()) {
+        <app-icon name="loader" class="size-4 animate-spin" />
+      }
+      Cargar {{ money(estimateToLoad()?.total ?? 0) }}
+    </button>
+  </ng-container>
+</app-modal>
+
 <!-- Cerrar -->
 <app-modal
   [open]="modal() === 'close'"
@@ -905,10 +1367,32 @@
       Después de cerrarla, la atención de <strong>{{ v.pet.name }}</strong> ya no se edita: las
       correcciones se agregan como adenda.
     </p>
+    @if (closeChecks().length) {
+      <h3 class="mt-4 text-sm font-semibold text-slate-900">Antes de cerrar, revisa</h3>
+      <ul class="mt-2 space-y-2">
+        @for (c of closeChecks(); track c.text) {
+          <li
+            class="flex items-center gap-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200"
+          >
+            <app-icon name="alert" class="size-4 shrink-0 text-amber-700" />
+            <span class="flex-1">{{ c.text }}</span>
+            @if (c.field && editable()) {
+              <button
+                type="button"
+                class="btn btn-secondary h-9 shrink-0 px-3"
+                (click)="fixCheck(c.field)"
+              >
+                Completar
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    }
     @if (pending()) {
-      <p class="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+      <p class="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-800 ring-1 ring-slate-200">
         Quedan <strong class="tabular-nums">{{ money(pending()) }}</strong> por cobrar en la cuenta
-        de {{ v.client.name }}.
+        de {{ v.client.name }}: se cobra en Caja.
       </p>
     }
   }
@@ -919,6 +1403,32 @@
     </button>
   </ng-container>
 </app-modal>
+
+@if (printing(); as text) {
+  @if (visit(); as v) {
+    <article
+      class="print-sheet print-solo hidden bg-white p-2 text-[13px] leading-relaxed text-black print:block"
+    >
+      <header class="flex items-center gap-3 border-b border-slate-300 pb-3">
+        @if (clinicLogo(); as logo) {
+          <img [src]="logo" alt="" class="size-12 object-contain" />
+        }
+        <div>
+          <p class="text-base font-semibold">{{ clinicName() }}</p>
+          <p>Indicaciones para el cuidado de {{ v.pet.name }}</p>
+        </div>
+      </header>
+      <p class="mt-3">
+        <strong>{{ v.pet.name }}</strong> · {{ speciesLabels[v.pet.species] }} · Dueño:
+        {{ v.client.name }} · {{ v.openedAt | fecha: 'date' }}
+      </p>
+      <p class="mt-3 whitespace-pre-line">{{ text }}</p>
+      <p class="mx-auto mt-12 w-64 border-t border-slate-400 pt-1 text-center">
+        {{ v.attendedBy.fullName }}
+      </p>
+    </article>
+  }
+}
 
 <!-- Cancelar / quitar cargo: piden motivo -->
 <app-modal
@@ -970,3 +1480,126 @@
     </button>
   </ng-container>
 </app-modal>
+
+<!-- Plantillas de consulta -->
+<app-template-picker
+  kind="CONSULTATION"
+  [open]="modal() === 'template'"
+  (picked)="applyTemplate($event)"
+  (closed)="closeModal()"
+/>
+<app-save-template
+  kind="CONSULTATION"
+  [open]="modal() === 'saveTemplate'"
+  [consultation]="templateContent()"
+  [suggestedName]="notesForm.controls.diagnosis.value || notesForm.controls.reason.value"
+  (saved)="closeModal()"
+  (closed)="closeModal()"
+/>
+
+<!-- Internar -->
+@if (visit(); as v) {
+  <app-admit-modal
+    [open]="modal() === 'admit'"
+    [petId]="v.pet.id"
+    [petName]="v.pet.name"
+    [fromVisitId]="v.id"
+    [reason]="notesForm.controls.diagnosis.value || notesForm.controls.reason.value"
+    [diagnosis]="notesForm.controls.diagnosis.value"
+    [before]="saveBeforeAdmit"
+    (admitted)="onAdmitted($event)"
+    (closed)="closeModal()"
+  />
+}
+
+@if (visit(); as v) {
+  <app-used-supplies
+    [open]="modal() === 'supplies'"
+    [petId]="v.pet.id"
+    [petName]="v.pet.name"
+    (closed)="modal.set(null)"
+  />
+}
+
+<!-- Tarjeta "Paciente": a la derecha en PC; en celular y tablet de pie, arriba (debajo de las alertas) -->
+<ng-template #patientCard let-ctx let-v="v" let-idPrefix="idPrefix">
+  <section class="card p-5" [attr.aria-labelledby]="idPrefix + 'patient-title'">
+    <h2
+      [id]="idPrefix + 'patient-title'"
+      class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+    >
+      Paciente
+    </h2>
+    <dl class="mt-3 space-y-3 text-sm">
+      <!-- Alergias y "agresivo" ya están arriba en rojo/ámbar: aquí solo si no tiene -->
+      @if (!v.pet.allergies) {
+        <div>
+          <dt class="text-slate-500">Alergias</dt>
+          <dd class="text-slate-700">Ninguna registrada</dd>
+        </div>
+      }
+      <div>
+        <dt class="text-slate-500">Peso anterior</dt>
+        <dd class="text-slate-900">
+          @if (ctx.previousWeight; as pw) {
+            <span class="tabular-nums">{{ pw.kg }} kg</span>
+            <span class="text-slate-500"> · {{ pw.at | fecha: 'date' }}</span>
+            @if (weightChange(); as w) {
+              <span
+                class="ml-1 inline-flex items-center gap-0.5 font-medium tabular-nums"
+                [class]="w.pct <= -10 || w.pct >= 10 ? 'text-amber-800' : 'text-slate-700'"
+              >
+                <app-icon
+                  [name]="w.diff > 0 ? 'trending-up' : w.diff < 0 ? 'trending-down' : 'minus'"
+                  class="size-3.5"
+                />
+                {{ signed(w.diff) }} kg
+              </span>
+            }
+          } @else {
+            <span class="text-slate-600">Primera vez que se pesa</span>
+          }
+        </dd>
+      </div>
+      <div>
+        <dt class="text-slate-500">
+          {{ session.role() === 'GROOMER' ? 'Último grooming' : 'Última consulta' }}
+        </dt>
+        <dd>
+          @if (ctx.previous; as p) {
+            <a
+              [routerLink]="['/atenciones', p.id]"
+              class="font-medium text-anil-700 hover:underline"
+              >{{ p.diagnosis ?? p.reason ?? (p.type === 'GROOMING' ? 'Grooming' : 'Consulta') }}</a
+            >
+            <p class="text-slate-600">{{ p.openedAt | fecha: 'date' }} · {{ p.attendedBy }}</p>
+          } @else {
+            <span class="text-slate-600">{{
+              session.role() === 'GROOMER' ? 'Es su primer grooming' : 'Primera consulta'
+            }}</span>
+          }
+        </dd>
+      </div>
+      <div>
+        <dt class="text-slate-500">Refuerzos</dt>
+        <dd>
+          @if (ctx.overdue.length) {
+            <ul class="mt-0.5 space-y-1">
+              @for (o of ctx.overdue; track o.name + o.kind) {
+                <li class="flex items-start gap-1.5 text-rose-800">
+                  <app-icon name="syringe" class="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    <span class="font-medium">{{ o.name }}</span>
+                    vencida el {{ o.nextDueAt | fecha: 'calendar' }}
+                  </span>
+                </li>
+              }
+            </ul>
+          } @else {
+            <span class="text-slate-700">Ninguno vencido</span>
+          }
+        </dd>
+      </div>
+    </dl>
+  </section>
+</ng-template>

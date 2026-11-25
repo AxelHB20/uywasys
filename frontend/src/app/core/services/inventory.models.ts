@@ -1,3 +1,4 @@
+import type { IconName } from '../../shared/ui/icon/icons';
 import { PetSize } from './grooming.models';
 import { Role } from '../auth/auth.models';
 
@@ -5,7 +6,8 @@ export type ProductCategory =
   'MEDICINE' | 'VACCINE' | 'ANTIPARASITIC' | 'FOOD' | 'ACCESSORY' | 'HYGIENE' | 'SUPPLY';
 export type BaseUnit = 'UNIT' | 'TABLET' | 'ML' | 'G';
 export type IgvAffectation = 'TAXED' | 'EXEMPT' | 'UNAFFECTED';
-export type MovementType = 'PURCHASE' | 'WASTE' | 'TREATMENT' | 'COUNT_ADJUST' | 'RETURN' | 'SALE';
+export type MovementType =
+  'PURCHASE' | 'WASTE' | 'TREATMENT' | 'COUNT_ADJUST' | 'RETURN' | 'SALE' | 'PURCHASE_VOID';
 export type ExpiryLevel = 'EXPIRED' | 'RED' | 'YELLOW' | 'GREEN';
 
 /** Compras, salidas y catálogo (igual que el backend). El ajuste por conteo es solo del ADMIN. */
@@ -21,6 +23,26 @@ export const CATEGORY_LABELS: Record<ProductCategory, string> = {
   SUPPLY: 'Insumo',
 };
 export const CATEGORIES = Object.keys(CATEGORY_LABELS) as ProductCategory[];
+
+/** Un ícono y un tono por categoría para leer la lista de un vistazo */
+export const CATEGORY_ICON: Record<ProductCategory, IconName> = {
+  MEDICINE: 'pill',
+  VACCINE: 'syringe',
+  ANTIPARASITIC: 'shield-check',
+  FOOD: 'package',
+  ACCESSORY: 'paw',
+  HYGIENE: 'scissors',
+  SUPPLY: 'clipboard-list',
+};
+export const CATEGORY_TINT: Record<ProductCategory, string> = {
+  MEDICINE: 'bg-anil-50 text-anil-700',
+  VACCINE: 'bg-sky-50 text-sky-700',
+  ANTIPARASITIC: 'bg-emerald-50 text-emerald-700',
+  FOOD: 'bg-amber-50 text-amber-800',
+  ACCESSORY: 'bg-violet-50 text-violet-700',
+  HYGIENE: 'bg-teal-50 text-teal-700',
+  SUPPLY: 'bg-slate-100 text-slate-600',
+};
 
 /** [singular, plural] */
 export const BASE_UNIT_LABELS: Record<BaseUnit, [string, string]> = {
@@ -44,6 +66,7 @@ export const MOVEMENT_LABELS: Record<MovementType, string> = {
   COUNT_ADJUST: 'Ajuste por conteo',
   RETURN: 'Devolución',
   SALE: 'Venta',
+  PURCHASE_VOID: 'Compra anulada',
 };
 
 export interface ExpiryStatus {
@@ -71,9 +94,17 @@ export interface ProductSummary {
   lowStock: boolean;
   controlled: boolean;
   requiresPrescription: boolean;
+  /** Se cobra al cliente; los insumos no (servidores anteriores no lo mandan: se asume que sí) */
+  chargeable?: boolean;
+  /** Tiene lote y vencimiento (medicamentos, vacunas, alimentos); camas o juguetes no */
+  tracksExpiry: boolean;
+  /** Afectación del IGV (servidores anteriores no la mandan: se asume gravado) */
+  igv?: IgvAffectation;
   active: boolean;
   presentations: Presentation[];
   nextExpiry: (ExpiryStatus & { date: string; lotNumber: string | null }) | null;
+  /** Último costo sin IGV por unidad mínima (null si nunca se compró por el sistema) */
+  unitCost?: number | null;
 }
 
 export interface ProductPage {
@@ -94,6 +125,8 @@ export interface Batch {
   supplier: string | null;
   documentNumber: string | null;
   receivedAt: string;
+  /** Ficha de compra en la que entró (solo para quien ve costos; nulo en ingresos antiguos) */
+  purchase?: { id: number; code: string } | null;
 }
 
 export interface ProductDetail extends Omit<ProductSummary, 'nextExpiry'> {
@@ -117,6 +150,10 @@ export interface Movement {
   user: { fullName: string };
   vet: { fullName: string } | null;
   pet: { id: number; name: string; clientId: number } | null;
+  /** 'charge' = salió por un cargo de la atención (insumo de un servicio o venta) */
+  refType?: string | null;
+  /** Venta suelta: a quién y con qué comprobante */
+  sale?: { client: string; document: string | null } | null;
 }
 
 export interface ControlledMovement {
@@ -128,7 +165,12 @@ export interface ControlledMovement {
   prescriptionRef: string | null;
   createdAt: string;
   product: { id: number; name: string; baseUnit: BaseUnit };
-  batch: { lotNumber: string | null } | null;
+  /** En las entradas: de qué proveedor y ficha vino (DIGEMID) */
+  batch: {
+    lotNumber: string | null;
+    supplier?: string | null;
+    documentNumber?: string | null;
+  } | null;
   user: { fullName: string };
   vet: { fullName: string; licenseNumber: string | null } | null;
   pet: { id: number; name: string; client: { id: number; name: string } } | null;
@@ -166,6 +208,8 @@ export interface ProductInput {
   minStock: number;
   requiresPrescription: boolean;
   controlled: boolean;
+  chargeable: boolean;
+  tracksExpiry: boolean;
   sunatUnit: string;
   igv: IgvAffectation;
   notes: string | null;
@@ -176,8 +220,11 @@ export interface PurchaseInput {
   quantity: number;
   lotNumber: string | null;
   expiresAt: string | null;
+  /** Costo sin IGV de cada presentación */
   costPerPresentation: number | null;
   supplier: string | null;
+  /** Proveedor de la lista (manda sobre el texto) */
+  supplierId?: number | null;
   documentNumber: string | null;
 }
 
@@ -191,7 +238,8 @@ export interface OutflowInput {
   prescriptionRef: string | null;
 }
 
-export type StockFilter = 'all' | 'low' | 'expiring';
+/** expiring = 60 días o vencido · expired · exp30 = en 30 días · exp60 = de 31 a 60 días */
+export type StockFilter = 'all' | 'low' | 'expiring' | 'expired' | 'exp30' | 'exp60';
 
 export interface ProductImportRow {
   row: number;
@@ -202,16 +250,27 @@ export interface ProductImportRow {
     category: ProductCategory;
     baseUnit: BaseUnit;
     controlled: boolean;
+    igv: IgvAffectation;
   };
-  presentation: { name: string; factor: number; price: number | null };
+  presentation: {
+    name: string;
+    factor: number;
+    price: number | null;
+    barcode: string | null;
+  };
+  /** Otra fila de la misma presentación: solo suma un lote */
+  extraLot: boolean;
   stock: {
     quantity: number;
     lotNumber: string | null;
     expiresAt: string | null;
     cost: number | null;
+    supplier: string | null;
   } | null;
   status: 'ok' | 'exists' | 'error';
   errors: string[];
+  /** No impiden importar: sin precio, sin costo, vence pronto */
+  warnings: string[];
 }
 
 export interface ProductImportPreview {
@@ -221,6 +280,7 @@ export interface ProductImportPreview {
     ok: number;
     exists: number;
     errors: number;
+    warnings: number;
     products: number;
     presentations: number;
     batches: number;
@@ -236,7 +296,14 @@ export interface ProductImportResult {
 }
 
 export type CareServiceCategory =
-  'CONSULTATION' | 'VACCINATION' | 'DEWORMING' | 'SURGERY' | 'LAB' | 'GROOMING' | 'OTHER';
+  | 'CONSULTATION'
+  | 'VACCINATION'
+  | 'DEWORMING'
+  | 'SURGERY'
+  | 'LAB'
+  | 'GROOMING'
+  | 'HOSPITALIZATION'
+  | 'OTHER';
 
 export const SERVICE_CATEGORY_LABELS: Record<CareServiceCategory, string> = {
   CONSULTATION: 'Consultas',
@@ -245,11 +312,14 @@ export const SERVICE_CATEGORY_LABELS: Record<CareServiceCategory, string> = {
   SURGERY: 'Cirugías y procedimientos',
   LAB: 'Laboratorio',
   GROOMING: 'Baño y grooming',
+  HOSPITALIZATION: 'Hospitalización',
   OTHER: 'Otros',
 };
 export const SERVICE_CATEGORIES = Object.keys(SERVICE_CATEGORY_LABELS) as CareServiceCategory[];
 
 export interface CareService {
+  /** Presupuestos emitidos o aceptados que lo incluyen (se cobran aunque se desactive) */
+  pendingEstimates?: number;
   id: number;
   name: string;
   category: CareServiceCategory;
@@ -266,6 +336,8 @@ export interface CareService {
     quantity: number;
     /** Controlado: el cargo exige receta y veterinario con colegiatura */
     controlled: boolean;
+    /** Último costo sin IGV por unidad mínima (null si nunca se compró por el sistema) */
+    unitCost?: number | null;
   }[];
 }
 
@@ -295,3 +367,8 @@ export interface Shortage {
   resolvedAt: string | null;
   resolution: string | null;
 }
+
+/** Lo que por defecto no vence: accesorios (camas, juguetes, correas, collares) */
+export const defaultTracksExpiry = (category: ProductCategory): boolean => category !== 'ACCESSORY';
+/** Los insumos (jeringas, guantes…) no se cobran aparte: se descuentan con el servicio */
+export const defaultChargeable = (category: ProductCategory): boolean => category !== 'SUPPLY';

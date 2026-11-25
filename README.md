@@ -77,13 +77,17 @@ Antes de usarlo con una clínica real, cambia en `.env` el `JWT_SECRET` y la con
 Recorre en Chrome el día de la clínica: registrar cliente → cola → atención → cobro con vuelto → cierre de caja. Corre sola en GitHub Actions; para correrla en tu PC, con Docker arriba:
 
 ```bash
+docker compose exec -e E2E_PASSWORD=Pruebas2026clave api node scripts/e2e-clinic.mjs   # una sola vez
 cd e2e
 npm install
 npx playwright install chromium
 npx playwright test
 ```
 
-Usa el administrador del seed (`admin@uywa.pe` / `CambiaEstaClave123`); si cambiaste la clave, pásala con `E2E_PASSWORD`.
+Corren en una **clínica de pruebas aparte** (`e2e@uywa.pe` / `Pruebas2026clave`, la crea
+`scripts/e2e-clinic.mjs`), así la demostración y los datos reales no se llenan de "Cliente E2E"
+ni de cobros de prueba. Otra clave: pásala con `E2E_PASSWORD`. Al terminar, `global-teardown`
+desactiva lo que crearon. No crees la clínica de pruebas en el servidor de la clínica.
 
 ## Producción
 

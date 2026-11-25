@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ActivityFilters, ActivityPage } from './activity.models';
+import { ActivityFilters, ActivityPage, ActivityReview } from './activity.models';
 
 /** Bitácora de la clínica (solo administradores). */
 @Injectable({ providedIn: 'root' })
@@ -15,7 +15,13 @@ export class ActivityService {
     if (filters.from) params = params.set('from', filters.from);
     if (filters.to) params = params.set('to', filters.to);
     if (filters.important) params = params.set('important', 'true');
+    if (filters.kind) params = params.set('kind', filters.kind);
     if (filters.page && filters.page > 1) params = params.set('page', filters.page);
     return this.http.get<ActivityPage>('/api/activity', { params });
+  }
+
+  /** Cuántas cosas para revisar hay en los últimos 7 días, por grupo */
+  review(): Observable<ActivityReview> {
+    return this.http.get<ActivityReview>('/api/activity/review');
   }
 }

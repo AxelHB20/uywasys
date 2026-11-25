@@ -59,6 +59,17 @@ export interface DueImmunization {
   daysLeft: number;
   pet: { id: number; number: number; name: string; species: Species };
   client: { id: number; name: string; phone: string };
+  /** A quién ya se avisó y por dónde */
+  reminded: ReminderMark[];
+  /** El dueño activó los avisos en su portal: le llega solo al celular */
+  autoNotice: boolean;
+}
+
+export interface ReminderMark {
+  channel: 'WHATSAPP' | 'PUSH';
+  sentAt: string;
+  /** null = aviso automático */
+  by: string | null;
 }
 
 /** Nombres frecuentes para autocompletar (cada clínica escribe los suyos) */
@@ -119,8 +130,24 @@ export function reminderLink(item: DueImmunization, clinicName: string): string 
 /** Carnet imprimible y cabecera de la historia clínica */
 export interface ImmunizationCard {
   clinic: { name: string; address: string | null; phone: string | null; logoUrl: string | null };
-  pet: Pet & { client: { id: number; name: string; phone: string } };
+  pet: Pet & {
+    client: {
+      id: number;
+      name: string;
+      phone: string;
+      address?: string | null;
+      district?: string | null;
+    };
+  };
   items: Immunization[];
+  /** Próxima cita que sigue en pie (servidores anteriores no la mandan) */
+  nextAppointment?: {
+    id: number;
+    startsAt: string;
+    type: 'CONSULTATION' | 'GROOMING' | 'HOSPITALIZATION';
+    reason: string | null;
+    vet: string | null;
+  } | null;
 }
 
 // ── Recetas ──
@@ -206,6 +233,50 @@ export const FREQUENCY_OPTIONS = [
   'Según necesidad',
 ];
 export const DURATION_OPTIONS = ['3 días', '5 días', '7 días', '10 días', '14 días', '1 mes'];
+
+/** Lo que hace falta entregar según la receta: dosis × tomas al día × días (null si no se puede saber) */
+export function suggestedUnits(
+  dose: string,
+  frequency: string,
+  duration: string,
+): { perDose: number; perDay: number; days: number; total: number } | null {
+  const d = dose.trim().replace(',', '.');
+  const frac = d.match(/^(\d+)\s*\/\s*(\d+)/);
+  const perDose = d.startsWith('½')
+    ? 0.5
+    : d.startsWith('¼')
+      ? 0.25
+      : frac
+        ? Number(frac[1]) / Number(frac[2])
+        : Number(d.match(/^\d+(\.\d+)?/)?.[0]);
+  if (!(perDose > 0)) return null;
+  const f = frequency.trim().toLocaleLowerCase('es');
+  if (f.startsWith('dosis única'))
+    return { perDose, perDay: 1, days: 1, total: Math.ceil(perDose) };
+  const hours = f.match(/cada\s+(\d+)\s*h/);
+  const times = f.match(/(\d+)\s*veces?\s+al\s+d[ií]a/);
+  const perDay = hours
+    ? 24 / Number(hours[1])
+    : times
+      ? Number(times[1])
+      : /una vez al d[ií]a/.test(f)
+        ? 1
+        : 0;
+  if (!(perDay > 0) || !Number.isInteger(perDay)) return null;
+  const t = duration.trim().toLocaleLowerCase('es');
+  const n = Number(t.match(/^\d+/)?.[0]);
+  const days = !(n > 0)
+    ? 0
+    : /d[ií]a/.test(t)
+      ? n
+      : /semana/.test(t)
+        ? n * 7
+        : /mes/.test(t)
+          ? n * 30
+          : 0;
+  if (!days) return null;
+  return { perDose, perDay, days, total: Math.ceil(perDose * perDay * days) };
+}
 
 /** "1 tableta · oral · cada 12 horas · 5 días" */
 export function posology(

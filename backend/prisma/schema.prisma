@@ -35,9 +35,13 @@ model Clinic {
   maxDiscountPercent Decimal   @default(10) @map("max_discount_percent") @db.Decimal(5, 2)
   /// Horario de atención: [{ day: 1..7, open: "09:00", close: "19:00" }]; null = el de por defecto
   openingHours       Json?     @map("opening_hours")
+  /// El portal del dueño muestra el carnet completo (lotes, quién aplicó) y las recetas. Apagado,
+  /// solo muestra próximas dosis y citas: el carnet válido es el que entrega la clínica.
+  portalShowRecords  Boolean   @default(false) @map("portal_show_records")
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  labOrders        LabOrder[]
 
   users            User[]
   auditLogs        AuditLog[]
@@ -69,6 +73,13 @@ model Clinic {
   attachments      Attachment[]
   consents         Consent[]
   groomingSessions GroomingSession[]
+  templates        ClinicalTemplate[]
+  hospitalizations Hospitalization[]
+  hospOrders       HospitalizationOrder[]
+  hospEntries      HospitalizationEntry[]
+  portalLinks      PortalLink[]
+  suppliers        Supplier[]
+  purchases        Purchase[]
 
   @@map("clinics")
 }
@@ -82,9 +93,12 @@ model User {
   role                Role
   /// Número de colegiatura (CMVP) para veterinarios: se imprime en recetas
   licenseNumber       String?   @map("license_number") @db.VarChar(20)
-  /// Groomers: porcentaje de comisión sobre lo cobrado de sus servicios entregados
-  commissionPercent   Decimal?  @map("commission_percent") @db.Decimal(5, 2)
+  /// Hasta cuándo vio sus notificaciones (para contar las no leídas en cualquier equipo)
+  notificationsSeenAt DateTime? @map("notifications_seen_at") @db.Timestamptz(3)
   active              Boolean   @default(true)
+  /// Soporte técnico: única cuenta que cambia la configuración de facturación y el RUC.
+  /// Se marca en el servidor, no desde la pantalla.
+  isSupport           Boolean   @default(false) @map("is_support")
   /// true cuando el usuario entra con una clave temporal: debe cambiarla antes de usar el sistema
   mustChangePassword  Boolean   @default(false) @map("must_change_password")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
@@ -94,11 +108,13 @@ model User {
   sessionVersion      Int       @default(0) @map("session_version")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  labOrdersRequested LabOrder[] @relation("LabOrderRequestedBy")
 
   clinic               Clinic               @relation(fields: [clinicId], references: [id])
   auditLogs            AuditLog[]
   queueCreated         QueueEntry[]         @relation("QueueCreatedBy")
   queueAttended        QueueEntry[]         @relation("QueueAttendedBy")
+  queueDeliveredHome   QueueEntry[]         @relation("QueueDeliveredHome")
   batchesReceived      ProductBatch[]
   stockMovements       StockMovement[]      @relation("MovementUser")
   movementsAsVet       StockMovement[]      @relation("MovementVet")
@@ -133,6 +149,17 @@ model User {
   groomingCreated      GroomingSession[]    @relation("GroomingCreatedBy")
   groomingDelivered    GroomingSession[]    @relation("GroomingDeliveredBy")
   groomingCancelled    GroomingSession[]    @relation("GroomingCancelledBy")
+  templatesCreated     ClinicalTemplate[]
+  hospResponsible      Hospitalization[]    @relation("HospVet")
+  hospAdmitted         Hospitalization[]    @relation("HospAdmittedBy")
+  hospDischarged       Hospitalization[]    @relation("HospDischargedBy")
+  hospOrdersCreated    HospitalizationOrder[] @relation("HospOrderCreatedBy")
+  hospOrdersStopped    HospitalizationOrder[] @relation("HospOrderStoppedBy")
+  hospEntries          HospitalizationEntry[]
+  portalLinksCreated   PortalLink[]
+  purchasesCreated     Purchase[]           @relation("PurchaseCreatedBy")
+  purchasesVoided      Purchase[]           @relation("PurchaseVoidedBy")
+  purchaseFiles        PurchaseFile[]
 
   @@index([clinicId])
   @@map("users")
@@ -185,6 +212,8 @@ enum PetSex {
 enum VisitType {
   CONSULTATION
   GROOMING
+  /// Internamiento: la atención queda abierta hasta el alta
+  HOSPITALIZATION
 }
 
 enum QueueStatus {
@@ -223,6 +252,12 @@ model Client {
   email            String?       @db.VarChar(120)
   address          String?       @db.VarChar(200)
   district         String?       @db.VarChar(60)
+  /// Datos de facturación: el RUC al que factura (p. ej. el de su empresa, distinto de su DNI)
+  invoiceRuc       String?       @map("invoice_ruc") @db.Char(11)
+  invoiceName      String?       @map("invoice_name") @db.VarChar(150)
+  invoiceAddress   String?       @map("invoice_address") @db.VarChar(200)
+  /// El PSE envía ahí el PDF de sus facturas
+  invoiceEmail     String?       @map("invoice_email") @db.VarChar(120)
   notes            String?       @db.VarChar(500)
   /// Ley 29733: consentimiento para tratar sus datos (obligatorio al registrar)
   consentAt        DateTime      @map("consent_at") @db.Timestamptz(3)
@@ -241,6 +276,7 @@ model Client {
   anonymizedAt     DateTime?     @map("anonymized_at") @db.Timestamptz(3)
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  labOrders     LabOrder[]
 
   clinic        Clinic             @relation(fields: [clinicId], references: [id])
   pets          Pet[]
@@ -251,10 +287,13 @@ model Client {
   prescriptions Prescription[]
   appointments  Appointment[]
   estimates     Estimate[]
+  hospitalizations Hospitalization[]
   consents      Consent[]
   grooming      GroomingSession[]
+  portalLinks   PortalLink[]
 
   @@unique([clinicId, docType, docNumber])
+  @@index([clinicId, invoiceRuc])
   @@unique([clinicId, number])
   @@index([clinicId, name])
   @@map("clients")
@@ -305,6 +344,7 @@ model Pet {
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  labOrders      LabOrder[]
 
   clinic         Clinic            @relation(fields: [clinicId], references: [id])
   client         Client            @relation(fields: [clientId], references: [id])
@@ -319,6 +359,7 @@ model Pet {
   attachments    Attachment[]
   consents       Consent[]
   grooming       GroomingSession[]
+  hospitalizations Hospitalization[]
 
   @@unique([clinicId, number])
   /// clientId: cargar las mascotas de un cliente (ficha y lista) · clinicId+clientId: búsqueda por nombre de mascota
@@ -343,12 +384,22 @@ model QueueEntry {
   finishedAt   DateTime?   @map("finished_at") @db.Timestamptz(3)
   createdById  Int         @map("created_by_id")
   attendedById Int?        @map("attended_by_id")
+  /// Movilidad contratada (recojo, entrega o ambos) y la dirección
+  transport         GroomingTransport @default(NONE)
+  transportAddress  String?           @map("transport_address") @db.VarChar(200)
+  /// Precio que puso recepción; en consulta, el cargo vive en transportChargeId
+  transportPrice    Decimal?          @map("transport_price") @db.Decimal(10, 2)
+  transportChargeId Int?              @map("transport_charge_id")
+  /// Consulta con entrega: cuándo y quién lo dejó en su casa
+  deliveredHomeAt   DateTime?         @map("delivered_home_at") @db.Timestamptz(3)
+  deliveredHomeById Int?              @map("delivered_home_by_id")
   updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   clinic      Clinic       @relation(fields: [clinicId], references: [id])
   pet         Pet          @relation(fields: [petId], references: [id])
   createdBy   User         @relation("QueueCreatedBy", fields: [createdById], references: [id])
   attendedBy  User?        @relation("QueueAttendedBy", fields: [attendedById], references: [id])
+  deliveredHomeBy User?    @relation("QueueDeliveredHome", fields: [deliveredHomeById], references: [id])
   visits      Visit[]
   appointment Appointment?
 
@@ -391,6 +442,8 @@ enum MovementType {
   COUNT_ADJUST
   RETURN
   SALE
+  /// Compra anulada: sale todo lo que entró con ella (solo si no se usó nada)
+  PURCHASE_VOID
 }
 
 enum CareServiceCategory {
@@ -400,6 +453,8 @@ enum CareServiceCategory {
   SURGERY
   LAB
   GROOMING
+  /// Día de hospitalización (se cobra al dar de alta)
+  HOSPITALIZATION
   OTHER
 }
 
@@ -418,6 +473,10 @@ model Product {
   requiresPrescription Boolean         @default(false) @map("requires_prescription")
   /// Medicamento controlado (ketamina y similares): cada salida guarda paciente, veterinario, lote y receta
   controlled           Boolean         @default(false)
+  /// Tiene lote y vencimiento (medicamentos, vacunas, alimentos). Camas, juguetes o correas no.
+  /// Se cobra al cliente (aparece al cobrar). Los insumos no: se descuentan con el servicio
+  chargeable           Boolean         @default(true)
+  tracksExpiry         Boolean         @default(true) @map("tracks_expiry")
   /// Unidad SUNAT para la boleta (NIU, KGM, LTR…)
   sunatUnit            String          @default("NIU") @map("sunat_unit") @db.VarChar(3)
   igv                  IgvAffectation  @default(TAXED)
@@ -437,6 +496,7 @@ model Product {
   shortages     StockShortage[]
   prescribed    PrescriptionItem[]
   estimated     EstimateItem[]
+  purchaseLines PurchaseLine[]
 
   @@unique([clinicId, code])
   @@index([clinicId, name])
@@ -462,6 +522,7 @@ model ProductPresentation {
   charges    Charge[]
   prescribed PrescriptionItem[]
   estimated  EstimateItem[]
+  purchased  PurchaseLine[]
 
   @@unique([productId, name])
   @@map("product_presentations")
@@ -471,7 +532,7 @@ model ProductBatch {
   id              Int       @id @default(autoincrement())
   clinicId        Int       @map("clinic_id")
   productId       Int       @map("product_id")
-  /// Nulo solo en accesorios
+  /// Nulo en productos que no vencen
   lotNumber       String?   @map("lot_number") @db.VarChar(40)
   expiresAt       DateTime? @map("expires_at") @db.Date
   quantity        Decimal   @db.Decimal(12, 3)
@@ -481,17 +542,26 @@ model ProductBatch {
   supplier        String?   @db.VarChar(120)
   /// N.º de factura o boleta de compra
   documentNumber  String?   @map("document_number") @db.VarChar(30)
+  /// Proveedor de la lista (el texto `supplier` queda como copia, y en los lotes antiguos)
+  supplierId      Int?      @map("supplier_id")
+  /// Compra en la que entró (nulo en los ingresos sueltos antiguos)
+  purchaseId      Int?      @map("purchase_id")
   receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
   createdById     Int       @map("created_by_id")
 
-  clinic    Clinic          @relation(fields: [clinicId], references: [id])
-  product   Product         @relation(fields: [productId], references: [id])
-  createdBy User            @relation(fields: [createdById], references: [id])
-  movements StockMovement[]
+  clinic       Clinic          @relation(fields: [clinicId], references: [id])
+  product      Product         @relation(fields: [productId], references: [id])
+  createdBy    User            @relation(fields: [createdById], references: [id])
+  supplierRef  Supplier?       @relation(fields: [supplierId], references: [id])
+  purchase     Purchase?       @relation(fields: [purchaseId], references: [id])
+  purchaseLine PurchaseLine?
+  movements    StockMovement[]
 
   /// FEFO: lotes de un producto ordenados por vencimiento
   @@index([productId, expiresAt])
   @@index([clinicId, expiresAt])
+  @@index([supplierId])
+  @@index([purchaseId])
   @@map("product_batches")
 }
 
@@ -528,6 +598,8 @@ model StockMovement {
   @@index([clinicId, createdAt])
   @@index([batchId])
   @@index([petId])
+  /// Movimientos de un cargo (devolver stock al anularlo, margen del período)
+  @@index([clinicId, refType, refId])
   @@map("stock_movements")
 }
 
@@ -541,9 +613,13 @@ model CareService {
   price       Decimal             @db.Decimal(10, 2)
   igv         IgvAffectation      @default(TAXED)
   durationMin Int?                @map("duration_min")
+  /// Servicio interno del sistema (TRANSPORT = movilidad): no se lista ni se agrega a mano; su
+  /// precio lo pone recepción en cada caso
+  systemKey     String?             @map("system_key") @db.VarChar(20)
   active      Boolean             @default(true)
   createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  labOrderItems LabOrderItem[]
 
   clinic     Clinic                 @relation(fields: [clinicId], references: [id])
   supplies   CareServiceSupply[]
@@ -551,6 +627,7 @@ model CareService {
   estimated  EstimateItem[]
   sizePrices CareServiceSizePrice[]
 
+  @@unique([clinicId, systemKey])
   @@unique([clinicId, name])
   @@map("care_services")
 }
@@ -626,6 +703,7 @@ model Visit {
   closedById          Int?        @map("closed_by_id")
   cancelReason        String?     @map("cancel_reason") @db.VarChar(200)
   updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  labOrders     LabOrder[]
 
   clinic        Clinic           @relation(fields: [clinicId], references: [id])
   pet           Pet              @relation(fields: [petId], references: [id])
@@ -641,8 +719,10 @@ model Visit {
   attachments   Attachment[]
   consents      Consent[]
   grooming      GroomingSession?
+  hospitalization Hospitalization?
 
   @@index([clinicId, status])
+  @@index([clinicId, openedAt])
   @@index([petId, openedAt])
   @@index([clientId])
   @@index([queueEntryId])
@@ -724,6 +804,7 @@ model Charge {
   @@index([visitId])
   @@index([productId])
   @@index([careServiceId])
+  // "Por cobrar": índice parcial solo con los PENDING (charges_pending_idx) en la migración
   @@map("charges")
 }
 
@@ -920,6 +1001,7 @@ model CashMovement {
 
   @@index([sessionId])
   @@index([receiptId])
+  @@index([clinicId, createdAt])
   @@map("cash_movements")
 }
 
@@ -929,6 +1011,10 @@ model CashMovement {
 enum BillingProvider {
   SIMULATED
   NUBEFACT
+  /// Lucode (APISUNAT): PSE más económico; la ruta sale de "Producción" (sandbox o app)
+  LUCODE
+  /// Mifact (Osys Company S.A.C.), API JSON
+  MIFACT
 }
 
 /// Catálogo 01 de SUNAT: 03 boleta, 01 factura, 07 nota de crédito
@@ -958,14 +1044,36 @@ model BillingSettings {
   production          Boolean         @default(false)
   /// Razón social tal como figura en SUNAT: va en la representación impresa
   legalName           String?         @map("legal_name") @db.VarChar(150)
+  /// Domicilio fiscal tal como figura en SUNAT (Mifact lo exige en cada comprobante)
+  fiscalAddress       String?         @map("fiscal_address") @db.VarChar(200)
+  /// Ubigeo INEI del domicilio fiscal, 6 dígitos (Mifact lo exige)
+  ubigeo              String?         @db.Char(6)
   /// Ruta de la API que entrega el PSE (Nubefact la muestra en su panel)
   apiUrl              String?         @map("api_url") @db.VarChar(300)
   /// Token del PSE cifrado con AES-256-GCM: nunca se devuelve al navegador
   apiTokenEnc         String?         @map("api_token_enc")
+  /// Token de la consulta de RUC/DNI (APISPERU, gratis 1000/mes), cifrado
+  lookupTokenEnc      String?         @map("lookup_token_enc")
   boletaSeries        String          @default("B001") @map("boleta_series") @db.Char(4)
   facturaSeries       String          @default("F001") @map("factura_series") @db.Char(4)
   boletaCreditSeries  String          @default("BC01") @map("boleta_credit_series") @db.Char(4)
   facturaCreditSeries String          @default("FC01") @map("factura_credit_series") @db.Char(4)
+  /// Conexión con el PSE: OK, TOKEN, SUSPENDED o UNREACHABLE (nulo = aún no revisada)
+  health              String?         @db.VarChar(12)
+  healthError         String?         @map("health_error") @db.VarChar(500)
+  /// Desde cuándo está con problema
+  healthSince         DateTime?       @map("health_since") @db.Timestamptz(3)
+  healthCheckedAt     DateTime?       @map("health_checked_at") @db.Timestamptz(3)
+  /// Revisiones seguidas sin respuesta del PSE (a las 3 se avisa)
+  healthFailures      Int             @default(0) @map("health_failures")
+  /// Cuándo se guardó el token actual (Mifact lo cambia cada ~6 meses: se avisa a los 5)
+  tokenUpdatedAt      DateTime?       @map("token_updated_at") @db.Timestamptz(3)
+  /// Comprobantes por mes del plan del PSE (nulo = sin límite que vigilar)
+  monthlyQuota        Int?            @map("monthly_quota")
+  /// Vencimientos del servicio: se avisa 30 días antes
+  planExpiresOn       DateTime?       @map("plan_expires_on") @db.Date
+  domainExpiresOn     DateTime?       @map("domain_expires_on") @db.Date
+  serverExpiresOn     DateTime?       @map("server_expires_on") @db.Date
   updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   clinic Clinic @relation(fields: [clinicId], references: [id])
@@ -989,6 +1097,8 @@ model ElectronicDocument {
   customerDocNumber String                   @map("customer_doc_number") @db.VarChar(15)
   customerName      String                   @map("customer_name") @db.VarChar(150)
   customerAddress   String?                  @map("customer_address") @db.VarChar(200)
+  /// Correo del comprador: el PSE le envía el PDF
+  customerEmail     String?                  @map("customer_email") @db.VarChar(120)
   taxedAmount       Decimal                  @map("taxed_amount") @db.Decimal(12, 2)
   exemptAmount      Decimal                  @map("exempt_amount") @db.Decimal(12, 2)
   unaffectedAmount  Decimal                  @map("unaffected_amount") @db.Decimal(12, 2)
@@ -1005,6 +1115,11 @@ model ElectronicDocument {
   /// Próximo intento de envío o de consulta; null = no hay nada programado
   nextAttemptAt     DateTime?                @map("next_attempt_at") @db.Timestamptz(3)
   lastError         String?                  @map("last_error") @db.VarChar(500)
+  /// Rechazado por SUNAT que ya se resolvió (se emitió otro comprobante o se anuló el cobro):
+  /// deja de contar como problema
+  replacedAt        DateTime?                @map("replaced_at") @db.Timestamptz(3)
+  /// auth, suspended o network: se reenvía solo cuando el PSE vuelve a responder
+  errorKind         String?                  @map("error_kind") @db.VarChar(12)
   sunatDescription  String?                  @map("sunat_description") @db.VarChar(500)
   hash              String?                  @db.VarChar(100)
   qrText            String?                  @map("qr_text") @db.VarChar(500)
@@ -1024,6 +1139,7 @@ model ElectronicDocument {
   createdBy   User                 @relation("DocumentCreatedBy", fields: [createdById], references: [id])
 
   @@unique([clinicId, series, number])
+  @@index([clinicId, customerDocType, customerDocNumber], map: "electronic_documents_customer_doc_idx")
   @@index([clinicId, issueDate])
   @@index([status, nextAttemptAt])
   @@index([receiptId])
@@ -1075,6 +1191,8 @@ model Immunization {
   @@index([petId, appliedAt])
   @@index([clinicId, nextDueAt])
   @@index([visitId])
+  // + immunizations_latest_idx (pet_id, kind, lower(name), applied_at DESC, id DESC) WHERE voided_at IS NULL:
+  //   índice por expresión creado en la migración 20261105010000 (Prisma no lo puede declarar aquí)
   @@map("immunizations")
 }
 
@@ -1161,6 +1279,9 @@ model Appointment {
   type         VisitType         @default(CONSULTATION)
   reason       String?           @db.VarChar(200)
   notes        String?           @db.VarChar(300)
+  transport        GroomingTransport @default(NONE)
+  transportAddress String?           @map("transport_address") @db.VarChar(200)
+  transportPrice   Decimal?          @map("transport_price") @db.Decimal(10, 2)
   status       AppointmentStatus @default(SCHEDULED)
   queueEntryId Int?              @unique @map("queue_entry_id")
   cancelReason String?           @map("cancel_reason") @db.VarChar(200)
@@ -1278,6 +1399,7 @@ model Attachment {
   voidedAt    DateTime?      @map("voided_at") @db.Timestamptz(3)
   voidedById  Int?           @map("voided_by_id")
   voidReason  String?        @map("void_reason") @db.VarChar(200)
+  labOrders   LabOrder[]
 
   clinic    Clinic          @relation(fields: [clinicId], references: [id])
   pet       Pet             @relation(fields: [petId], references: [id])
@@ -1418,6 +1540,8 @@ model GroomingSession {
   instructions      String?           @db.VarChar(300)
   transport         GroomingTransport @default(NONE)
   transportAddress  String?           @map("transport_address") @db.VarChar(200)
+  /// Cargo de la movilidad (precio que puso recepción), en la cuenta del grooming
+  transportChargeId Int?              @map("transport_charge_id")
   /// Firma del dueño al dejar la mascota (PNG), opcional
   signerName        String?           @map("signer_name") @db.VarChar(150)
   signature         Bytes?
@@ -1431,8 +1555,6 @@ model GroomingSession {
   pickedUpBy        String?           @map("picked_up_by") @db.VarChar(150)
   pickedUpDocument  String?           @map("picked_up_document") @db.VarChar(20)
   pickedUpRelation  String?           @map("picked_up_relation") @db.VarChar(40)
-  /// Comisión del groomer congelada al entregar (su porcentaje de ese momento)
-  commissionPercent Decimal?          @map("commission_percent") @db.Decimal(5, 2)
   cancelledAt       DateTime?         @map("cancelled_at") @db.Timestamptz(3)
   cancelReason      String?           @map("cancel_reason") @db.VarChar(200)
   createdById       Int               @map("created_by_id")
@@ -1455,4 +1577,437 @@ model GroomingSession {
   @@index([petId, checkInAt])
   @@index([groomerId, deliveredAt])
   @@map("grooming_sessions")
+}
+
+// ─── Plantillas clínicas: consultas y recetas frecuentes ─────────────────────
+
+enum TemplateKind {
+  CONSULTATION
+  PRESCRIPTION
+}
+
+/// Lo que el veterinario escribe una y otra vez. Consulta: motivo, S, O, A, P. Receta: sus medicamentos.
+model ClinicalTemplate {
+  id          Int          @id @default(autoincrement())
+  clinicId    Int          @map("clinic_id")
+  kind        TemplateKind
+  name        String       @db.VarChar(80)
+  /// Consulta: { reason, anamnesis, physicalExam, diagnosis, plan } · Receta: { notes, items }
+  content     Json
+  /// Las más usadas aparecen primero
+  usageCount  Int          @default(0) @map("usage_count")
+  createdById Int          @map("created_by_id")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic    Clinic @relation(fields: [clinicId], references: [id])
+  createdBy User   @relation(fields: [createdById], references: [id])
+
+  @@unique([clinicId, kind, name])
+  @@map("clinical_templates")
+}
+
+// ─── Hospitalización ─────────────────────────────────────────────────────────
+
+enum HospitalizationStatus {
+  ACTIVE
+  DISCHARGED
+  DECEASED
+}
+
+enum HospOrderKind {
+  MEDICATION
+  FLUIDS
+  FEEDING
+  PROCEDURE
+  MONITORING
+}
+
+enum HospEntryKind {
+  /// Una aplicación de una indicación (dada u omitida)
+  DOSE
+  VITALS
+  NOTE
+}
+
+/// Paciente internado. Abre su propia atención (tipo HOSPITALIZATION), que se cierra al dar de alta.
+model Hospitalization {
+  id             Int                   @id @default(autoincrement())
+  clinicId       Int                   @map("clinic_id")
+  /// Correlativo de la clínica (HZ-00012)
+  number         Int
+  petId          Int                   @map("pet_id")
+  clientId       Int                   @map("client_id")
+  visitId        Int                   @unique @map("visit_id")
+  /// Veterinario responsable
+  vetId          Int                   @map("vet_id")
+  cage           String?               @db.VarChar(30)
+  reason         String                @db.VarChar(200)
+  diagnosis      String?               @db.VarChar(300)
+  status         HospitalizationStatus @default(ACTIVE)
+  admittedAt     DateTime              @default(now()) @map("admitted_at") @db.Timestamptz(3)
+  admittedById   Int                   @map("admitted_by_id")
+  dischargedAt   DateTime?             @map("discharged_at") @db.Timestamptz(3)
+  dischargedById Int?                  @map("discharged_by_id")
+  dischargeNotes String?               @map("discharge_notes") @db.VarChar(1000)
+  /// Días cobrados al dar de alta
+  daysCharged    Int?                  @map("days_charged")
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic       Clinic                 @relation(fields: [clinicId], references: [id])
+  pet          Pet                    @relation(fields: [petId], references: [id])
+  client       Client                 @relation(fields: [clientId], references: [id])
+  visit        Visit                  @relation(fields: [visitId], references: [id])
+  vet          User                   @relation("HospVet", fields: [vetId], references: [id])
+  admittedBy   User                   @relation("HospAdmittedBy", fields: [admittedById], references: [id])
+  dischargedBy User?                  @relation("HospDischargedBy", fields: [dischargedById], references: [id])
+  orders       HospitalizationOrder[]
+  entries      HospitalizationEntry[]
+
+  @@unique([clinicId, number])
+  @@index([clinicId, status])
+  @@index([petId, admittedAt])
+  @@map("hospitalizations")
+}
+
+/// Indicación del tratamiento: qué, cuánto, por qué vía y cada cuántas horas.
+model HospitalizationOrder {
+  id                Int           @id @default(autoincrement())
+  clinicId          Int           @map("clinic_id")
+  hospitalizationId Int           @map("hospitalization_id")
+  kind              HospOrderKind
+  description       String        @db.VarChar(150)
+  dose              String?       @db.VarChar(80)
+  route             String?       @db.VarChar(40)
+  /// Cada cuántas horas; null = una sola vez o según necesidad
+  everyHours        Int?          @map("every_hours") @db.SmallInt
+  startsAt          DateTime      @map("starts_at") @db.Timestamptz(3)
+  endsAt            DateTime?     @map("ends_at") @db.Timestamptz(3)
+  notes             String?       @db.VarChar(300)
+  createdById       Int           @map("created_by_id")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  stoppedAt         DateTime?     @map("stopped_at") @db.Timestamptz(3)
+  stoppedById       Int?          @map("stopped_by_id")
+
+  clinic          Clinic                 @relation(fields: [clinicId], references: [id])
+  hospitalization Hospitalization        @relation(fields: [hospitalizationId], references: [id])
+  createdBy       User                   @relation("HospOrderCreatedBy", fields: [createdById], references: [id])
+  stoppedBy       User?                  @relation("HospOrderStoppedBy", fields: [stoppedById], references: [id])
+  entries         HospitalizationEntry[]
+
+  @@index([hospitalizationId])
+  @@map("hospitalization_orders")
+}
+
+/// Lo que se hizo: una dosis (dada u omitida), un control de signos vitales o una nota de evolución.
+model HospitalizationEntry {
+  id                Int           @id @default(autoincrement())
+  clinicId          Int           @map("clinic_id")
+  hospitalizationId Int           @map("hospitalization_id")
+  kind              HospEntryKind
+  orderId           Int?          @map("order_id")
+  /// La hora programada que cubre (dosis)
+  scheduledAt       DateTime?     @map("scheduled_at") @db.Timestamptz(3)
+  at                DateTime      @default(now()) @db.Timestamptz(3)
+  skipped           Boolean       @default(false)
+  temperatureC      Decimal?      @map("temperature_c") @db.Decimal(4, 1)
+  heartRate         Int?          @map("heart_rate") @db.SmallInt
+  respiratoryRate   Int?          @map("respiratory_rate") @db.SmallInt
+  weightKg          Decimal?      @map("weight_kg") @db.Decimal(5, 2)
+  mucosa            String?       @db.VarChar(40)
+  notes             String?       @db.VarChar(500)
+  byId              Int           @map("by_id")
+
+  clinic          Clinic                @relation(fields: [clinicId], references: [id])
+  hospitalization Hospitalization       @relation(fields: [hospitalizationId], references: [id])
+  order           HospitalizationOrder? @relation(fields: [orderId], references: [id])
+  by              User                  @relation(fields: [byId], references: [id])
+
+  @@index([hospitalizationId, at])
+  @@index([orderId, scheduledAt])
+  @@map("hospitalization_entries")
+}
+
+/// Portal del dueño: enlace sin contraseña para ver el carnet de vacunas, las próximas citas y las
+/// recetas de sus mascotas. Se guarda solo el hash del token; generar uno nuevo revoca el anterior.
+model PortalLink {
+  id           Int       @id @default(autoincrement())
+  clinicId     Int       @map("clinic_id")
+  clientId     Int       @map("client_id")
+  /// SHA-256 del token (el token solo se muestra al crearlo)
+  tokenHash    String    @unique @map("token_hash") @db.Char(64)
+  createdById  Int       @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastViewedAt DateTime? @map("last_viewed_at") @db.Timestamptz(3)
+  viewCount    Int       @default(0) @map("view_count")
+
+  clinic            Clinic             @relation(fields: [clinicId], references: [id])
+  client            Client             @relation(fields: [clientId], references: [id])
+  createdBy         User               @relation(fields: [createdById], references: [id])
+  pushSubscriptions PushSubscription[]
+
+  @@index([clientId])
+  @@map("portal_links")
+}
+
+/// Celular del dueño que aceptó avisos desde su portal (notificaciones web, gratis). Se borra si el
+/// navegador la rechaza (desinstaló o quitó el permiso) o si el enlace del portal se revoca.
+model PushSubscription {
+  id           Int       @id @default(autoincrement())
+  clinicId     Int       @map("clinic_id")
+  clientId     Int       @map("client_id")
+  portalLinkId Int       @map("portal_link_id")
+  endpoint     String    @unique @db.VarChar(1000)
+  p256dh       String    @db.VarChar(200)
+  auth         String    @db.VarChar(100)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSentAt   DateTime? @map("last_sent_at") @db.Timestamptz(3)
+
+  portalLink PortalLink @relation(fields: [portalLinkId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, clientId])
+  @@map("push_subscriptions")
+}
+
+enum ReminderKind {
+  VACCINE
+  APPOINTMENT
+}
+
+enum ReminderChannel {
+  WHATSAPP
+  PUSH
+}
+
+/// A quién ya se avisó de un refuerzo o una cita, y por dónde: no se repite el aviso.
+/// targetId es la vacuna (immunizations.id) o la cita (appointments.id) según kind.
+model ReminderLog {
+  id       Int             @id @default(autoincrement())
+  clinicId Int             @map("clinic_id")
+  kind     ReminderKind
+  targetId Int             @map("target_id")
+  channel  ReminderChannel
+  /// null = lo envió el sistema solo
+  sentById Int?            @map("sent_by_id")
+  sentAt   DateTime        @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@unique([kind, targetId, channel])
+  @@index([clinicId, sentAt])
+  @@map("reminder_logs")
+}
+
+/// Claves del sistema que se generan una sola vez (por ejemplo, las VAPID de las notificaciones).
+model SystemSetting {
+  key       String   @id @db.VarChar(60)
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("system_settings")
+}
+
+enum LabOrderStatus {
+  REQUESTED
+  SAMPLE_TAKEN
+  RESULT_READY
+  REVIEWED
+  CANCELLED
+}
+
+enum LabDestination {
+  IN_HOUSE
+  EXTERNAL
+}
+
+/// Pedido de exámenes desde una atención: uno o varios exámenes del catálogo (categoría LAB).
+/// Pedido → muestra tomada → resultado (PDF/foto y/o valores) → revisado por el veterinario.
+/// El dueño solo se avisa cuando está revisado.
+model LabOrder {
+  id             Int            @id @default(autoincrement())
+  clinicId       Int            @map("clinic_id")
+  /// EX-00012 (correlativo por clínica)
+  number         Int
+  visitId        Int            @map("visit_id")
+  petId          Int            @map("pet_id")
+  clientId       Int            @map("client_id")
+  status         LabOrderStatus @default(REQUESTED)
+  destination    LabDestination @default(IN_HOUSE)
+  externalLab    String?        @map("external_lab") @db.VarChar(120)
+  /// Lo que cobra el laboratorio externo a la clínica (para ver la ganancia)
+  labCost        Decimal?       @map("lab_cost") @db.Decimal(12, 2)
+  indication     String?        @db.VarChar(300)
+  requestedById  Int            @map("requested_by_id")
+  requestedAt    DateTime       @default(now()) @map("requested_at") @db.Timestamptz(3)
+  sampleAt       DateTime?      @map("sample_at") @db.Timestamptz(3)
+  sampleById     Int?           @map("sample_by_id")
+  resultAt       DateTime?      @map("result_at") @db.Timestamptz(3)
+  resultById     Int?           @map("result_by_id")
+  /// Valores o resumen escrito del resultado
+  resultText     String?        @map("result_text")
+  attachmentId   Int?           @map("attachment_id")
+  reviewedAt     DateTime?      @map("reviewed_at") @db.Timestamptz(3)
+  reviewedById   Int?           @map("reviewed_by_id")
+  interpretation String?
+  notifiedAt     DateTime?      @map("notified_at") @db.Timestamptz(3)
+  cancelledAt    DateTime?      @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById  Int?           @map("cancelled_by_id")
+  cancelReason   String?        @map("cancel_reason") @db.VarChar(200)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic      Clinic         @relation(fields: [clinicId], references: [id])
+  visit       Visit          @relation(fields: [visitId], references: [id])
+  pet         Pet            @relation(fields: [petId], references: [id])
+  client      Client         @relation(fields: [clientId], references: [id])
+  requestedBy User           @relation("LabOrderRequestedBy", fields: [requestedById], references: [id])
+  attachment  Attachment?    @relation(fields: [attachmentId], references: [id])
+  items       LabOrderItem[]
+
+  @@unique([clinicId, number])
+  @@index([clinicId, status])
+  @@index([visitId])
+  @@map("lab_orders")
+}
+
+/// Un examen del pedido. El cargo (si se cobró) queda en la cuenta del cliente.
+model LabOrderItem {
+  id            Int     @id @default(autoincrement())
+  labOrderId    Int     @map("lab_order_id")
+  careServiceId Int     @map("care_service_id")
+  name          String  @db.VarChar(120)
+  chargeId      Int?    @map("charge_id")
+
+  labOrder    LabOrder    @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  careService CareService @relation(fields: [careServiceId], references: [id])
+
+  @@index([labOrderId])
+  @@map("lab_order_items")
+}
+
+// ─── Compras y proveedores ───────────────────────────────────────────────────
+
+/// Proveedor de la clínica. Las deudas y pedidos los maneja la clínica fuera del sistema.
+model Supplier {
+  id         Int      @id @default(autoincrement())
+  clinicId   Int      @map("clinic_id")
+  name       String   @db.VarChar(150)
+  nameSearch String   @map("name_search") @db.VarChar(150)
+  /// Opcional (una tienda que da boleta no siempre lo indica); único por clínica
+  ruc        String?  @db.VarChar(11)
+  contact    String?  @db.VarChar(100)
+  phone      String?  @db.VarChar(15)
+  email      String?  @db.VarChar(120)
+  notes      String?  @db.VarChar(300)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinic    Clinic         @relation(fields: [clinicId], references: [id])
+  purchases Purchase[]
+  batches   ProductBatch[]
+
+  @@unique([clinicId, ruc])
+  @@index([clinicId, nameSearch])
+  @@map("suppliers")
+}
+
+enum PurchaseDocType {
+  FACTURA
+  BOLETA
+  /// Guía de remisión: la factura llega después y se edita el comprobante
+  GUIA
+  /// Nota de venta, ticket u otro
+  OTRO
+}
+
+enum PurchaseStatus {
+  RECEIVED
+  VOIDED
+}
+
+/// La ficha de compra del proveedor pasada al sistema: una línea por producto, un lote por línea.
+model Purchase {
+  id               Int             @id @default(autoincrement())
+  clinicId         Int             @map("clinic_id")
+  /// Correlativo interno (CO-00012)
+  number           Int
+  supplierId       Int             @map("supplier_id")
+  docType          PurchaseDocType @map("doc_type")
+  /// Serie y número tal como se escribió ("F001-00123")
+  docNumber        String          @map("doc_number") @db.VarChar(30)
+  /// Normalizado para no repetir la misma ficha ("F001-123")
+  docKey           String          @map("doc_key") @db.VarChar(30)
+  /// Fecha del comprobante (la del papel); la de ingreso es createdAt
+  issuedAt         DateTime        @map("issued_at") @db.Date
+  /// Cómo venían los precios en la ficha; el costo del lote siempre se guarda sin IGV
+  pricesIncludeIgv Boolean         @map("prices_include_igv")
+  subtotal         Decimal         @db.Decimal(12, 2)
+  igv              Decimal         @db.Decimal(12, 2)
+  total            Decimal         @db.Decimal(12, 2)
+  notes            String?         @db.VarChar(300)
+  status           PurchaseStatus  @default(RECEIVED)
+  createdById      Int             @map("created_by_id")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  voidedAt         DateTime?       @map("voided_at") @db.Timestamptz(3)
+  voidedById       Int?            @map("voided_by_id")
+  voidReason       String?         @map("void_reason") @db.VarChar(200)
+
+  clinic    Clinic         @relation(fields: [clinicId], references: [id])
+  supplier  Supplier       @relation(fields: [supplierId], references: [id])
+  createdBy User           @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  voidedBy  User?          @relation("PurchaseVoidedBy", fields: [voidedById], references: [id])
+  lines     PurchaseLine[]
+  batches   ProductBatch[]
+  file      PurchaseFile?
+
+  @@unique([clinicId, number])
+  @@index([clinicId, issuedAt])
+  @@index([supplierId])
+  // La misma ficha no se registra dos veces: índice único parcial (sin las anuladas) en la migración
+  @@map("purchases")
+}
+
+/// Una línea de la ficha, tal como dice el papel. El stock real vive en su lote.
+model PurchaseLine {
+  id             Int     @id @default(autoincrement())
+  purchaseId     Int     @map("purchase_id")
+  productId      Int     @map("product_id")
+  presentationId Int     @map("presentation_id")
+  batchId        Int     @unique @map("batch_id")
+  /// "Amoxicilina 500 mg · Caja x 100" al momento de la compra
+  description    String  @db.VarChar(200)
+  /// Presentaciones compradas (5 cajas)
+  quantity       Decimal @db.Decimal(12, 3)
+  /// Precio de cada presentación como venía en la ficha (con o sin IGV según la compra)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(12, 4)
+  /// Valor sin IGV de la línea
+  taxable        Decimal @db.Decimal(12, 2)
+  igv            Decimal @db.Decimal(12, 2)
+  total          Decimal @db.Decimal(12, 2)
+
+  purchase     Purchase            @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product      Product             @relation(fields: [productId], references: [id])
+  presentation ProductPresentation @relation(fields: [presentationId], references: [id])
+  batch        ProductBatch        @relation(fields: [batchId], references: [id])
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_lines")
+}
+
+/// Foto o PDF de la ficha (la web achica las fotos antes de subirlas)
+model PurchaseFile {
+  id          Int      @id @default(autoincrement())
+  purchaseId  Int      @unique @map("purchase_id")
+  mime        String   @db.VarChar(40)
+  size        Int
+  data        Bytes
+  createdById Int      @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  purchase  Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@map("purchase_files")
 }

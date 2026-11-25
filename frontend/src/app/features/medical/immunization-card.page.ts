@@ -8,7 +8,6 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { SEX_LABELS, SPECIES_LABELS } from '../../core/services/clients.models';
 import { ImmunizationsService } from '../../core/services/immunizations.service';
 import { ImmunizationCard } from '../../core/services/medical.models';
@@ -18,6 +17,7 @@ import { formatPhone } from '../../shared/utils/peru';
 import { petAge } from '../../shared/utils/pet-age';
 import { petCode } from '../../shared/utils/records';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 /**
  * Carnet de vacunación imprimible (A5 vertical; también sale bien en A4). Lo guarda el dueño
@@ -25,17 +25,12 @@ import { apiErrorMessage } from '../../shared/utils/validators';
  */
 @Component({
   selector: 'app-immunization-card-page',
-  imports: [RouterLink, IconComponent],
+  imports: [BackLinkComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <a
-          [routerLink]="['/mascotas', id()]"
-          class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-        >
-          <app-icon name="chevron-left" class="size-4" /> Historia clínica
-        </a>
+        <app-back-link [fallback]="'/mascotas/' + id()" [fallbackLabel]="'Historia clínica'" />
         @if (card()) {
           <button type="button" class="btn btn-primary" (click)="print()">
             <app-icon name="file-text" class="size-4" /> Imprimir

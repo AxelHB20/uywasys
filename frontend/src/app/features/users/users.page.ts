@@ -45,6 +45,8 @@ export class UsersPage implements OnInit {
   protected readonly roleLabels = ROLE_LABELS;
   protected readonly roleDescriptions = ROLE_DESCRIPTIONS;
   protected readonly myId = computed(() => this.session.user()?.id);
+  /** Soporte técnico ve y gestiona su propia cuenta; la clínica no */
+  protected readonly isSupport = inject(SessionService).isSupport;
 
   protected readonly members = signal<TeamMember[]>([]);
   protected readonly loading = signal(true);
@@ -72,11 +74,6 @@ export class UsersPage implements OnInit {
       nonNullable: true,
       validators: [Validators.maxLength(20)],
     }),
-    commissionPercent: new FormControl<number | null>(null, [
-      Validators.min(0),
-      Validators.max(100),
-      Validators.pattern(/^\d+(\.\d{1,2})?$/),
-    ]),
   });
   protected readonly selectedRole = signal<Role>('RECEPTION');
 
@@ -138,7 +135,6 @@ export class UsersPage implements OnInit {
       email: '',
       role: 'RECEPTION',
       licenseNumber: '',
-      commissionPercent: null,
     });
     this.form.controls.email.enable();
     this.formOpen.set(true);
@@ -151,7 +147,6 @@ export class UsersPage implements OnInit {
       email: member.email,
       role: member.role,
       licenseNumber: member.licenseNumber ?? '',
-      commissionPercent: member.commissionPercent,
     });
     this.form.controls.email.disable();
     this.formOpen.set(true);
@@ -168,11 +163,6 @@ export class UsersPage implements OnInit {
       fullName: value.fullName.trim(),
       role: value.role,
       licenseNumber: value.licenseNumber.trim() || null,
-      // Comisión: groomers, o quien la tenga configurada (un administrador que también baña)
-      commissionPercent:
-        value.commissionPercent === null || (value.commissionPercent as unknown) === ''
-          ? null
-          : Number(value.commissionPercent),
     };
     const editing = this.editing();
     this.saving.set(true);

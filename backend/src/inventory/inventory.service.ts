@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
+import { purchaseCode } from '../common/sequence/clinic-sequence.js';
 import { normalizeSearch } from '../common/text/search.js';
 import {
   fromDbDate,
@@ -32,8 +33,10 @@ import type {
   UpdatePresentationDto,
   UpdateProductDto,
 } from './dto/inventory.dto.js';
+import { documentCode } from '../billing/billing.types.js';
 import { addDays, expiryStatus } from './expiry.js';
 import type { ExpiryStatus } from './expiry.js';
+import { lastUnitCosts } from './last-cost.js';
 import { StockService } from './stock.service.js';
 
 const D = Prisma.Decimal;
@@ -41,6 +44,13 @@ const PAGE_SIZE = 20;
 const KARDEX_PAGE = 30;
 /** Ventana del semáforo: lo que vence en 60 días o ya venció */
 const EXPIRY_WINDOW = 60;
+/** Días desde hoy [desde, hasta] de cada filtro de vencimiento (desde null = sin límite; hasta -1 = vencidos) */
+const EXPIRY_RANGES: Partial<Record<string, [number | null, number]>> = {
+  expiring: [null, EXPIRY_WINDOW],
+  expired: [null, -1],
+  exp30: [0, 30],
+  exp60: [31, 60],
+};
 
 const num = (value: Prisma.Decimal | null): number | null =>
   value === null ? null : Number(value);
@@ -54,6 +64,14 @@ export interface PresentationView {
   active: boolean;
 }
 
+/** Lo que no vence por defecto: accesorios (camas, juguetes, correas, collares) */
+export const defaultTracksExpiry = (category: ProductCategory) =>
+  category !== 'ACCESSORY';
+
+/** Los insumos no se cobran aparte: se descuentan con el servicio o como "insumos usados" */
+export const defaultChargeable = (category: ProductCategory) =>
+  category !== 'SUPPLY';
+
 export interface ProductSummary {
   id: number;
   code: string | null;
@@ -65,10 +83,17 @@ export interface ProductSummary {
   lowStock: boolean;
   controlled: boolean;
   requiresPrescription: boolean;
+  /** Se cobra al cliente (los insumos, no) */
+  chargeable: boolean;
+  /** Tiene lote y vencimiento (los accesorios, no) */
+  tracksExpiry: boolean;
+  igv: IgvAffectation;
   active: boolean;
   presentations: PresentationView[];
   nextExpiry:
     (ExpiryStatus & { date: string; lotNumber: string | null }) | null;
+  /** Último costo sin IGV por unidad mínima (null si nunca se compró por el sistema) */
+  unitCost: number | null;
 }
 
 export interface BatchView {
@@ -82,6 +107,8 @@ export interface BatchView {
   supplier: string | null;
   documentNumber: string | null;
   receivedAt: Date;
+  /** Compra (ficha) en la que entró, para abrirla desde el lote */
+  purchase: { id: number; code: string } | null;
 }
 
 export interface ProductDetail extends Omit<ProductSummary, 'nextExpiry'> {
@@ -113,6 +140,20 @@ function toPresentation(p: {
   return { ...p, factor: Number(p.factor), price: num(p.price) };
 }
 
+/** Lo que pagó la clínica (costo y proveedor de cada lote) lo ven solo el administrador y el veterinario */
+export function withoutCosts(detail: ProductDetail): ProductDetail {
+  return {
+    ...detail,
+    batches: detail.batches.map((b) => ({
+      ...b,
+      unitCost: null,
+      supplier: null,
+      documentNumber: null,
+      purchase: null,
+    })),
+  };
+}
+
 @Injectable()
 export class InventoryService {
   constructor(
@@ -138,6 +179,7 @@ export class InventoryService {
     const status = query.status ?? 'active';
     if (status !== 'all') where.active = status === 'active';
     if (query.category) where.category = query.category;
+    if (query.chargeable) where.chargeable = true;
 
     const term = normalizeSearch(query.q ?? '');
     if (term) {
@@ -151,21 +193,45 @@ export class InventoryService {
     }
     if (query.filter === 'low') {
       where.id = { in: await this.lowStockIds(clinicId) };
-    } else if (query.filter === 'expiring') {
-      where.batches = {
-        some: {
-          quantity: { gt: 0 },
-          expiresAt: { lte: toDbDate(addDays(today, EXPIRY_WINDOW)) },
-        },
+    }
+    // Por vencimiento: cada tarjeta su rango, y el que vence antes primero
+    const range = EXPIRY_RANGES[query.filter ?? 'all'];
+    let ordered: number[] | null = null;
+    if (range) {
+      const day = (offset: number) => toDbDate(addDays(today, offset));
+      const expiresAt =
+        range[1] < 0
+          ? { lt: day(0) }
+          : {
+              ...(range[0] !== null ? { gte: day(range[0]) } : {}),
+              lte: day(range[1]),
+            };
+      const groups = await this.prisma.productBatch.groupBy({
+        by: ['productId'],
+        where: { clinicId, quantity: { gt: 0 }, expiresAt },
+        _min: { expiresAt: true },
+        orderBy: { _min: { expiresAt: 'asc' } },
+      });
+      const candidates = groups.map((g) => g.productId);
+      const matching = new Set(
+        (
+          await this.prisma.product.findMany({
+            where: { ...where, id: { in: candidates } },
+            select: { id: true },
+          })
+        ).map((p) => p.id),
+      );
+      ordered = candidates.filter((id) => matching.has(id));
+      where.id = {
+        in: ordered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
       };
     }
 
-    const [rows, total] = await this.prisma.$transaction([
+    const [found, counted] = await this.prisma.$transaction([
       this.prisma.product.findMany({
         where,
         orderBy: [{ name: 'asc' }, { id: 'asc' }],
-        skip: (page - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
+        ...(ordered ? {} : { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
         select: {
           id: true,
           code: true,
@@ -176,6 +242,9 @@ export class InventoryService {
           minStock: true,
           controlled: true,
           requiresPrescription: true,
+          chargeable: true,
+          tracksExpiry: true,
+          igv: true,
           active: true,
           presentations: {
             where: { active: true },
@@ -192,7 +261,16 @@ export class InventoryService {
       }),
       this.prisma.product.count({ where }),
     ]);
+    const rows = ordered
+      ? [...found].sort((a, b) => ordered.indexOf(a.id) - ordered.indexOf(b.id))
+      : found;
+    const total = ordered ? ordered.length : counted;
 
+    const costs = await lastUnitCosts(
+      this.prisma,
+      clinicId,
+      rows.map((r) => r.id),
+    );
     return {
       items: rows.map(({ batches, ...p }) => {
         const next = batches[0];
@@ -208,6 +286,7 @@ export class InventoryService {
             date && status
               ? { ...status, date, lotNumber: next.lotNumber }
               : null,
+          unitCost: costs.get(p.id) ?? null,
         };
       }),
       total,
@@ -231,6 +310,7 @@ export class InventoryService {
             { expiresAt: { sort: 'asc', nulls: 'last' } },
             { id: 'asc' },
           ],
+          include: { purchase: { select: { id: true, number: true } } },
         },
         usedIn: {
           select: {
@@ -241,7 +321,9 @@ export class InventoryService {
       },
     });
     if (!p) throw new NotFoundException('El producto no existe');
+    const costs = await lastUnitCosts(this.prisma, clinicId, [p.id]);
     return {
+      unitCost: costs.get(p.id) ?? null,
       id: p.id,
       code: p.code,
       barcode: p.barcode,
@@ -253,6 +335,8 @@ export class InventoryService {
       lowStock: lowStock(p.totalStock, p.minStock),
       controlled: p.controlled,
       requiresPrescription: p.requiresPrescription,
+      chargeable: p.chargeable,
+      tracksExpiry: p.tracksExpiry,
       sunatUnit: p.sunatUnit,
       igv: p.igv,
       notes: p.notes,
@@ -271,6 +355,9 @@ export class InventoryService {
           supplier: b.supplier,
           documentNumber: b.documentNumber,
           receivedAt: b.receivedAt,
+          purchase: b.purchase
+            ? { id: b.purchase.id, code: purchaseCode(b.purchase.number) }
+            : null,
         };
       }),
       usedIn: p.usedIn.map((u) => ({
@@ -287,6 +374,7 @@ export class InventoryService {
     ip?: string,
   ): Promise<ProductDetail> {
     assertUniqueNames(dto.presentations);
+    assertIgvChange(actor, 'TAXED', dto.igv);
     let id: number;
     try {
       ({ id } = await this.prisma.product.create({
@@ -301,6 +389,8 @@ export class InventoryService {
           minStock: dto.minStock ?? 0,
           requiresPrescription: dto.requiresPrescription ?? false,
           controlled: dto.controlled ?? false,
+          chargeable: dto.chargeable ?? defaultChargeable(dto.category),
+          tracksExpiry: dto.tracksExpiry ?? defaultTracksExpiry(dto.category),
           sunatUnit: dto.sunatUnit ?? 'NIU',
           igv: dto.igv ?? 'TAXED',
           notes: dto.notes ?? null,
@@ -342,6 +432,9 @@ export class InventoryService {
       select: {
         baseUnit: true,
         controlled: true,
+        tracksExpiry: true,
+        active: true,
+        igv: true,
         _count: { select: { movements: true } },
       },
     });
@@ -355,6 +448,26 @@ export class InventoryService {
         'No se puede cambiar la unidad mínima de un producto con movimientos: crea uno nuevo',
       );
 
+    // Desactivar un insumo de servicios dejaría esos servicios descontando de un producto oculto
+    if (dto.active === false && current.active) {
+      const services = await this.prisma.careService.findMany({
+        where: {
+          clinicId: actor.clinicId,
+          active: true,
+          supplies: { some: { productId: id } },
+        },
+        select: { name: true },
+        orderBy: { name: 'asc' },
+      });
+      if (services.length)
+        throw new BadRequestException(
+          `Se usa como insumo en ${services.map((s) => s.name).join(', ')}: quítalo de ${
+            services.length === 1 ? 'ese servicio' : 'esos servicios'
+          } (Servicios y precios) antes de desactivarlo`,
+        );
+    }
+
+    assertIgvChange(actor, current.igv, dto.igv);
     const data: Prisma.ProductUpdateInput = {};
     if (dto.name !== undefined) {
       data.name = dto.name;
@@ -368,6 +481,8 @@ export class InventoryService {
       'minStock',
       'requiresPrescription',
       'controlled',
+      'chargeable',
+      'tracksExpiry',
       'sunatUnit',
       'igv',
       'notes',
@@ -376,7 +491,15 @@ export class InventoryService {
       if (dto[key] !== undefined) Object.assign(data, { [key]: dto[key] });
     }
     try {
-      await this.prisma.product.update({ where: { id }, data });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.product.update({ where: { id }, data });
+        // Si deja de vencer, sus lotes ya no se marcan como vencidos ni por vencer
+        if (dto.tracksExpiry === false && current.tracksExpiry)
+          await tx.productBatch.updateMany({
+            where: { productId: id },
+            data: { expiresAt: null },
+          });
+      });
     } catch (error) {
       throw duplicate(error, 'Ya existe un producto con ese código');
     }
@@ -480,13 +603,24 @@ export class InventoryService {
   ): Promise<ProductDetail> {
     const product = await this.prisma.product.findFirst({
       where: { id: productId, clinicId: actor.clinicId },
-      select: { category: true, active: true },
+      select: { tracksExpiry: true, active: true, controlled: true },
     });
     if (!product) throw new NotFoundException('El producto no existe');
     if (!product.active)
       throw new BadRequestException(
         'El producto está inactivo: actívalo antes de ingresar stock',
       );
+    // Controlados: DIGEMID pide el lote de cada entrada
+    if (product.controlled && !dto.lotNumber)
+      throw new BadRequestException('Ingresa el número de lote');
+    const supplier = dto.supplierId
+      ? await this.prisma.supplier.findFirst({
+          where: { id: dto.supplierId, clinicId: actor.clinicId },
+          select: { id: true, name: true },
+        })
+      : null;
+    if (dto.supplierId && !supplier)
+      throw new BadRequestException('El proveedor no existe');
     const presentation = await this.presentationOf(
       actor.clinicId,
       productId,
@@ -494,17 +628,18 @@ export class InventoryService {
     );
     const today = await clinicToday(this.prisma, actor.clinicId);
 
-    // Todo vence salvo los accesorios (collares, juguetes, camas)
-    if (product.category !== 'ACCESSORY') {
+    // Lo que vence pide lote y vencimiento; lo que no vence (camas, juguetes) no guarda fecha
+    if (product.tracksExpiry) {
       if (!dto.lotNumber)
         throw new BadRequestException('Ingresa el número de lote');
       if (!dto.expiresAt)
         throw new BadRequestException('Ingresa la fecha de vencimiento');
     }
-    if (dto.expiresAt) {
-      if (fromDbDate(toDbDate(dto.expiresAt)) !== dto.expiresAt)
+    const expiresAt = product.tracksExpiry ? (dto.expiresAt ?? null) : null;
+    if (expiresAt) {
+      if (fromDbDate(toDbDate(expiresAt)) !== expiresAt)
         throw new BadRequestException('La fecha de vencimiento no es válida');
-      if (dto.expiresAt < today)
+      if (expiresAt < today)
         throw new BadRequestException(
           'Ese lote ya está vencido: no se puede ingresar',
         );
@@ -525,9 +660,10 @@ export class InventoryService {
         userId: actor.id,
         quantity,
         lotNumber: dto.lotNumber ?? null,
-        expiresAt: dto.expiresAt ?? null,
+        expiresAt,
         unitCost,
-        supplier: dto.supplier ?? null,
+        supplier: supplier?.name ?? dto.supplier ?? null,
+        supplierId: supplier?.id ?? null,
         documentNumber: dto.documentNumber ?? null,
       }),
     );
@@ -692,6 +828,9 @@ export class InventoryService {
           reason: true,
           prescriptionRef: true,
           createdAt: true,
+          /** 'charge' = salió por un cargo (servicio o venta), no a mano */
+          refType: true,
+          refId: true,
           batch: { select: { id: true, lotNumber: true } },
           user: { select: { fullName: true } },
           vet: { select: { fullName: true } },
@@ -700,17 +839,67 @@ export class InventoryService {
       }),
       this.prisma.stockMovement.count({ where }),
     ]);
+    const sales = await this.salesOf(
+      clinicId,
+      rows.flatMap((m) => (m.refType === 'charge' && m.refId ? [m.refId] : [])),
+    );
     return {
-      items: rows.map((m) => ({
+      items: rows.map(({ refId, ...m }) => ({
         ...m,
         id: Number(m.id),
         quantity: Number(m.quantity),
         balanceAfter: Number(m.balanceAfter),
+        /** Venta suelta: a quién y con qué comprobante (el kardex no repite el producto) */
+        sale: (m.refType === 'charge' && refId && sales.get(refId)) || null,
       })),
       total,
       page,
       pageSize: KARDEX_PAGE,
     };
+  }
+
+  /** De cada cargo de producto (venta suelta): el cliente y el comprobante vigente del cobro */
+  private async salesOf(
+    clinicId: number,
+    chargeIds: number[],
+  ): Promise<Map<number, { client: string; document: string | null }>> {
+    if (!chargeIds.length) return new Map();
+    const charges = await this.prisma.charge.findMany({
+      where: { clinicId, id: { in: chargeIds }, kind: 'PRODUCT' },
+      select: {
+        id: true,
+        client: { select: { name: true } },
+        allocations: { select: { receiptId: true }, take: 1 },
+      },
+    });
+    const receiptIds = charges.flatMap((c) =>
+      c.allocations.map((a) => a.receiptId),
+    );
+    const docs = receiptIds.length
+      ? await this.prisma.electronicDocument.findMany({
+          where: {
+            clinicId,
+            receiptId: { in: receiptIds },
+            type: { in: ['BOLETA', 'FACTURA'] },
+            status: { not: 'REJECTED' },
+          },
+          orderBy: { id: 'desc' },
+          select: { receiptId: true, series: true, number: true },
+        })
+      : [];
+    const docOf = new Map<number, string>();
+    for (const d of docs)
+      if (d.receiptId && !docOf.has(d.receiptId))
+        docOf.set(d.receiptId, documentCode(d.series, d.number));
+    return new Map(
+      charges.map((c) => [
+        c.id,
+        {
+          client: c.client.name,
+          document: docOf.get(c.allocations[0]?.receiptId ?? -1) ?? null,
+        },
+      ]),
+    );
   }
 
   /** Semáforo de vencimientos y stock bajo (para la lista y el dashboard). */
@@ -806,7 +995,9 @@ export class InventoryService {
         prescriptionRef: true,
         createdAt: true,
         product: { select: { id: true, name: true, baseUnit: true } },
-        batch: { select: { lotNumber: true } },
+        batch: {
+          select: { lotNumber: true, supplier: true, documentNumber: true },
+        },
         user: { select: { fullName: true } },
         vet: { select: { fullName: true, licenseNumber: true } },
         pet: {
@@ -877,4 +1068,19 @@ function duplicate(error: unknown, message: string): unknown {
   )
     return new ConflictException(message);
   return error;
+}
+
+/**
+ * El IGV decide cuánto impuesto declara la clínica: un producto mal marcado como exonerado
+ * paga menos de lo debido y SUNAT no lo detecta al emitir. Solo el administrador lo cambia.
+ */
+function assertIgvChange(
+  actor: AuthUser,
+  current: IgvAffectation,
+  next: IgvAffectation | undefined,
+): void {
+  if (next !== undefined && next !== current && actor.role !== 'ADMIN')
+    throw new ForbiddenException(
+      'El IGV del producto lo cambia el administrador (consúltalo con el contador)',
+    );
 }

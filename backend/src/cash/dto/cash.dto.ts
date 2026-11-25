@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -19,6 +20,7 @@ import {
 } from 'class-validator';
 import type { PaymentMethod } from '../../generated/prisma/enums.js';
 import { emptyToNull, trim } from '../../common/validators/peru.js';
+import { BuyerDto } from '../../billing/billing.dto.js';
 import {
   ChargeItemDto,
   MAX_CHARGE_ITEMS,
@@ -77,6 +79,12 @@ export class CollectDto {
   @IsIn(['NOTE', 'BOLETA', 'FACTURA'], { message: 'Elige el comprobante' })
   document?: 'NOTE' | 'BOLETA' | 'FACTURA';
 
+  /** Datos del comprador escritos en el cobro (factura sin RUC guardado, boleta de más de S/ 700) */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BuyerDto)
+  buyer?: BuyerDto;
+
   @IsInt({ message: 'Elige el cliente' })
   @Min(1)
   clientId: number;
@@ -88,6 +96,14 @@ export class CollectDto {
   @ArrayUnique()
   @IsInt({ each: true })
   chargeIds?: number[];
+
+  /** Productos o servicios agregados en caja: entran en el mismo comprobante y se pagan primero */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_CHARGE_ITEMS)
+  @ValidateNested({ each: true })
+  @Type(() => ChargeItemDto)
+  items?: ChargeItemDto[];
 
   /** Cuánto paga ahora; si no se indica, todo lo seleccionado. Menos = pago parcial */
   @IsOptional()
@@ -118,6 +134,12 @@ export class CounterSaleDto {
   @IsOptional()
   @IsIn(['NOTE', 'BOLETA', 'FACTURA'], { message: 'Elige el comprobante' })
   document?: 'NOTE' | 'BOLETA' | 'FACTURA';
+
+  /** Datos del comprador escritos en el cobro (factura sin RUC guardado, boleta de más de S/ 700) */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BuyerDto)
+  buyer?: BuyerDto;
 
   /** Sin cliente = "Cliente varios" */
   @IsOptional()
@@ -200,6 +222,11 @@ export class CashVoidDto {
   @IsString({ message: 'Indica el motivo' })
   @Length(3, 200, { message: 'El motivo debe tener entre 3 y 200 caracteres' })
   reason: string;
+
+  /** El cliente devolvió los productos vendidos en caja: se quitan de su cuenta y vuelven al stock */
+  @IsOptional()
+  @IsBoolean()
+  returnProducts?: boolean;
 
   /** Caja de donde sale la devolución; si hay una sola abierta, esa */
   @IsOptional()

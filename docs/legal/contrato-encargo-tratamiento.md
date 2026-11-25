@@ -34,6 +34,7 @@ EL ENCARGADO mantiene, como mínimo:
 - bitácora de acciones;
 - aislamiento de los datos de cada clínica;
 - copias de respaldo diarias guardadas fuera del servidor principal, con pruebas de restauración periódicas.
+- en el portal del dueño, enlaces personales que vencen, se pueden desactivar y solo guardan su huella (hash), con lo mínimo de datos del titular.
 
 ## Sexta. Subencargados y transferencia internacional
 

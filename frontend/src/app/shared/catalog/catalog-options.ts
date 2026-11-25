@@ -13,6 +13,11 @@ export interface CatalogOption {
   unitPrice: number;
   /** Lleva un producto controlado: pide N.º de receta */
   controlled: boolean;
+  /** Código de barras de la presentación (lector en venta de mostrador) */
+  barcode?: string | null;
+  /** Productos: stock en unidad base y cuántas trae la presentación (aviso de stock al vender) */
+  stockBase?: number;
+  factor?: number;
 }
 
 /** Servicios activos cuyo nombre contiene el texto (sin tildes ni mayúsculas). */
@@ -36,18 +41,23 @@ export function toServiceOptions(catalog: CareService[], term: string, max = 5):
 /** Cada presentación con precio es una opción: "Pipeta antipulgas · Unidad". */
 export function toProductOptions(products: ProductSummary[]): CatalogOption[] {
   return products.flatMap((p) =>
-    p.presentations
-      .filter((pr) => pr.active && pr.price !== null)
-      .map((pr) => ({
-        key: `p${pr.id}`,
-        kind: 'PRODUCT' as const,
-        productId: p.id,
-        presentationId: pr.id,
-        description: `${p.name} · ${pr.name}`,
-        detail: `stock ${formatQty(p.totalStock)} ${unitLabel(p.baseUnit, p.totalStock)}`,
-        unitPrice: pr.price as number,
-        controlled: p.controlled,
-      })),
+    p.chargeable === false
+      ? []
+      : p.presentations
+          .filter((pr) => pr.active && pr.price !== null)
+          .map((pr) => ({
+            key: `p${pr.id}`,
+            kind: 'PRODUCT' as const,
+            productId: p.id,
+            presentationId: pr.id,
+            description: `${p.name} · ${pr.name}`,
+            detail: `stock ${formatQty(p.totalStock)} ${unitLabel(p.baseUnit, p.totalStock)}`,
+            unitPrice: pr.price as number,
+            controlled: p.controlled,
+            barcode: pr.barcode,
+            stockBase: p.totalStock,
+            factor: pr.factor,
+          })),
   );
 }
 

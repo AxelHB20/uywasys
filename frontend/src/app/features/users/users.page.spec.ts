@@ -8,7 +8,6 @@ import { UsersPage } from './users.page';
 
 const base: Omit<TeamMember, 'id' | 'fullName' | 'email' | 'role'> = {
   licenseNumber: null,
-  commissionPercent: null,
   active: true,
   mustChangePassword: false,
   locked: false,
@@ -119,7 +118,6 @@ describe('UsersPage', () => {
       email: 'carla@uywa.pe',
       role: 'VET',
       licenseNumber: '7788',
-      commissionPercent: null,
     });
     req.flush({
       user: {

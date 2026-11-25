@@ -255,6 +255,19 @@ describe('Presupuestos (e2e)', () => {
       .set('Cookie', cookies.admin)
       .send({ price: 75 })
       .expect(200);
+    // Y se desactiva: el catálogo avisa que está presupuestado, y lo cotizado se cobra igual
+    const catalog = await http()
+      .get('/api/care-services')
+      .set('Cookie', cookies.admin)
+      .expect(200);
+    expect(
+      catalog.body.find((c: { id: number }) => c.id === ids.exam),
+    ).toMatchObject({ pendingEstimates: 1 });
+    await http()
+      .patch(`/api/care-services/${ids.exam}`)
+      .set('Cookie', cookies.admin)
+      .send({ active: false })
+      .expect(200);
 
     // Atención de otra mascota: no
     const other = (
@@ -298,6 +311,21 @@ describe('Presupuestos (e2e)', () => {
       discountReason: 'Presupuesto PR-00001',
       total: 60,
     });
+    // Desactivado, ya no entra en cobros nuevos
+    const gone = await http()
+      .post('/api/charges')
+      .set('Cookie', cookies.vet)
+      .send({
+        visitId: ids.visit,
+        items: [{ careServiceId: ids.exam, quantity: 1 }],
+      })
+      .expect(404);
+    expect(gone.body.message).toContain('inactivo');
+    await http()
+      .patch(`/api/care-services/${ids.exam}`)
+      .set('Cookie', cookies.admin)
+      .send({ active: true })
+      .expect(200);
 
     await http()
       .post(`/api/estimates/${ids.estimate}/convert`)
@@ -344,5 +372,44 @@ describe('Presupuestos (e2e)', () => {
       .set('Cookie', cookies.vet)
       .expect(200);
     expect(mine.body).toHaveLength(1);
+  });
+  it('resumen: por responder, cargados del mes y tasa de aceptación, solo de la clínica', async () => {
+    await estimate(cookies.reception, {
+      petId: ids.pet2,
+      title: 'Control dental',
+      validDays: 7,
+      items: [{ careServiceId: ids.exam, quantity: 1 }],
+    }).expect(201);
+    const soon = await estimate(cookies.reception, {
+      petId: ids.pet2,
+      title: 'Profilaxis',
+      validDays: 7,
+      items: [{ careServiceId: ids.exam, quantity: 2 }],
+    }).expect(201);
+    await prisma.estimate.update({
+      where: { id: soon.body.id },
+      data: { validUntil: new Date(`${addDays(today, 2)}T00:00:00Z`) },
+    });
+    const res = await http()
+      .get('/api/estimates/summary')
+      .set('Cookie', cookies.cashier)
+      .expect(200);
+    expect(res.body).toMatchObject({
+      pending: { count: 2 },
+      expiringSoon: 1,
+      accepted: { count: 0, amount: 0 },
+      convertedMonth: { count: 1 },
+      acceptance: { won: 1, decided: 2, rate: 50 },
+    });
+    expect(res.body.pending.amount).toBe(225);
+    const other = await http()
+      .get('/api/estimates/summary')
+      .set('Cookie', cookies.other)
+      .expect(200);
+    expect(other.body).toMatchObject({
+      pending: { count: 0, amount: 0 },
+      convertedMonth: { count: 0 },
+      acceptance: { decided: 0, rate: null },
+    });
   });
 });

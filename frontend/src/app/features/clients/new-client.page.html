@@ -1,11 +1,6 @@
 <form [formGroup]="form" (ngSubmit)="submit('queue')" novalidate class="space-y-6 pb-4">
   <div>
-    <a
-      routerLink="/clientes"
-      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-    >
-      <app-icon name="chevron-left" class="size-4" /> Clientes
-    </a>
+    <app-back-link fallback="/clientes" fallbackLabel="Clientes" />
     <h1 class="font-display text-2xl font-semibold text-slate-900">Nuevo cliente</h1>
     <p class="mt-1 text-slate-600">Dueño y mascota en una sola pantalla.</p>
   </div>
@@ -92,6 +87,11 @@
         />
         @if (invalid('name')) {
           <p class="field-error">Ingresa el nombre (mínimo 3 caracteres)</p>
+        } @else if (nameFound()) {
+          <p class="field-hint flex items-center gap-1.5 text-emerald-700" aria-live="polite">
+            <app-icon name="check" class="size-3.5" /> Encontrado con el
+            {{ docType() === 'RUC' ? 'RUC' : 'DNI' }}. Puedes corregirlo si hace falta.
+          </p>
         }
       </div>
 
@@ -117,6 +117,29 @@
               : 'Para avisos por WhatsApp'
           }}
         </p>
+        @if (phoneOwner(); as owner) {
+          @if (owner.id !== duplicate()?.id) {
+            <div
+              role="alert"
+              class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-maiz-100 px-3.5 py-2.5 text-sm text-amber-950 ring-1 ring-amber-600/25"
+            >
+              <app-icon name="info" class="size-4 shrink-0" />
+              <span class="min-w-0 flex-1"
+                >Este celular ya es de <strong class="font-semibold">{{ owner.name }}</strong
+                >{{ owner.pets.length ? ' (' + owner.pets.join(', ') + ')' : '' }}. ¿Es la misma
+                persona?</span
+              >
+              <a
+                [routerLink]="['/clientes', owner.id]"
+                class="inline-flex min-h-9 items-center gap-1 font-semibold text-anil-800 hover:underline"
+                >Abrir su ficha <app-icon name="chevron-right" class="size-4"
+              /></a>
+              <span class="w-full text-xs text-amber-900/80"
+                >Si es otra persona (un familiar), puedes seguir igual.</span
+              >
+            </div>
+          }
+        }
       </div>
 
       <details class="group">
@@ -272,7 +295,7 @@
 
   <!-- Acciones: siempre visibles al final de la pantalla -->
   <div
-    class="sticky bottom-0 z-20 -mx-4 flex gap-2 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:flex-row sm:justify-end sm:px-6 lg:-mx-8 lg:px-8"
+    class="sticky bottom-0 z-20 -mx-4 flex gap-2 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-mx-6 sm:flex-row sm:justify-end sm:px-6 lg:-mx-8 lg:px-8"
   >
     <a routerLink="/clientes" class="btn btn-ghost hidden sm:inline-flex">Cancelar</a>
     @if (includePet()) {

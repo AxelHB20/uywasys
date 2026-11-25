@@ -39,6 +39,7 @@ export const CARD_SELECT = {
   aggressive: true,
   instructions: true,
   transport: true,
+  transportChargeId: true,
   visitId: true,
   pet: {
     select: {
@@ -132,6 +133,8 @@ export interface GroomingCard {
   aggressive: boolean;
   instructions: string | null;
   transport: GroomingTransport;
+  /** Precio de la movilidad (su línea en la cuenta); null = sin cobro */
+  transportPrice: number | null;
   visitId: number;
   queueEntryId: number | null;
   pet: {
@@ -187,7 +190,7 @@ export interface GroomingDetail extends Omit<GroomingCard, 'client'> {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function toCard(row: CardRow): GroomingCard {
-  const { visit, number, day, ...rest } = row;
+  const { visit, number, day, transportChargeId, ...rest } = row;
   const services = visit.charges.map((c) => ({
     id: c.id,
     description: c.description,
@@ -204,6 +207,8 @@ export function toCard(row: CardRow): GroomingCard {
     day: fromDbDate(day) ?? '',
     queueEntryId: visit.queueEntryId,
     services,
+    transportPrice:
+      services.find((s) => s.id === transportChargeId)?.total ?? null,
     total: round2(services.reduce((sum, s) => sum + s.total, 0)),
     pending: round2(pending),
   };

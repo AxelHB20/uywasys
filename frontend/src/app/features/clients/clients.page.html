@@ -155,7 +155,7 @@
                     <td class="px-5 py-3 whitespace-nowrap text-slate-600">
                       {{ relativeDay(client.lastVisit) }}
                     </td>
-                    <td class="px-3 py-3 text-slate-400">
+                    <td class="px-3 py-3 text-slate-500">
                       <app-icon name="chevron-right" class="size-5" />
                     </td>
                   </tr>
@@ -238,7 +238,7 @@
 
 <ng-template #pets let-pets>
   <ul class="flex flex-wrap gap-1.5">
-    @for (pet of pets; track pet.id) {
+    @for (pet of pets.slice(0, 3); track pet.id) {
       <li
         class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
         [class.line-through]="!pet.active"
@@ -254,6 +254,14 @@
       </li>
     } @empty {
       <li class="text-slate-500">Sin mascotas</li>
+    }
+    @if (pets.length > 3) {
+      <li
+        class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+        [title]="pets.length - 3 + ' mascotas más'"
+      >
+        +{{ pets.length - 3 }}
+      </li>
     }
   </ul>
 </ng-template>

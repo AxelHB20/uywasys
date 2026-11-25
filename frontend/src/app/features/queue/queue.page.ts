@@ -2,8 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  afterNextRender,
   computed,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -21,10 +23,15 @@ import {
 import { SessionService } from '../../core/auth/session.service';
 import {
   ClientSummary,
+  DOCUMENT_SHORT,
   FRONT_DESK_ROLES,
   PetBadge,
+  SEX_LABELS,
   SPECIES_LABELS,
 } from '../../core/services/clients.models';
+import { formatPhone } from '../../shared/utils/peru';
+import { petAge } from '../../shared/utils/pet-age';
+import { SPECIES_ICONS, clientCode, petCode, relativeDay } from '../../shared/utils/records';
 import { ClientsService } from '../../core/services/clients.service';
 import { QueueItem, QueueService, QueueStatus } from '../../core/services/queue.service';
 import { VisitsService } from '../../core/services/visits.service';
@@ -32,8 +39,16 @@ import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { SPECIES_ICONS } from '../../shared/utils/records';
 import { apiErrorDetails, apiErrorMessage } from '../../shared/utils/validators';
+import { MarkTextComponent } from '../../shared/ui/mark-text/mark-text.component';
+import {
+  TransportFieldsComponent,
+  transportGroup,
+  transportInvalid,
+  transportValue,
+} from '../../shared/ui/transport-fields/transport-fields.component';
+import { TRANSPORT_LABELS } from '../../core/services/grooming.models';
+import { money } from '../../shared/utils/stock';
 import { QueueCardComponent } from './queue-card.component';
 import { clockTime, durationLabel, minutesBetween } from './queue-time';
 
@@ -43,7 +58,17 @@ type Search =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'error' }
-  | { kind: 'ready'; items: ClientSummary[] };
+  | { kind: 'ready'; items: ClientSummary[]; total: number };
+
+/** Clientes que se muestran a la vez: con más, se pide escribir más */
+const SHOWN_CLIENTS = 6;
+/** Motivos más comunes en recepción (se pueden editar después) */
+const QUICK_REASONS = ['Consulta', 'Vacuna', 'Control', 'Desparasitación', 'Curación'];
+const OPEN_STATUS_LABEL: Partial<Record<QueueStatus, string>> = {
+  ARRIVED: 'Llegó',
+  WAITING: 'En espera',
+  IN_PROGRESS: 'En atención',
+};
 
 const REFRESH_MS = 30_000;
 
@@ -86,6 +111,8 @@ export const COLUMNS: {
     BadgeComponent,
     ModalComponent,
     QueueCardComponent,
+    MarkTextComponent,
+    TransportFieldsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './queue.page.html',
@@ -102,6 +129,14 @@ export class QueuePage {
   protected readonly speciesIcons = SPECIES_ICONS;
   protected readonly speciesLabels = SPECIES_LABELS;
   protected readonly clockTime = clockTime;
+  /** Caja no abre la historia clínica; el groomer solo las atenciones de grooming */
+  protected canOpenVisit(type: string): boolean {
+    const role = this.session.role();
+    return role === 'GROOMER' ? type === 'GROOMING' : role !== 'CASHIER';
+  }
+
+  /** Recepción ordena la cola; la consulta la abre el veterinario (queda a su nombre) */
+  protected readonly canAttend = computed(() => this.session.role() !== 'RECEPTION');
   protected readonly canEdit = computed(() =>
     FRONT_DESK_ROLES.includes(this.session.role() ?? 'CASHIER'),
   );
@@ -129,7 +164,12 @@ export class QueuePage {
   protected readonly closed = computed(() =>
     this.items()
       .filter((i) => i.status === 'DONE' || i.status === 'CANCELLED')
-      .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? '')),
+      // Primero los que falta llevar a su casa
+      .sort(
+        (a, b) =>
+          Number(b.homePending) - Number(a.homePending) ||
+          (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''),
+      ),
   );
   protected readonly openCount = computed(() => this.items().length - this.closed().length);
   protected readonly urgentCount = computed(
@@ -159,7 +199,18 @@ export class QueuePage {
   protected readonly addForm = new FormGroup({
     reason: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(200)] }),
     urgent: new FormControl(false, { nonNullable: true }),
+    move: transportGroup(),
   });
+  protected readonly addSubmitted = signal(false);
+  /** Dirección registrada y último precio de movilidad del dueño elegido */
+  protected readonly clientAddress = signal('');
+  protected readonly lastTransportPrice = signal<number | null>(null);
+  /** Sacar de la cola con movilidad: ya fueron a recogerlo, se cobra igual */
+  protected readonly chargeTransport = new FormControl(false, { nonNullable: true });
+  protected readonly transportLabels = TRANSPORT_LABELS;
+  protected readonly money = money;
+  /** Consultas atendidas que falta llevar a su casa */
+  protected readonly homePending = computed(() => this.items().filter((i) => i.homePending));
   protected readonly results = toSignal(
     this.search.valueChanges.pipe(
       map((q) => q.trim()),
@@ -169,7 +220,11 @@ export class QueuePage {
         q.length < 2
           ? of<Search>({ kind: 'idle' })
           : this.clients.list({ q }).pipe(
-              map((page): Search => ({ kind: 'ready', items: page.items.slice(0, 6) })),
+              map((page): Search => ({
+                kind: 'ready',
+                items: page.items.slice(0, SHOWN_CLIENTS),
+                total: page.total,
+              })),
               catchError(() => of<Search>({ kind: 'error' })),
               startWith<Search>({ kind: 'loading' }),
             ),
@@ -187,7 +242,13 @@ export class QueuePage {
       ),
   );
 
+  /** ?agregar=1 (desde el inicio): abre "Agregar a la cola" */
+  readonly agregar = input<string>();
+
   constructor() {
+    afterNextRender(() => {
+      if (this.agregar() && this.canEdit()) this.openAdd();
+    });
     this.load();
     const timer = setInterval(() => {
       this.now.set(new Date());
@@ -243,7 +304,18 @@ export class QueuePage {
     // Grooming: pasa por el ingreso (tamaño, servicios y checklist)
     if (item.type === 'GROOMING') {
       void this.router.navigate(['/grooming/ingreso'], {
-        queryParams: { petId: item.pet.id, cola: item.id },
+        queryParams: {
+          petId: item.pet.id,
+          cola: item.id,
+          // La movilidad que se acordó en la cita pasa al ingreso
+          ...(item.transport !== 'NONE'
+            ? {
+                movilidad: item.transport,
+                direccion: item.transportAddress ?? undefined,
+                precio: item.transportPrice ?? undefined,
+              }
+            : {}),
+        },
       });
       return;
     }
@@ -270,13 +342,110 @@ export class QueuePage {
     this.patch(item, { urgent: !item.urgent });
   }
 
+  // ── Movilidad después ("ya no puede volver, llévenlo") ──
+  protected readonly moving = signal<QueueItem | null>(null);
+  protected readonly moveForm = transportGroup();
+  protected readonly moveSubmitted = signal(false);
+
+  protected openMove(item: QueueItem): void {
+    this.moveForm.reset({
+      // "Llevar a casa" desde Terminados propone la entrega
+      transport: item.transport === 'NONE' && item.status === 'DONE' ? 'DROPOFF' : item.transport,
+      transportAddress: item.transportAddress ?? '',
+      transportPrice: item.transportPrice,
+    });
+    this.moveSubmitted.set(false);
+    this.clientAddress.set('');
+    this.lastTransportPrice.set(null);
+    this.moving.set(item);
+    this.clients.get(item.client.id).subscribe({
+      next: (c) => {
+        const address = [c.address, c.district].filter(Boolean).join(', ');
+        this.clientAddress.set(address);
+        const control = this.moveForm.controls.transportAddress;
+        if (this.moveForm.controls.transport.value !== 'NONE' && !control.value.trim())
+          control.setValue(address);
+      },
+      error: () => undefined,
+    });
+    this.visits.lastTransportPrice(item.client.id).subscribe({
+      next: ({ price }) => {
+        this.lastTransportPrice.set(price);
+        const control = this.moveForm.controls.transportPrice;
+        if (this.moveForm.controls.transport.value !== 'NONE' && control.value === null)
+          control.setValue(price);
+      },
+      error: () => undefined,
+    });
+  }
+
+  protected saveMove(): void {
+    const item = this.moving();
+    this.moveSubmitted.set(true);
+    if (!item || transportInvalid(this.moveForm)) return;
+    const move = transportValue(this.moveForm);
+    this.patch(item, move, () => {
+      this.moving.set(null);
+      this.toast.success(
+        move.transport === 'NONE'
+          ? `${item.pet.name}: sin movilidad`
+          : `${item.pet.name}: ${this.moveText({ ...item, ...move })}`,
+      );
+    });
+  }
+
+  protected askCancel(item: QueueItem): void {
+    this.chargeTransport.setValue(false);
+    this.cancelling.set(item);
+  }
+
   protected confirmCancel(): void {
     const item = this.cancelling();
     if (!item) return;
-    this.patch(item, { status: 'CANCELLED' }, () => {
+    const charge = !!item.transportPrice && this.chargeTransport.value;
+    this.patch(item, { status: 'CANCELLED', ...(charge ? { chargeTransport: true } : {}) }, () => {
       this.cancelling.set(null);
-      this.toast.info(`${item.pet.name} salió de la cola`);
+      this.toast.info(
+        charge
+          ? `${item.pet.name} salió de la cola; la movilidad queda por cobrar en Caja`
+          : `${item.pet.name} salió de la cola`,
+      );
     });
+  }
+
+  /** Consulta con entrega: ya se dejó en su casa */
+  protected deliveredHome(item: QueueItem): void {
+    if (this.busyId()) return;
+    this.busyId.set(item.id);
+    this.queue.deliveredHome(item.id).subscribe({
+      next: (updated) => {
+        this.items.update((list) => list.map((i) => (i.id === updated.id ? updated : i)));
+        this.busyId.set(null);
+        this.toast.success(`${item.pet.name} quedó entregado en su casa`);
+      },
+      error: (error: unknown) => {
+        this.busyId.set(null);
+        this.toast.error(apiErrorMessage(error));
+        this.load(true);
+      },
+    });
+  }
+
+  /** "2 por llevar a casa": lleva a Terminados (en celular es una pestaña) */
+  protected showHomePending(): void {
+    this.tab.set('CLOSED');
+    setTimeout(() =>
+      document
+        .getElementById('closed-title')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  }
+
+  protected moveText(item: QueueItem): string {
+    // Cancelada: la movilidad se quitó (o quedó en Caja si se cobró igual)
+    const price =
+      item.transportPrice && item.status !== 'CANCELLED' ? ` · ${money(item.transportPrice)}` : '';
+    return `${TRANSPORT_LABELS[item.transport]}${price}`;
   }
 
   protected closedSummary(item: QueueItem): string {
@@ -292,18 +461,99 @@ export class QueuePage {
   protected openAdd(): void {
     this.search.setValue('');
     this.selected.set(null);
-    this.addForm.reset({ reason: '', urgent: false });
+    this.addForm.reset({
+      reason: '',
+      urgent: false,
+      move: { transport: 'NONE', transportAddress: '', transportPrice: null },
+    });
+    this.addSubmitted.set(false);
+    this.clientAddress.set('');
+    this.lastTransportPrice.set(null);
     this.addOpen.set(true);
   }
 
   protected pick(client: ClientSummary, pet: PetBadge): void {
     if (this.inQueue(pet.id)) return;
     this.selected.set({ client, pet });
+    // Para la movilidad: su dirección y lo que pagó la última vez
+    this.clientAddress.set('');
+    this.lastTransportPrice.set(null);
+    this.clients.get(client.id).subscribe({
+      next: (c) => this.clientAddress.set([c.address, c.district].filter(Boolean).join(', ')),
+      error: () => undefined,
+    });
+    this.visits.lastTransportPrice(client.id).subscribe({
+      next: ({ price }) => this.lastTransportPrice.set(price),
+      error: () => undefined,
+    });
   }
 
   protected inQueue(petId: number): boolean {
     return this.openPetIds().has(petId);
   }
+
+  // ── Datos para reconocer al cliente y a la mascota ──
+  protected readonly quickReasons = QUICK_REASONS;
+  protected readonly docShort = DOCUMENT_SHORT;
+  protected readonly phone = formatPhone;
+  protected readonly hc = petCode;
+  protected readonly clientCode = clientCode;
+
+  /** "Perro · Hembra · 2 años · Shih tzu" (lo que haya) */
+  protected petLine(pet: PetBadge): string {
+    return [
+      SPECIES_LABELS[pet.species],
+      pet.sex ? SEX_LABELS[pet.sex] : null,
+      petAge(pet.birthDate ?? null),
+      pet.breed,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  protected lastVisitLabel(client: ClientSummary): string | null {
+    return client.lastVisit
+      ? `Última visita: ${relativeDay(client.lastVisit).toLowerCase()}`
+      : null;
+  }
+
+  /** "Ya en la cola · En espera" */
+  protected queueStatus(petId: number): string | null {
+    const item = this.items().find(
+      (i) => i.pet.id === petId && !['DONE', 'CANCELLED'].includes(i.status),
+    );
+    return item ? (OPEN_STATUS_LABEL[item.status] ?? 'en curso') : null;
+  }
+
+  /** Lo que se puede elegir en los resultados (activas y que no están ya en la cola) */
+  private readonly choices = computed(() => {
+    const found = this.results();
+    if (found.kind !== 'ready') return [];
+    return found.items.flatMap((client) =>
+      this.activePets(client)
+        .filter((pet) => !this.inQueue(pet.id))
+        .map((pet) => ({ client, pet })),
+    );
+  });
+
+  /** Enter en el buscador: si hay una sola mascota posible, se elige */
+  protected pickOnlyChoice(event: Event): void {
+    event.preventDefault();
+    const choices = this.choices();
+    if (choices.length === 1) this.pick(choices[0].client, choices[0].pet);
+  }
+
+  protected setReason(reason: string): void {
+    this.addForm.controls.reason.setValue(reason);
+    this.addForm.controls.reason.markAsDirty();
+  }
+
+  /** "Registrar cliente nuevo" con lo que se escribió: números al DNI o al celular, letras al nombre */
+  protected readonly newClientQuery = computed(() => {
+    const q = (this.searchValue() ?? '').trim();
+    return q ? { buscar: q } : {};
+  });
+  private readonly searchValue = toSignal(this.search.valueChanges, { initialValue: '' });
 
   protected activePets(client: ClientSummary): PetBadge[] {
     return client.pets.filter((p) => p.active);
@@ -311,11 +561,24 @@ export class QueuePage {
 
   protected addToQueue(): void {
     const sel = this.selected();
-    if (!sel || this.saving() || this.addForm.invalid) return;
+    this.addSubmitted.set(true);
+    if (
+      !sel ||
+      this.saving() ||
+      this.addForm.invalid ||
+      transportInvalid(this.addForm.controls.move)
+    )
+      return;
     const v = this.addForm.getRawValue();
+    const move = transportValue(this.addForm.controls.move);
     this.saving.set(true);
     this.queue
-      .add({ petId: sel.pet.id, urgent: v.urgent, reason: v.reason.trim() || null })
+      .add({
+        petId: sel.pet.id,
+        urgent: v.urgent,
+        reason: v.reason.trim() || null,
+        ...(move.transport !== 'NONE' ? move : {}),
+      })
       .subscribe({
         next: (item) => {
           this.items.update((list) => [...list, item]);

@@ -119,6 +119,12 @@ describe('Clínica y usuarios (e2e)', () => {
       open: '09:00',
       close: '13:00',
     });
+    // La agenda lo lee (cualquier rol con sesión) para sombrear lo cerrado
+    const hours = await http()
+      .get('/api/clinic/hours')
+      .set('Cookie', adminCookie)
+      .expect(200);
+    expect(hours.body[5]).toEqual({ day: 6, open: '09:00', close: '13:00' });
   });
 
   it('rechaza un RUC con dígito verificador incorrecto', async () => {
@@ -292,5 +298,45 @@ describe('Clínica y usuarios (e2e)', () => {
         'auth.password_change',
       ]),
     );
+  });
+
+  it('la cuenta de soporte técnico no la toca nadie de la clínica y no cuenta como administrador', async () => {
+    const support = await prisma.user.create({
+      data: {
+        clinicId,
+        fullName: 'Soporte técnico',
+        email: `soporte-${Date.now()}@uywa.pe`,
+        role: 'ADMIN',
+        isSupport: true,
+        passwordHash: 'x',
+      },
+    });
+    const team = await http()
+      .get('/api/users')
+      .set('Cookie', adminCookie)
+      .expect(200);
+    expect(
+      (team.body as { id: number; support: boolean }[]).find(
+        (u) => u.id === support.id,
+      ),
+    ).toMatchObject({ support: true });
+    await http()
+      .patch(`/api/users/${support.id}`)
+      .set('Cookie', adminCookie)
+      .send({ active: false })
+      .expect(403);
+    await http()
+      .post(`/api/users/${support.id}/reset-password`)
+      .set('Cookie', adminCookie)
+      .expect(403);
+    // Con soporte activo, el dueño sigue siendo el último administrador de la clínica
+    const me = (team.body as { id: number; email: string }[]).find(
+      (u) => u.email === adminEmail,
+    )!;
+    await http()
+      .patch(`/api/users/${me.id}`)
+      .set('Cookie', adminCookie)
+      .send({ role: 'CASHIER' })
+      .expect(409);
   });
 });

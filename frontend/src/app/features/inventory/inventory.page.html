@@ -3,11 +3,12 @@
     <div>
       <h1 class="font-display text-2xl font-semibold text-slate-900">Inventario</h1>
       <p class="mt-1 text-slate-600">
-        Medicamentos, vacunas y productos, con sus lotes y vencimientos.
+        Stock, lotes y vencimientos. Lo que no vence (camas, juguetes, correas) se controla solo por
+        cantidad.
       </p>
     </div>
     @if (canManage()) {
-      <div class="flex flex-wrap gap-2 self-start sm:self-auto">
+      <div class="flex flex-wrap gap-2 self-start sm:shrink-0 sm:self-auto">
         @if (isAdmin()) {
           <a routerLink="/inventario/importar" class="btn btn-secondary">Importar Excel</a>
         }
@@ -18,6 +19,8 @@
       </div>
     }
   </div>
+
+  <app-inventory-tabs />
 
   <!-- Alertas: cada una filtra la lista -->
   <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Alertas de inventario">
@@ -65,23 +68,45 @@
         class="field-input mt-0 pl-10"
       />
     </div>
-    <div class="sm:w-52">
-      <label for="inv-category" class="sr-only">Categoría</label>
-      <select id="inv-category" [formControl]="category" class="field-input mt-0">
-        <option value="">Todas las categorías</option>
-        @for (c of categories; track c) {
-          <option [value]="c">{{ categoryLabels[c] }}</option>
-        }
-      </select>
+    <div class="flex gap-3">
+      <div class="min-w-0 flex-1 sm:w-52 sm:flex-none">
+        <label for="inv-category" class="sr-only">Categoría</label>
+        <select id="inv-category" [formControl]="category" class="field-input mt-0">
+          <option value="">Todas las categorías</option>
+          @for (c of categories; track c) {
+            <option [value]="c">{{ categoryLabels[c] }}</option>
+          }
+        </select>
+      </div>
+      @if (canManage()) {
+        <!-- Un producto desactivado se encuentra aquí para reactivarlo -->
+        <div class="w-36 shrink-0">
+          <label for="inv-status" class="sr-only">Estado del producto</label>
+          <select
+            id="inv-status"
+            class="field-input mt-0"
+            [value]="status()"
+            (change)="setStatus($any($event.target).value)"
+          >
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </div>
+      }
     </div>
   </div>
 
   @if (filter() !== 'all') {
     <p class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
       Mostrando:
-      <app-badge [tone]="filter() === 'low' ? 'info' : 'danger'">{{
-        filter() === 'low' ? 'Stock bajo' : 'Por vencer (60 días) o vencidos'
-      }}</app-badge>
+      <app-badge
+        [tone]="filter() === 'low' ? 'info' : filter() === 'exp60' ? 'warning' : 'danger'"
+        >{{ filterLabels[filter()] }}</app-badge
+      >
+      @if (filter() !== 'low') {
+        <span>· el que vence antes, primero</span>
+      }
       <button
         type="button"
         class="font-medium text-anil-700 hover:text-anil-800"
@@ -119,7 +144,12 @@
             <span class="grid size-14 place-items-center rounded-2xl bg-anil-50 text-anil-700"
               ><app-icon name="package" class="size-7"
             /></span>
-            @if (filtering()) {
+            @if (status() === 'inactive' && filter() === 'all') {
+              <p class="mt-4 font-medium text-slate-900">No hay productos inactivos</p>
+              <button type="button" class="btn btn-secondary mt-5" (click)="clear()">
+                Ver los activos
+              </button>
+            } @else if (filtering()) {
               <p class="mt-4 font-medium text-slate-900">No hay productos con ese filtro</p>
               <button type="button" class="btn btn-secondary mt-5" (click)="clear()">
                 Ver todo el inventario
@@ -146,8 +176,8 @@
                 <tr>
                   <th scope="col" class="px-5 py-3">Producto</th>
                   <th scope="col" class="px-5 py-3">Stock</th>
-                  <th scope="col" class="px-5 py-3">Próximo vencimiento</th>
-                  <th scope="col" class="px-5 py-3">Precio</th>
+                  <th scope="col" class="px-5 py-3">Vencimiento</th>
+                  <th scope="col" class="px-5 py-3 text-right">Precio de venta</th>
                   <th scope="col" class="px-3 py-3"><span class="sr-only">Abrir</span></th>
                 </tr>
               </thead>
@@ -158,25 +188,38 @@
                     [class.opacity-60]="!p.active"
                   >
                     <td class="px-5 py-3.5">
-                      <a
-                        [routerLink]="['/inventario', p.id]"
-                        class="font-medium text-slate-900 after:absolute after:inset-0 focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-anil-400 focus-visible:after:ring-inset"
-                        >{{ p.name }}</a
-                      >
-                      <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                        {{ categoryLabels[p.category] }}
-                        @if (p.code) {
-                          · {{ p.code }}
-                        }
-                        @if (p.controlled) {
-                          <app-badge tone="danger">Controlado</app-badge>
-                        } @else if (p.requiresPrescription) {
-                          <app-badge tone="info">Con receta</app-badge>
-                        }
-                        @if (!p.active) {
-                          <app-badge>Inactivo</app-badge>
-                        }
-                      </p>
+                      <div class="flex items-start gap-3">
+                        <span
+                          class="grid size-9 shrink-0 place-items-center rounded-lg"
+                          [class]="
+                            p.controlled ? 'bg-rose-50 text-rose-700' : categoryTint[p.category]
+                          "
+                          aria-hidden="true"
+                        >
+                          <app-icon [name]="categoryIcon[p.category]" class="size-4" />
+                        </span>
+                        <div class="min-w-0">
+                          <a
+                            [routerLink]="['/inventario', p.id]"
+                            class="font-medium text-slate-900 after:absolute after:inset-0 focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-anil-400 focus-visible:after:ring-inset"
+                            >{{ p.name }}</a
+                          >
+                          <p
+                            class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"
+                          >
+                            {{ categoryLabels[p.category] }}
+                            @if (p.code) {
+                              · {{ p.code }}
+                            }
+                            @if (p.controlled) {
+                              <app-badge tone="danger">Controlado</app-badge>
+                            }
+                            @if (!p.active) {
+                              <app-badge>Inactivo</app-badge>
+                            }
+                          </p>
+                        </div>
+                      </div>
                     </td>
                     <td class="px-5 py-3.5">
                       <p
@@ -184,6 +227,9 @@
                       >
                         {{ stock(p) }}
                       </p>
+                      @if (total(p); as t) {
+                        <p class="text-xs text-slate-500 tabular-nums">{{ t }}</p>
+                      }
                       @if (p.lowStock && p.totalStock > 0) {
                         <p class="mt-0.5 text-xs font-medium text-amber-800">Stock bajo</p>
                       }
@@ -193,18 +239,32 @@
                         <app-badge [tone]="expiryBadge[e.level].tone">{{
                           expiryText(e.days)
                         }}</app-badge>
+                        <!-- Fecha y lote sin partirse (en tablet bajan juntos a la otra línea) -->
                         <p class="mt-1 text-xs text-slate-500 tabular-nums">
-                          {{ e.date | fecha: 'calendar' }}
+                          <span class="whitespace-nowrap">{{ e.date | fecha: 'calendar' }}</span>
                           @if (e.lotNumber) {
-                            · Lote {{ e.lotNumber }}
+                            · <span class="whitespace-nowrap">Lote {{ e.lotNumber }}</span>
                           }
                         </p>
+                      } @else if (!p.tracksExpiry) {
+                        <span
+                          class="inline-flex items-center gap-1 text-sm text-slate-600"
+                          title="Sin lote ni fecha de vencimiento"
+                          ><app-icon name="package" class="size-3.5 text-slate-400" />No vence</span
+                        >
                       } @else {
-                        <span class="text-slate-500">—</span>
+                        <span class="text-slate-400" aria-label="Sin lotes por vencer">—</span>
                       }
                     </td>
-                    <td class="px-5 py-3.5 text-slate-700 tabular-nums">{{ price(p) }}</td>
-                    <td class="px-3 py-3.5 text-slate-400">
+                    <td class="px-5 py-3.5 text-right whitespace-nowrap tabular-nums">
+                      @if (cheapest(p); as c) {
+                        <p class="font-medium text-slate-900">{{ money(c.price) }}</p>
+                        <p class="text-xs text-slate-500">{{ c.name }}</p>
+                      } @else {
+                        <span class="text-slate-500">Sin precio</span>
+                      }
+                    </td>
+                    <td class="px-3 py-3.5 text-slate-500">
                       <app-icon name="chevron-right" class="size-5" />
                     </td>
                   </tr>
@@ -222,31 +282,55 @@
                   class="card block p-4 hover:bg-slate-50"
                   [class.opacity-60]="!p.active"
                 >
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                      <p class="font-medium text-slate-900">{{ p.name }}</p>
-                      <p class="text-xs text-slate-500">{{ categoryLabels[p.category] }}</p>
+                  <div class="flex items-start gap-3">
+                    <span
+                      class="grid size-10 shrink-0 place-items-center rounded-lg"
+                      [class]="p.controlled ? 'bg-rose-50 text-rose-700' : categoryTint[p.category]"
+                      aria-hidden="true"
+                    >
+                      <app-icon [name]="categoryIcon[p.category]" class="size-4" />
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-start justify-between gap-2">
+                        <p class="font-medium text-slate-900">{{ p.name }}</p>
+                        @if (cheapest(p); as c) {
+                          <p class="shrink-0 text-sm font-medium text-slate-900 tabular-nums">
+                            {{ money(c.price) }}
+                          </p>
+                        }
+                      </div>
+                      <p class="text-xs text-slate-500">
+                        {{ categoryLabels[p.category] }}
+                        @if (p.controlled) {
+                          · <span class="font-medium text-rose-700">Controlado</span>
+                        }
+                      </p>
+                      <p
+                        class="mt-2 text-sm"
+                        [class]="p.totalStock <= 0 ? 'font-medium text-rose-700' : 'text-slate-800'"
+                      >
+                        {{ stock(p) }}
+                        @if (total(p); as t) {
+                          <span class="text-xs text-slate-500 tabular-nums">· {{ t }}</span>
+                        }
+                        @if (p.lowStock && p.totalStock > 0) {
+                          <span class="text-xs font-medium text-amber-800">· Stock bajo</span>
+                        }
+                      </p>
+                      <div class="mt-2">
+                        @if (p.nextExpiry; as e) {
+                          <app-badge [tone]="expiryBadge[e.level].tone">{{
+                            expiryText(e.days)
+                          }}</app-badge>
+                        } @else if (!p.tracksExpiry) {
+                          <span class="inline-flex items-center gap-1 text-xs text-slate-600"
+                            ><app-icon name="package" class="size-3.5 text-slate-400" />No
+                            vence</span
+                          >
+                        }
+                      </div>
                     </div>
-                    @if (p.controlled) {
-                      <app-badge tone="danger">Controlado</app-badge>
-                    }
                   </div>
-                  <p
-                    class="mt-2 text-sm"
-                    [class]="p.totalStock <= 0 ? 'font-medium text-rose-700' : 'text-slate-800'"
-                  >
-                    {{ stock(p) }}
-                    @if (p.lowStock && p.totalStock > 0) {
-                      <span class="text-xs font-medium text-amber-800">· Stock bajo</span>
-                    }
-                  </p>
-                  @if (p.nextExpiry; as e) {
-                    <div class="mt-2">
-                      <app-badge [tone]="expiryBadge[e.level].tone">{{
-                        expiryText(e.days)
-                      }}</app-badge>
-                    </div>
-                  }
                 </a>
               </li>
             }

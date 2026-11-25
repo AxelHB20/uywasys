@@ -37,7 +37,7 @@ import {
       ></div>
       @if (empty()) {
         <p
-          class="pointer-events-none absolute inset-0 grid place-items-center text-sm text-slate-400"
+          class="pointer-events-none absolute inset-0 grid place-items-center text-sm text-slate-500"
           aria-hidden="true"
         >
           Firme aquí con el dedo o el mouse

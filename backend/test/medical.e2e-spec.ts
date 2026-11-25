@@ -59,6 +59,7 @@ describe('Consulta SOAP y carnet de vacunas (e2e)', () => {
     await login(mine, 'ADMIN', 'admin');
     await login(mine, 'VET', 'vet');
     await login(mine, 'GROOMER', 'groomer');
+    await login(mine, 'RECEPTION', 'reception');
     await login(other, 'ADMIN', 'other');
 
     for (const [name, key] of [
@@ -149,6 +150,20 @@ describe('Consulta SOAP y carnet de vacunas (e2e)', () => {
       kind: 'VACCINE',
       name: 'Séxtuple',
     }).expect(403);
+    // Recepción no firma una vacuna aplicada aquí (el carnet lleva el CMVP de quien la aplicó)
+    await vaccinate(cookies.reception, {
+      petId: ids.pet,
+      visitId: ids.visit,
+      kind: 'VACCINE',
+      name: 'Séxtuple',
+    }).expect(403);
+    await vaccinate(cookies.reception, {
+      petId: ids.pet,
+      kind: 'VACCINE',
+      name: 'Séxtuple',
+      appliedAt: addDays(today, -30),
+      external: false,
+    }).expect(403);
     await vaccinate(cookies.vet, {
       petId: ids.pet2,
       visitId: ids.visit,
@@ -213,6 +228,14 @@ describe('Consulta SOAP y carnet de vacunas (e2e)', () => {
       external: true,
       externalClinic: 'Vet San Borja',
     });
+    // Recepción sí registra antecedentes de otra clínica
+    await vaccinate(cookies.reception, {
+      petId: ids.pet2,
+      kind: 'VACCINE',
+      name: 'Triple felina',
+      appliedAt: addDays(today, -500),
+      externalClinic: 'Vet Surco',
+    }).expect(201);
     await vaccinate(cookies.admin, {
       petId: ids.pet2,
       kind: 'DEWORMING_INTERNAL',
@@ -316,6 +339,37 @@ describe('Consulta SOAP y carnet de vacunas (e2e)', () => {
       'Antirrábica',
       'antirrábica',
     ]);
+    // Sin citas: la historia no muestra "Próxima cita"; con una, la primera que sigue en pie
+    expect(printable.body.nextAppointment).toBeNull();
+    const startsAt = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    const owner = await prisma.pet.findUniqueOrThrow({
+      where: { id: ids.pet },
+      select: { clinicId: true, clientId: true },
+    });
+    const staff = await prisma.user.findFirstOrThrow({
+      where: { clinicId: owner.clinicId },
+    });
+    const appt = await prisma.appointment.create({
+      data: {
+        clinicId: owner.clinicId,
+        petId: ids.pet,
+        clientId: owner.clientId,
+        createdById: staff.id,
+        startsAt: new Date(startsAt),
+        durationMin: 30,
+        type: 'CONSULTATION',
+        reason: 'Control',
+      },
+    });
+    const withNext = await http()
+      .get(`/api/pets/${ids.pet}/immunization-card`)
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(withNext.body.nextAppointment).toMatchObject({
+      reason: 'Control',
+      startsAt,
+    });
+    await prisma.appointment.delete({ where: { id: appt.id } });
     await http()
       .get(`/api/pets/${ids.pet}/immunization-card`)
       .set('Cookie', cookies.other)

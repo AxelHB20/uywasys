@@ -10,21 +10,19 @@ describe('documentOptions', () => {
     ]);
   });
 
-  it('factura solo con RUC; boleta sin documento hasta S/ 700', () => {
+  it('boleta y factura nunca se bloquean: lo que falta se escribe en el cobro', () => {
     const dni = documentOptions(on, { docType: 'DNI' }, 1200);
-    expect(dni.find((o) => o.value === 'BOLETA')!.disabled).toBe(false);
-    expect(dni.find((o) => o.value === 'FACTURA')).toMatchObject({
-      disabled: true,
-      hint: 'La factura necesita un cliente con RUC',
+    expect(dni.find((o) => o.value === 'BOLETA')).toMatchObject({ disabled: false, hint: null });
+    expect(dni.find((o) => o.value === 'FACTURA')).toMatchObject({ disabled: false });
+    // Cliente varios con más de S/ 700: la boleta avisa que lleva DNI, pero se puede elegir
+    const varios = documentOptions(on, { docType: null, walkIn: true }, 700.01);
+    expect(varios.find((o) => o.value === 'BOLETA')).toMatchObject({
+      disabled: false,
+      hint: 'Más de S/ 700 la boleta lleva el DNI del comprador',
     });
     expect(
-      documentOptions(on, { docType: 'RUC' }, 50).find((o) => o.value === 'FACTURA')!.disabled,
-    ).toBe(false);
-    const varios = documentOptions(on, { docType: null, walkIn: true }, 700);
-    expect(varios.find((o) => o.value === 'BOLETA')).toMatchObject({ disabled: true });
-    expect(
-      documentOptions(on, { docType: null, walkIn: true }, 699.9).find((o) => o.value === 'BOLETA')!
-        .disabled,
-    ).toBe(false);
+      documentOptions(on, { docType: null, walkIn: true }, 700).find((o) => o.value === 'BOLETA')!
+        .hint,
+    ).toBeNull();
   });
 });

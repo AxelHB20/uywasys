@@ -67,6 +67,27 @@ class EnvironmentVariables {
   @Min(5)
   BILLING_POLL_SECONDS: number = 30;
 
+  /**
+   * Permite la facturación simulada (comprobantes sin valor tributario). En producción va en
+   * false: si el PSE no está configurado, no se emite nada que parezca un comprobante válido.
+   */
+  @Transform(({ value }) =>
+    value === undefined ? true : value === true || value === 'true',
+  )
+  @IsBoolean()
+  BILLING_ALLOW_SIMULATED: boolean = true;
+
+  /** Cada cuántos minutos se revisan los avisos automáticos al celular del dueño */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  REMINDERS_POLL_MINUTES: number = 10;
+
+  /** Contacto que exige el estándar de notificaciones web (mailto: o https:) */
+  @IsOptional()
+  @IsString()
+  VAPID_SUBJECT?: string;
+
   /** true detrás de Caddy o Nginx: la IP real del usuario llega en X-Forwarded-For. */
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
@@ -94,5 +115,11 @@ export function validateEnv(
       .join('\n');
     throw new Error(`Configuración inválida en .env:\n${detail}`);
   }
+  // Servidor de la clínica (sin simulación): el token del PSE se cifra con una clave propia, para
+  // que cambiar JWT_SECRET no deje la facturación sin token
+  if (!validated.BILLING_ALLOW_SIMULATED && !validated.BILLING_SECRET?.trim())
+    throw new Error(
+      'Configuración inválida en .env:\nBILLING_SECRET: obligatorio en el servidor de la clínica (genera uno con: openssl rand -hex 32) y no lo cambies nunca',
+    );
   return validated;
 }

@@ -10,6 +10,7 @@ const product = {
   category: 'MEDICINE',
   baseUnit: 'TABLET',
   controlled: false,
+  igv: 'TAXED',
 };
 const preview = {
   rows: [
@@ -17,22 +18,52 @@ const preview = {
       row: 2,
       key: 'code:AMX',
       product,
-      presentation: { name: 'Caja', factor: 100, price: 80 },
-      stock: { quantity: 2, lotNumber: 'L1', expiresAt: '2027-12-31', cost: 50 },
+      presentation: { name: 'Caja', factor: 100, price: 80, barcode: '7751234' },
+      extraLot: false,
+      stock: {
+        quantity: 2,
+        lotNumber: 'L1',
+        expiresAt: '2027-12-31',
+        cost: 50,
+        supplier: 'Droguería Andina',
+      },
       status: 'ok',
       errors: [],
+      warnings: [],
+    },
+    {
+      row: 4,
+      key: 'code:AMX',
+      product,
+      presentation: { name: 'Caja', factor: 100, price: null, barcode: null },
+      extraLot: true,
+      stock: { quantity: 1, lotNumber: null, expiresAt: '2026-12-01', cost: null, supplier: null },
+      status: 'ok',
+      errors: [],
+      warnings: ['Sin costo: el margen de este lote saldrá incompleto'],
     },
     {
       row: 3,
       key: 'name:ketamina',
       product: { ...product, code: null, name: 'Ketamina', controlled: true },
-      presentation: { name: 'Frasco', factor: 0, price: null },
+      presentation: { name: 'Frasco', factor: 0, price: null, barcode: null },
+      extraLot: false,
       stock: null,
       status: 'error',
       errors: ['La equivalencia debe ser un número mayor a 0'],
+      warnings: [],
     },
   ],
-  summary: { rows: 2, ok: 1, exists: 0, errors: 1, products: 1, presentations: 1, batches: 1 },
+  summary: {
+    rows: 3,
+    ok: 2,
+    exists: 0,
+    errors: 1,
+    warnings: 1,
+    products: 1,
+    presentations: 1,
+    batches: 2,
+  },
 };
 
 describe('ImportProductsPage', () => {
@@ -70,12 +101,22 @@ describe('ImportProductsPage', () => {
     fixture.detectChanges();
 
     expect(el.textContent).toContain('La equivalencia debe ser un número mayor a 0');
+    // Los avisos también salen para revisar, sin impedir importar
+    expect(el.textContent).toContain('Para revisar (2)');
+    expect(el.textContent).toContain('Lista, con aviso');
+    expect(el.textContent).toContain('Sin costo: el margen');
+    expect(el.textContent).toContain('Otro lote de esta presentación');
+    expect(el.textContent).toContain('Sin lote');
+    const heads = [...el.querySelectorAll('thead th')].map((th) => th.textContent?.trim());
+    expect(heads).toEqual(['Fila', 'Producto', 'Presentación', 'Stock inicial', 'Estado']);
     expect(el.querySelector('input[type="checkbox"]')).toBeNull();
 
     click('Todas').click();
     fixture.detectChanges();
     expect(el.textContent).toContain('100 tabletas');
     expect(el.textContent).toContain('Lote L1');
+    expect(el.textContent).toContain('Cód. barras 7751234');
+    expect(el.textContent).toContain('Droguería Andina');
 
     const importButton = click('Importar 1 producto');
     expect(importButton.disabled).toBe(false);

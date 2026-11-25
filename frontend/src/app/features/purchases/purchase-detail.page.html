@@ -1,0 +1,411 @@
+<section class="space-y-6">
+  <app-back-link fallback="/inventario/compras" fallbackLabel="Compras" />
+
+  @if (purchase.isLoading() && !p()) {
+    <div class="space-y-4" aria-busy="true" aria-label="Cargando la compra">
+      <div class="h-8 w-64 animate-pulse rounded-lg bg-slate-100"></div>
+      <div class="h-40 animate-pulse rounded-2xl bg-slate-100"></div>
+      <div class="h-64 animate-pulse rounded-2xl bg-slate-100"></div>
+    </div>
+  } @else if (purchase.error() && !p()) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center" role="alert">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">No se pudo cargar la compra.</p>
+      <button type="button" class="btn btn-secondary mt-5" (click)="purchase.reload()">
+        Reintentar
+      </button>
+    </div>
+  } @else if (p(); as p) {
+    @let voided = p.status === 'VOIDED';
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <p class="text-sm font-medium text-slate-600 tabular-nums">Compra {{ p.code }}</p>
+        <h1
+          class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-2xl font-semibold text-slate-900"
+        >
+          <span class="tabular-nums" [class.line-through]="voided">{{ title(p) }}</span>
+          @if (voided) {
+            <span
+              class="rounded-full bg-slate-100 px-2.5 py-0.5 text-sm font-medium text-slate-700 ring-1 ring-slate-500/20 ring-inset"
+              >Anulada</span
+            >
+          }
+        </h1>
+        <p class="mt-1 text-slate-700">{{ p.supplier.name }}</p>
+      </div>
+      @if (!voided) {
+        <div class="flex flex-wrap gap-2 self-start">
+          <button type="button" class="btn btn-secondary" (click)="openEdit()">
+            <app-icon name="pencil" class="size-4" /> Corregir comprobante
+          </button>
+          @if (canVoid()) {
+            <button
+              type="button"
+              class="btn btn-ghost text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+              (click)="openVoid()"
+            >
+              Anular
+            </button>
+          }
+        </div>
+      }
+    </header>
+
+    @if (voided) {
+      <p
+        class="flex items-start gap-2.5 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-800 ring-1 ring-slate-200"
+        role="status"
+      >
+        <app-icon name="ban" class="mt-0.5 size-4 shrink-0 text-slate-600" />
+        <span>
+          Anulada el {{ date(p.voidedAt, 'datetime') }}
+          @if (p.voidedBy) {
+            por {{ p.voidedBy.fullName }}
+          }
+          @if (p.voidReason) {
+            : «{{ p.voidReason }}»
+          }
+          . Su stock salió del inventario; no va al Excel del contador.
+        </span>
+      </p>
+    } @else if (!p.canVoid) {
+      <p
+        class="flex items-start gap-2.5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200"
+      >
+        <app-icon name="info" class="mt-0.5 size-4 shrink-0 text-slate-500" />
+        Ya se usó parte de esta compra, así que no se puede anular. Si algo se cargó mal, corrígelo
+        con un ajuste por conteo en la ficha del producto.
+      </p>
+    }
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+      <div class="min-w-0 space-y-6">
+        <!-- Datos de la ficha -->
+        <section class="card p-5 sm:p-6" aria-label="Datos de la ficha">
+          <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt class="text-slate-600">Proveedor</dt>
+              <dd class="mt-0.5 font-medium text-slate-900">{{ p.supplier.name }}</dd>
+              <dd class="text-slate-600 tabular-nums">
+                {{ p.supplier.ruc ? 'RUC ' + p.supplier.ruc : 'Sin RUC' }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-slate-600">Fecha de la ficha</dt>
+              <dd class="mt-0.5 font-medium text-slate-900 tabular-nums">
+                {{ date(p.issuedAt) }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-slate-600">Registrada</dt>
+              <dd class="mt-0.5 font-medium text-slate-900 tabular-nums">
+                {{ date(p.createdAt, 'datetime') }}
+              </dd>
+              <dd class="text-slate-600">{{ p.createdBy.fullName }}</dd>
+            </div>
+            <div>
+              <dt class="text-slate-600">Precios de la ficha</dt>
+              <dd class="mt-0.5 font-medium text-slate-900">
+                {{ p.pricesIncludeIgv ? 'Con IGV' : 'Sin IGV (valor unitario)' }}
+              </dd>
+            </div>
+            @if (p.notes) {
+              <div class="sm:col-span-2 lg:col-span-4">
+                <dt class="text-slate-600">Notas</dt>
+                <dd class="mt-0.5 whitespace-pre-line text-slate-900">{{ p.notes }}</dd>
+              </div>
+            }
+          </dl>
+        </section>
+
+        <!-- Líneas, como en el papel -->
+        <section class="card overflow-hidden" aria-labelledby="pd-lines-title">
+          <h2
+            id="pd-lines-title"
+            class="border-b border-slate-100 px-5 py-4 font-display text-base font-semibold text-slate-900 sm:px-6"
+          >
+            Productos
+            <span class="text-sm font-normal text-slate-500 tabular-nums">· {{ p.lines }}</span>
+          </h2>
+          <div class="overflow-x-auto">
+            <!-- Entra completa al lado de los totales (antes se cortaba el importe) -->
+            <table class="w-full min-w-[36rem] text-left text-sm">
+              <thead class="bg-slate-50 text-xs font-semibold text-slate-600">
+                <tr>
+                  <th scope="col" class="px-5 py-2.5 sm:pl-6">Cant.</th>
+                  <th scope="col" class="px-3 py-2.5">Descripción</th>
+                  <th scope="col" class="px-3 py-2.5">Lote y vence</th>
+                  <th scope="col" class="px-3 py-2.5 text-right">P. unitario</th>
+                  <th scope="col" class="px-5 py-2.5 text-right sm:pr-6">Importe</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (l of p.lineItems; track l.id) {
+                  <tr class="align-top">
+                    <td class="px-5 py-3 text-slate-900 tabular-nums sm:pl-6">
+                      {{ qty(l.quantity) }}
+                    </td>
+                    <td class="px-3 py-3">
+                      <a
+                        [routerLink]="['/inventario', l.product.id]"
+                        class="font-medium text-slate-900 hover:text-anil-700 hover:underline"
+                        >{{ l.product.name }}</a
+                      >
+                      <span class="block text-slate-600">{{ l.presentation.name }}</span>
+                      @if (usage(l); as used) {
+                        <span class="mt-0.5 block text-xs text-slate-600 tabular-nums">{{
+                          used
+                        }}</span>
+                      }
+                    </td>
+                    <td class="px-3 py-3 whitespace-nowrap text-slate-700 tabular-nums">
+                      @if (l.batch.lotNumber || l.batch.expiresAt) {
+                        <span class="block">{{ l.batch.lotNumber ?? 'Sin lote' }}</span>
+                        <span class="block text-slate-600">{{
+                          l.batch.expiresAt ? date(l.batch.expiresAt) : 'No vence'
+                        }}</span>
+                      } @else {
+                        <span class="text-slate-500">No vence</span>
+                      }
+                    </td>
+                    <td class="px-3 py-3 text-right whitespace-nowrap text-slate-800 tabular-nums">
+                      {{ money(l.unitPrice) }}
+                      @if (l.unitPrice === 0) {
+                        <span class="block text-xs text-emerald-800">Bonificación</span>
+                      }
+                    </td>
+                    <td
+                      class="px-5 py-3 text-right font-medium whitespace-nowrap text-slate-900 tabular-nums sm:pr-6"
+                    >
+                      {{ money(l.total) }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <aside class="space-y-6">
+        <section class="card p-5" aria-labelledby="pd-total-title">
+          <h2 id="pd-total-title" class="sr-only">Totales</h2>
+          <dl class="space-y-2 text-sm">
+            <div class="flex justify-between gap-3 text-slate-700">
+              <dt>Valor sin IGV</dt>
+              <dd class="tabular-nums">{{ money(p.subtotal) }}</dd>
+            </div>
+            <div class="flex justify-between gap-3 text-slate-700">
+              <dt>IGV</dt>
+              <dd class="tabular-nums">{{ money(p.igv) }}</dd>
+            </div>
+            <div
+              class="flex items-baseline justify-between gap-3 border-t border-slate-200 pt-3 text-slate-900"
+            >
+              <dt class="font-semibold">Total</dt>
+              <dd
+                class="font-display text-2xl font-semibold tabular-nums"
+                [class.line-through]="voided"
+              >
+                {{ money(p.total) }}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="card p-5" aria-labelledby="pd-file-title">
+          <h2 id="pd-file-title" class="font-display text-base font-semibold text-slate-900">
+            Foto de la ficha
+          </h2>
+          @if (p.file) {
+            @if (p.file.mime === 'application/pdf') {
+              <a
+                [href]="fileUrl()"
+                target="_blank"
+                rel="noopener"
+                class="mt-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3 text-sm font-medium text-anil-800 ring-1 ring-slate-200 hover:bg-anil-50"
+                [class.pointer-events-none]="!fileUrl()"
+              >
+                <app-icon name="file-text" class="size-5" /> Ver PDF de la ficha
+              </a>
+            } @else if (fileUrl()) {
+              <a [href]="fileUrl()" target="_blank" rel="noopener" class="mt-3 block">
+                <img
+                  [src]="fileUrl()"
+                  alt="Foto de la ficha de compra"
+                  class="max-h-80 w-full rounded-xl object-contain ring-1 ring-slate-200"
+                />
+              </a>
+            } @else {
+              <div class="mt-3 h-40 animate-pulse rounded-xl bg-slate-100" aria-busy="true"></div>
+            }
+            <div class="mt-3 flex gap-2">
+              <label for="pd-file" class="btn btn-secondary h-10 flex-1 cursor-pointer">
+                Cambiar
+              </label>
+              <button type="button" class="btn btn-ghost h-10" (click)="removeFile()">
+                Quitar
+              </button>
+            </div>
+          } @else {
+            <p class="mt-1 text-sm text-slate-600">
+              Guárdala para revisarla después o mostrarla al contador.
+            </p>
+            <label
+              for="pd-file"
+              class="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-4 text-sm font-medium text-slate-700 transition-colors hover:border-anil-400 hover:text-anil-800"
+            >
+              <app-icon
+                [name]="uploading() ? 'loader' : 'upload'"
+                class="size-4"
+                [class.animate-spin]="uploading()"
+              />
+              {{ uploading() ? 'Subiendo…' : 'Tomar foto o subir PDF' }}
+            </label>
+          }
+          <input
+            id="pd-file"
+            type="file"
+            class="sr-only"
+            accept="image/*,application/pdf"
+            capture="environment"
+            [disabled]="uploading()"
+            (change)="upload($event)"
+          />
+        </section>
+      </aside>
+    </div>
+
+    <!-- Corregir comprobante -->
+    <app-modal
+      [open]="modal() === 'edit'"
+      title="Corregir comprobante"
+      description="Por ejemplo, cuando llega la factura después de la guía. El stock no cambia."
+      [dismissible]="false"
+      (closed)="closeModal()"
+    >
+      <form
+        id="pd-edit-form"
+        [formGroup]="editForm"
+        (ngSubmit)="saveEdit()"
+        novalidate
+        class="space-y-4"
+      >
+        @if (modalError(); as message) {
+          <p
+            class="rounded-xl bg-rose-50 px-3.5 py-3 text-sm text-rose-900 ring-1 ring-rose-200"
+            role="alert"
+          >
+            {{ message }}
+          </p>
+        }
+        <div>
+          <label for="pd-supplier" class="field-label">Proveedor</label>
+          <select id="pd-supplier" formControlName="supplierId" class="field-input">
+            @for (s of suppliers(); track s.id) {
+              <option [ngValue]="s.id">{{ s.name }}</option>
+            }
+            @if (!suppliers().length) {
+              <option [ngValue]="p.supplier.id">{{ p.supplier.name }}</option>
+            }
+          </select>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="pd-type" class="field-label">Tipo</label>
+            <select id="pd-type" formControlName="docType" class="field-input">
+              @for (t of docTypes; track t) {
+                <option [ngValue]="t">{{ docLabels[t] }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label for="pd-number" class="field-label">Serie y número</label>
+            <input
+              id="pd-number"
+              formControlName="docNumber"
+              class="field-input tabular-nums uppercase"
+              maxlength="30"
+              autocomplete="off"
+              [attr.aria-invalid]="tried() && editForm.controls.docNumber.invalid"
+            />
+            @if (tried() && editForm.controls.docNumber.invalid) {
+              <p class="field-error">Escribe la serie y el número</p>
+            }
+          </div>
+        </div>
+        <div>
+          <label for="pd-date" class="field-label">Fecha de la ficha</label>
+          <input
+            id="pd-date"
+            type="date"
+            formControlName="issuedAt"
+            class="field-input tabular-nums"
+            [max]="today"
+          />
+        </div>
+        <div>
+          <label for="pd-notes" class="field-label">Notas</label>
+          <textarea
+            id="pd-notes"
+            formControlName="notes"
+            class="field-input min-h-20"
+            maxlength="300"
+          ></textarea>
+        </div>
+      </form>
+      <ng-container modal-actions>
+        <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancelar</button>
+        <button type="submit" form="pd-edit-form" class="btn btn-primary" [disabled]="saving()">
+          @if (saving()) {
+            <app-icon name="loader" class="size-4 animate-spin" />
+          }
+          Guardar
+        </button>
+      </ng-container>
+    </app-modal>
+
+    <!-- Anular -->
+    <app-modal
+      [open]="modal() === 'void'"
+      title="Anular compra"
+      [description]="
+        'Sale del inventario todo lo que entró con ' + title(p) + '. Queda en Actividad.'
+      "
+      [dismissible]="false"
+      (closed)="closeModal()"
+    >
+      <div class="space-y-3">
+        @if (modalError(); as message) {
+          <p
+            class="rounded-xl bg-rose-50 px-3.5 py-3 text-sm text-rose-900 ring-1 ring-rose-200"
+            role="alert"
+          >
+            {{ message }}
+          </p>
+        }
+        <label for="pd-void" class="field-label">Motivo</label>
+        <textarea
+          id="pd-void"
+          [formControl]="voidReason"
+          class="field-input min-h-20"
+          maxlength="200"
+          placeholder="Ej.: se registró dos veces"
+          [attr.aria-invalid]="tried() && voidReason.invalid"
+        ></textarea>
+        @if (tried() && voidReason.invalid) {
+          <p class="field-error">Escribe el motivo (mínimo 3 letras)</p>
+        }
+      </div>
+      <ng-container modal-actions>
+        <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
+        <button type="button" class="btn btn-danger" [disabled]="saving()" (click)="confirmVoid()">
+          @if (saving()) {
+            <app-icon name="loader" class="size-4 animate-spin" />
+          }
+          Anular compra
+        </button>
+      </ng-container>
+    </app-modal>
+  }
+</section>

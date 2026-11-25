@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Estimate, EstimateInput, EstimatePrint } from './estimates.models';
+import { Estimate, EstimateInput, EstimatePrint, EstimatesSummary } from './estimates.models';
 
 /** Presupuestos. */
 @Injectable({ providedIn: 'root' })
@@ -14,6 +14,10 @@ export class EstimatesService {
       if (value !== undefined && value !== null && value !== '')
         params = params.set(key, String(value));
     return this.http.get<Estimate[]>('/api/estimates', { params });
+  }
+
+  summary(): Observable<EstimatesSummary> {
+    return this.http.get<EstimatesSummary>('/api/estimates/summary');
   }
 
   get(id: number): Observable<EstimatePrint> {

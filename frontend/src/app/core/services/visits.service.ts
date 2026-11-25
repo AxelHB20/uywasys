@@ -7,9 +7,12 @@ import {
   ClientAccount,
   CreatedCharges,
   VisitChanges,
+  PetHistory,
+  VisitContext,
   VisitDetail,
   VisitPage,
   VisitStatus,
+  WeightPoint,
 } from './visits.models';
 
 /** Atenciones, cargos y cuenta del cliente. */
@@ -22,11 +25,36 @@ export class VisitsService {
     petId?: number;
     clientId?: number;
     page?: number;
+    type?: 'CONSULTATION' | 'GROOMING';
+    /** Mascota o dueño */
+    q?: string;
+    vetId?: number;
+    /** AAAA-MM-DD */
+    day?: string;
+    /** Solo las abiertas desde días anteriores */
+    stale?: boolean;
   }): Observable<VisitPage> {
     let params = new HttpParams();
     for (const [key, value] of Object.entries(query))
       if (value !== undefined && value !== null) params = params.set(key, String(value));
     return this.http.get<VisitPage>('/api/visits', { params });
+  }
+
+  /** Diagnósticos más usados por la clínica, para sugerir */
+  diagnoses(): Observable<string[]> {
+    return this.http.get<string[]>('/api/visits/diagnoses');
+  }
+
+  history(petId: number): Observable<PetHistory> {
+    return this.http.get<PetHistory>(`/api/visits/pet/${petId}/history`);
+  }
+
+  weights(petId: number): Observable<WeightPoint[]> {
+    return this.http.get<WeightPoint[]>(`/api/visits/pet/${petId}/weights`);
+  }
+
+  context(id: number): Observable<VisitContext> {
+    return this.http.get<VisitContext>(`/api/visits/${id}/context`);
   }
 
   get(id: number): Observable<VisitDetail> {
@@ -64,5 +92,15 @@ export class VisitsService {
 
   account(clientId: number): Observable<ClientAccount> {
     return this.http.get<ClientAccount>(`/api/clients/${clientId}/account`);
+  }
+
+  /** Último precio de movilidad del cliente: se propone al marcarla */
+  lastTransportPrice(clientId: number): Observable<{ price: number | null }> {
+    return this.http.get<{ price: number | null }>(`/api/clients/${clientId}/transport-price`);
+  }
+
+  /** Caja: cambia el precio de la movilidad mientras no se cobre */
+  changeTransportPrice(chargeId: number, price: number): Observable<Charge> {
+    return this.http.patch<Charge>(`/api/charges/${chargeId}/transport-price`, { price });
   }
 }

@@ -40,9 +40,29 @@ describe('ClinicSettingsPage', () => {
 
   afterEach(() => http.verify());
 
-  async function render() {
+  it('con el PSE activo, el RUC queda bloqueado: lo cambia soporte técnico', async () => {
+    const { el } = await render({ enabled: true, simulated: false });
+    expect(el.querySelector<HTMLInputElement>('#ruc')!.disabled).toBe(true);
+    expect(el.querySelector('#ruc-hint')!.textContent).toContain('soporte técnico');
+  });
+
+  it('muestra cuánto ocupan las fotos y archivos', async () => {
+    const { el } = await render();
+    expect(el.querySelector('[data-testid="storage-total"]')!.textContent).toContain('5.1 MB');
+    expect(el.textContent).toContain('Historia clínica (12)');
+  });
+
+  async function render(billing = { enabled: false, simulated: true }) {
     const fixture = TestBed.createComponent(ClinicSettingsPage);
     fixture.detectChanges();
+    http
+      .expectOne('/api/billing/status')
+      .flush({ provider: 'MIFACT', production: true, ...billing });
+    http.expectOne('/api/clinic/storage').flush({
+      attachments: { count: 12, bytes: 4_404_019 },
+      purchaseFiles: { count: 3, bytes: 900_000 },
+      totalBytes: 5_304_019,
+    });
     http.expectOne('/api/clinic').flush(profile);
     await fixture.whenStable();
     fixture.detectChanges();

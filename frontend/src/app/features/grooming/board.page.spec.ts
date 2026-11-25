@@ -32,6 +32,7 @@ function card(
     aggressive: false,
     instructions: null,
     transport: 'NONE',
+    transportPrice: null,
     visitId: 100 + id,
     queueEntryId: null,
     pet: { id, number: id, name: `Mascota${id}`, species: 'DOG', breed: null, allergies: null },
@@ -131,6 +132,64 @@ describe('GroomingBoardPage (tablero)', () => {
     http.expectOne('/api/grooming').flush([]);
     await fixture.whenStable();
     expect(navigate).toHaveBeenCalledWith(['/caja'], { queryParams: { cobrar: 9 } });
+  });
+
+  it('lo trajo el dueño y ya no puede volver: recepción agrega "Lo llevamos" con precio', async () => {
+    const fixture = render('RECEPTION', [card(1, 'BATHING')]);
+    const el: HTMLElement = fixture.nativeElement;
+    (fixture.componentInstance as unknown as { open(c: GroomingCard): void }).open(
+      card(1, 'BATHING'),
+    );
+    const detail = {
+      ...card(1, 'BATHING'),
+      transportAddress: null,
+      skinNotes: null,
+      belongings: null,
+      signerName: null,
+      signature: null,
+      pickedUpBy: null,
+      pickedUpDocument: null,
+      pickedUpRelation: null,
+      cancelReason: null,
+      createdBy: { id: 1, fullName: 'Ana' },
+      deliveredBy: null,
+      cancelledBy: null,
+      client: { id: 9, name: 'Rosa Quispe', phone: '987654321', docType: null, docNumber: null },
+      clinic: { name: 'Vet Sur', ruc: null, address: null, phone: null, logoUrl: null },
+    };
+    http.match((r) => r.url === '/api/grooming/1').forEach((r) => r.flush(detail));
+    fixture.detectChanges();
+    buttons(el, 'Agregar')[0].click();
+    http.expectOne('/api/pets/1/immunization-card').flush({
+      pet: { client: { id: 9, address: 'Av. Lima 123', district: 'Chosica' } },
+    });
+    http.expectOne('/api/clients/9/transport-price').flush({ price: null });
+    fixture.detectChanges();
+    [...el.querySelectorAll<HTMLButtonElement>('dialog[open] [role="radio"]')]
+      .find((b) => b.textContent?.includes('Lo llevamos'))!
+      .click();
+    fixture.detectChanges();
+    expect(el.querySelector<HTMLInputElement>('#bd-mov-address')!.value).toBe(
+      'Av. Lima 123, Chosica',
+    );
+    const price = el.querySelector<HTMLInputElement>('#bd-mov-price')!;
+    price.value = '12';
+    price.dispatchEvent(new Event('input'));
+    buttons(el, 'Guardar')[0].click();
+    const req = http.expectOne({ method: 'PATCH', url: '/api/grooming/1/transport' });
+    expect(req.request.body).toEqual({
+      transport: 'DROPOFF',
+      transportAddress: 'Av. Lima 123, Chosica',
+      transportPrice: 12,
+    });
+    req.flush({
+      ...detail,
+      transport: 'DROPOFF',
+      transportPrice: 12,
+      transportAddress: 'Av. Lima 123, Chosica',
+    });
+    fixture.detectChanges();
+    expect(el.querySelector('dialog[open]')!.textContent).toContain('Lo llevamos');
   });
 
   it('caja solo mira: no mueve ni entrega', () => {

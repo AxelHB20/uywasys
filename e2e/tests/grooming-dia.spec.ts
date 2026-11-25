@@ -3,11 +3,11 @@ import { expect, test } from '@playwright/test';
 /**
  * Un servicio de grooming completo, con dos personas: recepción ingresa a la mascota con su
  * checklist; el groomer (usuario nuevo, primer ingreso) la avanza en el tablero hasta "Listo";
- * recepción la entrega, cobra en caja, y la constancia y las comisiones quedan al día.
+ * recepción la entrega, cobra en caja y la constancia queda al día.
  * Usa el administrador del seed (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD) como recepción.
  */
-const EMAIL = process.env['E2E_EMAIL'] ?? 'admin@uywa.pe';
-const PASSWORD = process.env['E2E_PASSWORD'] ?? 'CambiaEstaClave123';
+const EMAIL = process.env['E2E_EMAIL'] ?? 'e2e@uywa.pe';
+const PASSWORD = process.env['E2E_PASSWORD'] ?? 'Pruebas2026clave';
 const stamp = Date.now().toString().slice(-6);
 const owner = `Dueño Grooming ${stamp}`;
 const pet = `Peluchin${stamp}`;
@@ -16,7 +16,7 @@ const nails = `Uñas E2E ${stamp}`;
 const groomerName = `Groomer Prueba ${stamp}`;
 const groomerEmail = `groomer${stamp}@uywa.pe`;
 
-test('día de grooming: ingreso → tablero → entrega → cobro → constancia y comisión', async ({
+test('día de grooming: ingreso → tablero → entrega → cobro → constancia', async ({
   page,
   browser,
 }) => {
@@ -27,7 +27,7 @@ test('día de grooming: ingreso → tablero → entrega → cobro → constancia
   await page.locator('button[type="submit"]').click();
   await expect(page).toHaveURL(/dashboard/);
 
-  // Catálogo con precio por tamaño, groomer con 25 % de comisión y un cliente con su perro
+  // Catálogo con precio por tamaño, un groomer nuevo y un cliente con su perro
   const service = async (data: object) => {
     const res = await page.request.post('/api/care-services', { data });
     expect(res.ok()).toBeTruthy();
@@ -41,7 +41,7 @@ test('día de grooming: ingreso → tablero → entrega → cobro → constancia
   });
   const nailsId = await service({ name: nails, category: 'GROOMING', price: 10 });
   const groomer = await page.request.post('/api/users', {
-    data: { fullName: groomerName, email: groomerEmail, role: 'GROOMER', commissionPercent: 25 },
+    data: { fullName: groomerName, email: groomerEmail, role: 'GROOMER' },
   });
   expect(groomer.ok()).toBeTruthy();
   const { temporaryPassword } = (await groomer.json()) as { temporaryPassword: string };
@@ -91,7 +91,8 @@ test('día de grooming: ingreso → tablero → entrega → cobro → constancia
   const card = gp.locator(`li[aria-label^="${pet},"]`);
   await expect(card).toHaveAttribute('aria-label', `${pet}, En espera`);
   await expect(card).toContainText('Nudos');
-  await expect(card).toContainText(`${bath} (mediano)`);
+  await expect(card).toContainText(bath);
+  await expect(card).toContainText('Mediano');
   for (const [step, label] of [
     ['Baño', 'Baño'],
     ['Corte', 'Corte'],
@@ -124,7 +125,7 @@ test('día de grooming: ingreso → tablero → entrega → cobro → constancia
   const note = collect.getByRole('radio', { name: 'Nota de venta' });
   if (await note.count()) await note.click();
   await collect.locator('#collect-tendered-0').fill('60');
-  await expect(collect).toContainText('Vuelto S/ 5.00');
+  await expect(collect).toContainText(/Vuelto\s*S\/ 5\.00/);
   await collect.getByRole('button', { name: /^Cobrar S\// }).click();
   await expect(page).toHaveURL(/\/caja\/tickets\/\d+$/);
   await expect(page.locator('.print-area')).toContainText(`${bath} (mediano)`);
@@ -141,10 +142,5 @@ test('día de grooming: ingreso → tablero → entrega → cobro → constancia
   await expect(certificate).toContainText(`Recogió`);
   await expect(certificate).toContainText('S/ 55.00');
 
-  // ── El groomer ve su comisión: 25 % de lo cobrado ──
-  await gp.goto('/grooming/comisiones');
-  await expect(gp.getByRole('heading', { name: 'Mis comisiones' })).toBeVisible();
-  await expect(gp.locator('#contenido')).toContainText(`${pet} · ${bath} (mediano)`);
-  await expect(gp.locator('#contenido')).toContainText('S/ 13.75');
   await groomerContext.close();
 });

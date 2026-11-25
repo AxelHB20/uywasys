@@ -343,15 +343,16 @@ describe('Aislamiento entre clínicas: inventario y servicios (e2e)', () => {
     const wb = new ExcelJS.Workbook();
     const sheet = wb.addWorksheet('Productos');
     sheet.addRow(PRODUCT_COLUMNS.map((c) => c.header));
-    sheet.addRow([
-      'KET-1',
-      'Ketamina B',
-      'Medicamento',
-      'ml',
-      'Frasco x 10 ml',
-      10,
-      90,
-    ]);
+    const values: Record<string, string | number> = {
+      code: 'KET-1',
+      name: 'Ketamina B',
+      category: 'Medicamento',
+      baseUnit: 'ml',
+      presentation: 'Frasco x 10 ml',
+      factor: 10,
+      price: 90,
+    };
+    sheet.addRow(PRODUCT_COLUMNS.map((c) => values[c.field] ?? null));
     const file = Buffer.from(await wb.xlsx.writeBuffer());
 
     const preview = await http()

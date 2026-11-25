@@ -53,11 +53,11 @@ describe('CareServicesPage', () => {
 
   afterEach(() => http.verify());
 
-  async function render() {
+  async function render(list: CareService[] = [castration, consult]) {
     const fixture = TestBed.createComponent(CareServicesPage);
     fixture.detectChanges();
     await Promise.resolve();
-    http.expectOne((r) => r.url === '/api/care-services').flush([castration, consult]);
+    http.expectOne((r) => r.url === '/api/care-services').flush(list);
     await fixture.whenStable();
     fixture.detectChanges();
     return fixture;
@@ -72,6 +72,33 @@ describe('CareServicesPage', () => {
     expect(el.textContent).toContain('S/ 180.00');
     expect(el.textContent).toContain('1 h 30 min');
     expect(el.textContent).toContain('Ketamina 50 mg/ml · 2 ml');
+  });
+
+  it('dice dónde aparece cada grupo y avisa las categorías clave que faltan', async () => {
+    const fixture = await render();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('Atención, Caja y Presupuestos');
+    // Solo hay consulta y cirugía: faltan hospitalización, laboratorio y grooming
+    expect(el.textContent).toContain('al dar de alta un internado no podrás cobrar la estadía');
+    expect(el.textContent).toContain('no podrás ingresar mascotas al tablero de Grooming');
+    [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Crear')!.click();
+    fixture.detectChanges();
+    // Abre el formulario con la categoría ya elegida y explica dónde aparece
+    expect(el.textContent).toContain('Aparece al dar de alta en Hospitalización');
+  });
+
+  it('al desactivar un servicio presupuestado avisa que se cobrará igual', async () => {
+    const fixture = await render([{ ...castration, pendingEstimates: 2 }, consult]);
+    const el: HTMLElement = fixture.nativeElement;
+    el.querySelector<HTMLButtonElement>(`[aria-label="Editar ${castration.name}"]`)!.click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Sin IGV S/');
+    const active = [...el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((i) =>
+      i.closest('label')?.textContent?.includes('Activo'),
+    )!;
+    active.click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Está en 2 presupuestos pendientes');
   });
 
   it('el personal que no es administrador solo consulta', async () => {

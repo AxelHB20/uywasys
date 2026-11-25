@@ -2,7 +2,7 @@
 
 > Plan actualizado el 28 de octubre de 2026. Este archivo es la versión vigente.
 >
-> **Estado:** Fases 0 a 3 terminadas (versión `v0.3.0`): el circuito completo recepción → cola → atención → cobro → cierre de caja funciona y tiene su prueba de punta a punta en GitHub Actions. La **Fase 3.5: pulido profesional** también está terminada (`v0.3.5`): errores visibles corregidos, seguridad de acceso reforzada, bitácora visible y derechos ARCO. El **hito de demo** dejó todo listo para un servidor (`v0.3.6`): producción con Docker Compose + Caddy + HTTPS, respaldo diario cifrado con prueba de restauración, datos de demostración y horario de la clínica; falta contratar el servidor y seguir `docs/DEPLOY.md`. La **Fase 4** quedó construida y probada con el proveedor de simulación (`v0.4.0`): boletas, facturas, notas de crédito, cola de envío con reintentos y Excel para el contador; para cerrarla falta solo conectar el PSE cuando la clínica lo contrate (`docs/FACTURACION.md`). La **Fase 5: módulo médico** está terminada (`v0.5.0`): agenda de citas, consulta SOAP, vacunas con carnet, recetas, presupuestos, archivos y consentimientos firmados, con su prueba de punta a punta de la cita al cobro. La **Fase 6: grooming** está terminada (`v0.6.0`): ingreso con checklist y precio por tamaño, tablero por estados, aviso por WhatsApp, entrega, constancia, comisiones y su prueba de punta a punta. Sigue la Fase 7: dashboard y reportes.
+> **Estado:** Fases 0 a 3 terminadas (versión `v0.3.0`): el circuito completo recepción → cola → atención → cobro → cierre de caja funciona y tiene su prueba de punta a punta en GitHub Actions. La **Fase 3.5: pulido profesional** también está terminada (`v0.3.5`): errores visibles corregidos, seguridad de acceso reforzada, bitácora visible y derechos ARCO. El **hito de demo** dejó todo listo para un servidor (`v0.3.6`): producción con Docker Compose + Caddy + HTTPS, respaldo diario cifrado con prueba de restauración, datos de demostración y horario de la clínica; falta contratar el servidor y seguir `docs/DEPLOY.md`. La **Fase 4** quedó construida y probada con el proveedor de simulación (`v0.4.0`): boletas, facturas, notas de crédito, cola de envío con reintentos y Excel para el contador; para cerrarla falta solo conectar el PSE cuando la clínica lo contrate (`docs/FACTURACION.md`). La **Fase 5: módulo médico** está terminada (`v0.5.0`): agenda de citas, consulta SOAP, vacunas con carnet, recetas, presupuestos, archivos y consentimientos firmados, con su prueba de punta a punta de la cita al cobro. La **Fase 6: grooming** está terminada (`v0.6.0`): ingreso con checklist y precio por tamaño, tablero por estados, aviso por WhatsApp, entrega, constancia y su prueba de punta a punta. La **Fase 7: dashboard y reportes** está terminada (`v0.7.0`): inicio con citas, refuerzos, avisos y lo cobrado en el mes; reportes de ventas, margen e inventario con Excel, y su prueba de que los números cuadran. Sigue una revisión profesional de las Fases 4 a 7.
 
 Construimos el sistema en 9 fases alrededor de un solo circuito: **llega → espera → se atiende → se cobra → queda en el historial**. Cada fase agrega algo a ese circuito o lo hace más completo, y termina con algo que una clínica real puede usar. Primero se cierra el circuito completo de forma simple (Fase 3) y después se profundiza cada parte: comprobantes SUNAT, historia clínica, grooming y reportes.
 
@@ -82,7 +82,7 @@ Las tres decisiones de fondo ya están tomadas.
 
 **Cambios que propongo a la especificación de grooming e inventario**
 
-- `groomerName` como texto pasa a ser un empleado (`Staff`) con su porcentaje de comisión. Con texto libre, "José" y "jose" serían dos personas distintas al calcular comisiones.
+- `groomerName` como texto pasa a ser un empleado (`Staff`). Con texto libre, "José" y "jose" serían dos personas distintas en reportes y en el tablero.
 - `paid` deja de ser un sí/no que se marca a mano: el servicio de grooming genera un cargo en la cuenta del cliente y queda pagado cuando caja lo cobra.
 - Se agrega una tabla de movimientos de stock (kardex). Sin ella no se sabe qué lote se vendió, a quién ni cuándo, y no se puede anular una venta devolviendo las unidades a su lote.
 
@@ -156,10 +156,10 @@ El orden lo marcan las dependencias y el valor para la clínica. Clientes va pri
 | **3. Atención y cobro** ✅ | Atender desde la cola, cargos de servicios y productos con descuento automático de insumos, cuenta del cliente con saldo, venta de mostrador, caja con apertura, cobros mixtos, pagos parciales, egresos y cierre con arqueo. Ticket interno, historial en la ficha y ventas del día en el dashboard | Un día completo de demo sin papel: recepción → atención → cobro → cierre de caja que cuadra |
 | **3.5 Pulido profesional** ✅ | Revisión de todo lo hecho antes de mostrarlo: errores visibles (logo, fechas, páginas vacías), seguridad de acceso, bitácora visible, y lo legal de datos personales (Ley 29733) con derechos ARCO | Una persona que no conoce el sistema lo usa sin ver detalles de "prototipo", y el abogado tiene todo lo que necesita revisar |
 | **Hito de demo** ✅ | Despliegue en un servidor de prueba (Docker Compose + Caddy + HTTPS), respaldo diario probado, monitoreo de errores y de disponibilidad, datos de demostración, prueba con impresora térmica y horarios de atención de la clínica | Se puede mostrar el sistema a una clínica desde su celular |
-| **4. Comprobantes electrónicos** 🟡 listo para el PSE | Boleta y factura por PSE/OSE desde el cobro, notas de crédito, resumen diario y comunicación de baja, reintentos si el PSE no responde, series por clínica y reporte de ventas en Excel para el contador | SUNAT (en beta y luego en producción) acepta boletas, facturas y notas de crédito, y un PSE caído no frena la atención |
+| **4. Comprobantes electrónicos** 🟡 listo para el PSE (elegido: Lucode, 13 nov; Nubefact como alternativa) | Boleta y factura por PSE/OSE desde el cobro, notas de crédito, resumen diario y comunicación de baja, reintentos si el PSE no responde, series por clínica y reporte de ventas en Excel para el contador | SUNAT (en beta y luego en producción) acepta boletas, facturas y notas de crédito, y un PSE caído no frena la atención |
 | **5. Módulo médico** ✅ | Agenda de citas por veterinario, consulta SOAP sobre la atención de la Fase 3, recetas que descuentan stock (con receta retenida para controlados), vacunas con refuerzo y carnet, adjuntos, consentimientos firmados en pantalla y presupuestos que se convierten en cargos | Una consulta completa, de la cita a la receta y al cobro, sin salir del sistema |
-| **6. Grooming** ✅ | Check-in con checklist, Kanban por estados, delivery, constancia imprimible, botón de WhatsApp y comisiones por groomer. Cada servicio genera su cargo en la cuenta | Un día completo del área de baño se maneja solo con el tablero |
-| **7. Dashboard y reportes** | KPIs del día y del mes, ventas por servicio y por veterinario, margen por producto, citas de hoy, alertas de stock y vencimientos, recordatorios de vacunas con enlace de WhatsApp | Cada número del dashboard coincide con su módulo de origen |
+| **6. Grooming** ✅ | Check-in con checklist, Kanban por estados, delivery, constancia imprimible y botón de WhatsApp (sin comisiones: retiradas en nov. 2026 a pedido del cliente). Cada servicio genera su cargo en la cuenta | Un día completo del área de baño se maneja solo con el tablero |
+| **7. Dashboard y reportes** ✅ | KPIs del día y del mes, ventas por servicio y por veterinario, margen por producto, citas de hoy, alertas de stock y vencimientos, recordatorios de vacunas con enlace de WhatsApp | Cada número del dashboard coincide con su módulo de origen |
 | **8. Comercialización** | Versión 2: hospitalización básica primero, luego compras, gastos y reservas en línea. Demo pública, página de venta y segunda clínica | Primera clínica usando el sistema (fase abierta: crece con los clientes) |
 
 Cada fase se entrega por pasos: primero el backend con sus pruebas, luego las pantallas, y no se pasa a la siguiente fase sin cumplir su condición.
@@ -173,12 +173,27 @@ Cada fase se entrega por pasos: primero el backend con sus pruebas, luego las pa
 4. **Pantallas de caja:** "Por cobrar", cobro con varios medios, ticket imprimible, apertura y cierre, egresos, y ventas del día en el dashboard.
 5. **Cierre de fase:** prueba de punta a punta con Playwright del día completo (recepción → atención → cobro → cierre) corriendo en GitHub Actions, etiqueta `v0.3.0` y CHANGELOG.
 
+**La Fase 7 por pasos**
+
+Reglas de los números, para que cada uno cuadre con su módulo: **cobrado** = pagos recibidos menos devoluciones (lo mismo que suma la caja); **vendido** = cargos registrados que no se anularon (cobrados o por cobrar), con IGV; **margen** = venta sin IGV menos el costo de lo que salió del inventario (el costo del lote por FEFO), así que un producto sin costo de compra se marca aparte y no infla el margen. Las fechas son las de Lima. Los reportes los ve el administrador.
+
+1. ✅ **Reporte de ventas:** pantalla Reportes con período (hoy, 7 días, este mes, el pasado o fechas libres, hasta un año) y comparación con el período anterior: vendido, cobrado, atenciones, ticket promedio y clientes nuevos; gráfico de ventas por día (servicios y productos) con tooltip y tabla equivalente; ventas por categoría, por servicio, por profesional (veterinario de la atención o groomer) y por medio de pago; Excel con una hoja por cada vista.
+2. ✅ **Margen e inventario:** margen por producto y por servicio (sus insumos), con los que no tienen costo aparte; valor del inventario a costo, lotes vencidos o por vencer con su valor en riesgo y productos sin movimiento; Excel.
+3. ✅ **Inicio renovado:** citas de hoy con su estado, vacunas y desparasitaciones que vencen esta semana con WhatsApp al dueño, avisos de stock y vencimientos juntos, y para el administrador lo cobrado en el mes con la tendencia y la comparación con el mes anterior al mismo día.
+4. ✅ **Cierre de fase:** prueba de punta a punta de que los números cuadran (un cobro aparece igual en caja, inicio y reportes; un cargo anulado sale de todos), revisión en el celular, etiqueta `v0.7.0` y CHANGELOG.
+
+**Antes de la primera clínica (2 de noviembre)**
+
+1. ✅ **Plantillas clínicas:** plantillas de consulta (motivo, anamnesis, examen, diagnóstico y plan) que se aplican en la atención completando solo lo vacío o reemplazando, y recetas frecuentes que se agregan con un clic (los productos del inventario se vuelven a leer con su precio de hoy; si ya no existen, quedan para farmacia). Se guardan desde la consulta o la receta, o se manejan en **Configuración → Plantillas clínicas**. Las más usadas salen primero. Las crean veterinarios y el administrador.
+2. ✅ **Hospitalización básica:** "Internar" desde la consulta (la cierra y abre una atención de hospitalización, HZ-00001) con jaula, motivo, diagnóstico y veterinario responsable. Hoja de tratamiento con indicaciones (medicamento, fluidos, alimentación, procedimiento o control) cada N horas: cada hora aparece como dada, omitida (con motivo), atrasada (más de 30 min), por dar o pendiente; cualquiera del equipo la registra con su nombre y hora. Signos vitales con curva de temperatura y su rango normal, notas de evolución, tablero de internados que se actualiza solo, aviso de dosis atrasadas en la campana y en el inicio. Alta o fallecimiento: cobra los días de estancia (servicio de categoría "Hospitalización"), suspende las indicaciones y cierra la atención; lo pendiente queda por cobrar en caja. Consentimiento de hospitalización a un clic.
+3. ⏸ **Recordatorios automáticos por WhatsApp:** necesitan la API oficial de WhatsApp Business (Meta cobra cada mensaje de plantilla, aprueba las plantillas y exige un número propio de la clínica verificado). Mientras tanto siguen los recordatorios a un clic con `wa.me`, gratis, desde el inicio y Vacunas.
+
 **La Fase 6 por pasos**
 
-1. ✅ **Ingreso y tablero:** precios por tamaño en los servicios de baño y grooming; ingreso con tamaño, servicios, checklist de cómo llega (pulgas, garrapatas, nudos, agresividad, piel, pertenencias, indicaciones), groomer, hora de recojo, movilidad y firma opcional del dueño; tablero En espera → Baño → Corte → Listo que se arrastra en escritorio y se avanza con un botón en el celular; aviso de "listo" por WhatsApp; entrega a quien recoge (dueño, persona autorizada u otra con DNI) que cierra la atención y lleva a caja; cancelación que quita los cargos.
-2. ✅ **Constancia e integraciones:** constancia imprimible de ingreso y entrega con el checklist y las firmas, grooming en la historia de la mascota, "Ingreso a grooming" desde la cola, las citas y la ficha, y grooming del día en el dashboard.
-3. ✅ **Comisiones:** porcentaje por groomer en Usuarios, congelado al entregar cada servicio; reporte por período (esta semana, la pasada, este mes, el pasado o fechas libres) sobre lo cobrado de los servicios entregados, con lo que falta cobrar aparte, detalle por servicio y Excel. El groomer ve solo lo suyo.
-4. ✅ **Cierre de fase:** prueba de punta a punta con Playwright del día de grooming, con recepción y un groomer nuevo: ingreso con checklist, tablero hasta "Listo", aviso por WhatsApp, entrega, cobro, constancia y comisión; corre en GitHub Actions junto a las otras dos. Etiqueta `v0.6.0` y CHANGELOG.
+1. ✅ **Ingreso y tablero:** precios por tamaño en los servicios de baño y grooming; ingreso con tamaño, servicios, checklist de cómo llega (pulgas, garrapatas, nudos, agresividad, piel, pertenencias, indicaciones), groomer, hora de recojo, movilidad (sin firma del dueño: se retiró a pedido del cliente); tablero En espera → Baño → Corte → Listo que se arrastra en escritorio y se avanza con un botón en el celular; aviso de "listo" por WhatsApp; entrega a quien recoge (dueño, persona autorizada u otra con DNI) que cierra la atención y lleva a caja; cancelación que quita los cargos.
+2. ✅ **Constancia e integraciones:** constancia imprimible de ingreso y entrega con el checklist y quién recogió, grooming en la historia de la mascota, "Ingreso a grooming" desde la cola, las citas y la ficha, y grooming del día en el dashboard.
+3. ❌ **Comisiones (retirado, nov. 2026):** el cliente no paga comisión a los groomers. Se quitaron el porcentaje en Usuarios, el que se congelaba al entregar, el reporte y su Excel (migración `20261107010000_sin_comisiones_grooming`).
+4. ✅ **Cierre de fase:** prueba de punta a punta con Playwright del día de grooming, con recepción y un groomer nuevo: ingreso con checklist, tablero hasta "Listo", aviso por WhatsApp, entrega, cobro y constancia; corre en GitHub Actions junto a las otras dos. Etiqueta `v0.6.0` y CHANGELOG.
 
 **La Fase 5 por pasos**
 
@@ -236,9 +251,20 @@ Opciones para que el cliente firme y llene sus datos. Se consultan con el veteri
 
 ### Versión 2 y más adelante
 
-- **Versión 2:** hospitalización básica con hoja de medicación por horario (la primera prioridad: muchas clínicas pequeñas internan 2 o 3 mascotas), módulo completo de proveedores y compras, gastos de la clínica para ver la ganancia real, curva de peso y paquetes como el plan de vacunación anual.
-- **Diferenciadores para después:** carnet de vacunas digital por enlace, portal del dueño, comisiones de veterinarios, varias sedes e integración con laboratorios.
-- **Más adelante:** recordatorios automáticos por WhatsApp (la API oficial cobra por conversación; mientras tanto, enlaces `wa.me` gratis), reservas en línea y varias sedes.
+- **Versión 2:** ✅ proveedores y compras (12 nov), gastos de la clínica para ver la ganancia real, curva de peso y paquetes como el plan de vacunación anual.
+- **Hecho (4 nov):** **portal del dueño** con carnet de vacunas digital por enlace, próximas citas y recetas recientes (enlace personal de 6 meses, revocable, sin contraseña).
+- **Hecho (5 nov):** revisión de calidad antes del piloto (`docs/QA-2026-11.md`). Falta: SUNAT con el PSE real, restauración en el servidor contratado y la prueba piloto.
+- **Pendientes tras comparar con otros sistemas** (se hacen si la clínica piloto los pide, en este orden sugerido):
+  1. **Reserva de citas en línea:** página pública de la clínica; la cita entra a la agenda como "por confirmar". Reusa la base del portal.
+  2. **Avisos al instante (sin esperar 30 s)** con eventos del servidor (SSE), si la clínica lo pide tras el piloto. Ya hecho: centro de notificaciones con sondeo de 30 s.
+  2. ✅ **Recordatorios automáticos sin costo (10 nov):** avisos al celular desde el portal (Web Push), calendario .ics del dueño y WhatsApp en lote marcado desde recepción, con citas de mañana. Queda opcional el WhatsApp automático con la API oficial (≈ S/ 0.10 por mensaje en Perú desde octubre de 2026) como módulo pagado.
+  3. ✅ **Proveedores y compras (12 nov):** proveedores con RUC, recibir la ficha de compra (varias líneas, lote, vencimiento, costo sin IGV, borrador, total del papel, foto), historial, corregir comprobante, anular si no se usó, Excel del contador. Recepción y caja ya no ven costos. Por decisión del cliente, sin pedidos ni cuentas por pagar (solo la alerta de stock bajo).
+  4. ✅ **Laboratorio e imágenes (10 nov):** pedido desde la atención (perfiles), muestra, resultado (PDF o valores), revisión del veterinario antes de avisar al dueño y alerta de demora. Pendiente: valores con rango de referencia y gráficos.
+  - ✅ **Atenciones, primera tanda (10 nov):** pestañas Consultas/Grooming, buscador y filtros, agrupado por día, por cobrar/pagada, abiertas de otros días con aviso en Inicio, panel del paciente y signos vitales por especie, cancelar en el menú ⋯. ✅ Segunda tanda (10 nov): autoguardado, revisión antes de cerrar, indicaciones para el dueño (WhatsApp o impreso) y accesibilidad. ✅ Tercera tanda (10 nov): diagnósticos frecuentes, curva de peso, historia completa imprimible, rangos de conejo y cuy, por cobrar una vez, exámenes y archivos más livianos. Atenciones completo. Sección Historias clínicas (lista de pacientes con buscador y avisos). Menú ordenado por roles (Recepción, Clínica, Grooming, Caja, Gestión) y "Vacunas" pasa a "Refuerzos".
+  5. **Planes de salud y paquetes prepagados** (plan cachorro, etc.) con saldo de usos.
+  6. **Libro de reclamaciones virtual** (módulo vendible).
+  7. **Para vender a varias clínicas:** alta de clínica nueva con prueba gratis, planes y cobro de la suscripción, y varias sedes por clínica. Antes de la segunda clínica.
+  8. Comisiones de veterinarios.
 
 ## 6. Diseño de los módulos
 
@@ -269,12 +295,12 @@ Las piezas clave son la atención con su cuenta (el circuito), la regla FEFO de 
 
 ### Grooming
 
-- **Entidades:** `GroomingSession` (mascota, tamaño, estado con la hora de cada paso, checklist, movilidad, firma del dueño, quién recogió) enlazada 1 a 1 con una atención de tipo `GROOMING`: sus servicios son cargos de esa atención, así la caja, la cuenta del cliente y los comprobantes funcionan igual que en consulta. El precio por tamaño vive en el catálogo de servicios (`CareServiceSizePrice`; si falta un tamaño rige el precio base) y el groomer es un usuario con rol Groomer o con porcentaje de comisión.
+- **Entidades:** `GroomingSession` (mascota, tamaño, estado con la hora de cada paso, checklist, movilidad, firma del dueño, quién recogió) enlazada 1 a 1 con una atención de tipo `GROOMING`: sus servicios son cargos de esa atención, así la caja, la cuenta del cliente y los comprobantes funcionan igual que en consulta. El precio por tamaño vive en el catálogo de servicios (`CareServiceSizePrice`; si falta un tamaño rige el precio base) y el groomer es un usuario con rol Groomer.
 - **Estados:** `WAITING` → `BATHING` → `CUTTING` → `READY` → `DELIVERED`. Hacia adelante se pueden saltar pasos (un baño sin corte, unas uñas que pasan directo a listo) y hacia atrás solo uno, para corregir; cualquier otro salto devuelve 409. `DELIVERED` solo llega por la entrega (con quién recogió) y `CANCELLED` por la cancelación (quita los cargos). Cada paso guarda su hora, para medir los tiempos reales. La atención de un grooming no se cierra a mano: se cierra al entregar.
 - **Checklist de recepción:** pulgas, nudos, agresividad, observaciones de piel y pertenencias. Se guarda al hacer el check-in y después no se puede editar, porque es la protección ante reclamos.
 - **Kanban:** una columna por estado. En escritorio se arrastra con Angular CDK; en móvil cada tarjeta tiene un botón "Avanzar". Si el cambio falla en el servidor, la tarjeta vuelve a su columna.
 - **WhatsApp:** el botón aparece en `READY` y abre `https://wa.me/51{celular}?text=…` con el mensaje codificado. Solo se habilita si el celular del dueño tiene 9 dígitos y empieza con 9.
-- **Comisiones:** por cada servicio entregado, lo cobrado de sus servicios (con IGV; los productos no cuentan) por el porcentaje que el groomer tenía al entregarlo, que se congela en el servicio. Lo que falta cobrar se muestra aparte y comisiona cuando se cobra (si se anula un cobro, baja). Reporte por período de hasta 3 meses, con Excel; el groomer ve solo lo suyo.
+- **Comisiones:** retiradas en nov. 2026 (el cliente no paga comisión a los groomers). Solo pueden asignarse servicios a usuarios activos con rol Groomer.
 
 ### Inventario farmacéutico
 
@@ -299,6 +325,9 @@ Las piezas clave son la atención con su cuenta (el circuito), la regla FEFO de 
 | --- | --- | --- | --- |
 | GET / POST | `/api/inventory/products` | Catálogo y alta de productos | 2 ✅ |
 | POST | `/api/inventory/products/{id}/purchases` | Ingreso de compra con lote, proveedor y comprobante | 2 ✅ |
+| GET/POST/PATCH | `/api/inventory/suppliers` | Proveedores (unir repetidos: `POST /suppliers/{id}/merge`, solo admin) | 12 nov ✅ |
+| GET/POST | `/api/inventory/purchases` | Compras (ficha del proveedor con varias líneas); detalle, corregir comprobante (`PATCH`), anular (`POST /{id}/void`), foto (`/{id}/file`) | 12 nov ✅ |
+| GET | `/api/inventory/purchases/excel` | Registro de compras para el contador (solo admin) | 12 nov ✅ |
 | POST | `/api/inventory/products/{id}/outflows` | Merma, consumo interno o tratamiento | 2 ✅ |
 | GET | `/api/inventory/products/{id}/movements` | Kardex del producto | 2 ✅ |
 | POST | `/api/inventory/products/{id}/counts` | Conteo físico (solo administrador) | 2 ✅ |
@@ -314,13 +343,23 @@ Las piezas clave son la atención con su cuenta (el circuito), la regla FEFO de 
 | GET / POST | `/api/cash/sessions` | Caja actual, apertura y cierre con arqueo | 3 |
 | POST | `/api/payments` | Cobro con uno o varios medios | 3 |
 | POST | `/api/cash/expenses` | Egreso de caja chica | 3 |
-| GET | `/api/reports/sales?from=&to=` | Ventas del periodo (Excel en la Fase 4) | 3 |
 | POST | `/api/grooming` | Ingreso con checklist (abre la atención y registra los cargos) | 6 |
 | GET | `/api/grooming?day=` | Tablero del día (hoy incluye lo que sigue en curso) | 6 |
 | PATCH | `/api/grooming/{id}/status` | Mover en el tablero | 6 |
 | PATCH | `/api/grooming/{id}/groomer` | Asignar groomer | 6 |
 | POST | `/api/grooming/{id}/notify` · `/deliver` · `/cancel` | Avisado por WhatsApp, entrega, cancelación | 6 |
-| GET | `/api/grooming/commissions?from=&to=&groomerId=` · `/excel` | Comisiones por groomer (y en Excel) | 6 |
+| GET | `/api/reports/sales?from=&to=` · `/excel` | Ventas del período comparadas con el anterior: por día, categoría, servicio, producto, profesional y medio de pago (solo administrador) | 7 ✅ |
+| GET | `/api/reports/margin?from=&to=` · `/excel` | Margen bruto por producto y por servicio (costo del lote por FEFO) | 7 ✅ |
+| GET | `/api/reports/inventory` · `/excel` | Inventario valorizado hoy, riesgo de vencimiento y productos sin movimiento | 7 ✅ |
+| GET | `/api/reports/month` | Cobrado en el mes contra el mes anterior al mismo día, con la tendencia diaria (inicio del administrador) | 7 ✅ |
+| GET | `/api/dashboard` | Inicio: cola, citas de hoy, refuerzos que tocan, internados y dosis atrasadas, avisos según el rol, grooming y ventas del día | 7 ✅ |
+| GET · POST | `/api/clinical-templates?kind=` | Plantillas de consulta y recetas frecuentes (crear: veterinario o administrador) | ✅ |
+| PATCH · DELETE | `/api/clinical-templates/{id}` · POST `/{id}/used` | Editar, borrar y contar su uso | ✅ |
+| GET · POST | `/api/hospitalizations` | Tablero de internados (y altas de los últimos días) · internar desde una consulta | ✅ |
+| GET · PATCH | `/api/hospitalizations/{id}` | Hoja de tratamiento con sus horas, signos, evolución y cuenta · jaula y diagnóstico | ✅ |
+| POST | `/api/hospitalizations/{id}/orders` · `/orders/{orderId}/stop` | Nueva indicación cada N horas · suspenderla | ✅ |
+| POST | `/api/hospitalizations/{id}/entries` | Dosis dada u omitida, signos vitales o nota (todo el equipo clínico) | ✅ |
+| POST | `/api/hospitalizations/{id}/discharge` | Alta o fallecimiento: cobra la estancia y cierra la atención | ✅ |
 
 ### Comprobantes electrónicos (Fase 4)
 
@@ -354,7 +393,7 @@ El riesgo más grande no es técnico sino de alcance: ocho módulos para una sol
 | Lote vencido todavía con stock | Se vende un medicamento vencido | FEFO lo salta; solo se puede sacar como merma |
 | Fechas en UTC en el servidor | Un lote aparece vencido un día antes | Todas las fechas de negocio se calculan con zona America/Lima |
 | Celular mal escrito | El enlace de WhatsApp abre un chat vacío | Validación de 9 dígitos al registrar al cliente |
-| Cambio de groomer a mitad del servicio | La comisión se asigna a la persona equivocada | La comisión va a quien figura al pasar a `READY`, y el cambio queda registrado |
+| Cambio de groomer a mitad del servicio | No se sabe quién atendió | El servicio queda a nombre de quien figura al pasar a `READY`, y el cambio queda registrado |
 | Mascota agresiva | Riesgo para el personal | Alerta roja en la tarjeta y en la ficha de la mascota |
 | Captura falsa de Yape | Se entrega el servicio sin cobrar | El cajero verifica el código en su app; queda guardado quién lo verificó |
 | Comprobantes no electrónicos | Multas de SUNAT por no emitir un comprobante electrónico válido | Boleta y factura electrónicas por PSE/OSE desde la Fase 4; el régimen de cada clínica se valida con su contador |
@@ -444,7 +483,7 @@ Con la Fase 2 terminada, el sistema tenía las piezas pero no el recorrido: por 
 - **Revisión a fondo (28 de octubre):** se agregaron las decisiones 5 a 8 (cobro sin bloqueo por stock, varias cajas, historia inalterable, correlativos por clínica), las reglas de dinero e IGV, los casos de fecha, la anulación de cobros y adelantos, y las pruebas de aislamiento y de punta a punta.
 - **Entrega del código:** por fase y por pasos, como pediste: primero el backend de cada paso con sus pruebas, luego sus pantallas.
 
-**Siguiente paso:** Fase 7, dashboard y reportes (KPIs del día y del mes, ventas por servicio y por veterinario, margen por producto, alertas y recordatorios). Antes de empezarla, se detallan sus pasos aquí como en las fases anteriores. En paralelo, cuando una clínica contrate el PSE: seguir `docs/FACTURACION.md` (cuenta de pruebas, casos a validar, producción) y `docs/DEPLOY.md`.
+**Siguiente paso:** con plantillas clínicas y hospitalización básica, el sistema queda listo para mostrarlo a la primera clínica (demo con `DEMO_REFRESH=1` antes de la reunión). La revisión profesional de las Fases 4 a 7 quedó hecha (rendimiento con índices medidos; metadatos, íconos e instalación en el celular; auditoría de pantallas en celular y escritorio: desbordes, contraste, agenda y tablas). Queda validar con una clínica las reglas de negocio (por ejemplo, a quién se atribuye una atención que abre recepción) y la Fase 8. En paralelo: contratar el servidor y el PSE (`docs/DEPLOY.md`, `docs/FACTURACION.md`), revisión legal y una clínica piloto.
 
 ## Fuentes
 

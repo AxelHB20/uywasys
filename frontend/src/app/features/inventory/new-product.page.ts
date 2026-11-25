@@ -11,11 +11,16 @@ import {
   IGV_LABELS,
   IgvAffectation,
   ProductCategory,
+  defaultChargeable,
+  defaultTracksExpiry,
 } from '../../core/services/inventory.models';
+import { SessionService } from '../../core/auth/session.service';
 import { InventoryService } from '../../core/services/inventory.service';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ExpiryChoiceComponent } from './expiry-choice.component';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 type PresentationForm = FormGroup<{
   name: FormControl<string>;
@@ -47,7 +52,13 @@ function presentationForm(
 
 @Component({
   selector: 'app-new-product-page',
-  imports: [ReactiveFormsModule, RouterLink, IconComponent],
+  imports: [
+    BackLinkComponent,
+    ReactiveFormsModule,
+    RouterLink,
+    IconComponent,
+    ExpiryChoiceComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './new-product.page.html',
 })
@@ -55,6 +66,8 @@ export class NewProductPage {
   private readonly inventory = inject(InventoryService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  /** El IGV define cuánto impuesto se declara: solo el administrador lo cambia */
+  protected readonly isAdmin = inject(SessionService).isAdmin;
 
   protected readonly categories = CATEGORIES;
   protected readonly categoryLabels = CATEGORY_LABELS;
@@ -79,6 +92,9 @@ export class NewProductPage {
     minStock: new FormControl<number | null>(null, [Validators.min(0)]),
     requiresPrescription: new FormControl(false, { nonNullable: true }),
     controlled: new FormControl(false, { nonNullable: true }),
+    chargeable: new FormControl(true, { nonNullable: true }),
+    /** Sigue a la categoría hasta que el usuario lo cambie a mano */
+    tracksExpiry: new FormControl(true, { nonNullable: true }),
     igv: new FormControl<IgvAffectation>('TAXED', { nonNullable: true }),
     sunatUnit: new FormControl('NIU', {
       nonNullable: true,
@@ -97,12 +113,19 @@ export class NewProductPage {
   protected readonly unitPlural = computed(() => this.unitLabels[this.baseUnit()][1]);
 
   constructor() {
+    if (!this.isAdmin()) this.form.controls.igv.disable();
     // Si la única presentación sigue con el nombre por defecto, se ajusta a la nueva unidad
     this.form.controls.baseUnit.valueChanges.subscribe((unit) => {
       const rows = this.form.controls.presentations.controls;
       const first = rows[0]?.controls.name;
       if (rows.length === 1 && first && Object.values(DEFAULT_PRESENTATION).includes(first.value))
         first.setValue(DEFAULT_PRESENTATION[unit]);
+    });
+    this.form.controls.category.valueChanges.subscribe((category) => {
+      const tracks = this.form.controls.tracksExpiry;
+      if (category && !tracks.dirty) tracks.setValue(defaultTracksExpiry(category));
+      const chargeable = this.form.controls.chargeable;
+      if (category && !chargeable.dirty) chargeable.setValue(defaultChargeable(category));
     });
     this.form.controls.controlled.valueChanges.subscribe((controlled) => {
       if (controlled) this.form.controls.requiresPrescription.setValue(true);
@@ -144,6 +167,8 @@ export class NewProductPage {
         minStock: v.minStock ?? 0,
         requiresPrescription: v.requiresPrescription,
         controlled: v.controlled,
+        chargeable: v.chargeable,
+        tracksExpiry: v.tracksExpiry,
         igv: v.igv,
         sunatUnit: v.sunatUnit,
         notes: v.notes.trim() || null,
@@ -156,7 +181,7 @@ export class NewProductPage {
       .subscribe({
         next: (product) => {
           this.toast.success(`${product.name} quedó registrado. Ahora ingresa su primera compra.`);
-          this.router.navigate(['/inventario', product.id]);
+          this.router.navigate(['/inventario', product.id], { replaceUrl: true });
         },
         error: (error: unknown) => {
           this.saving.set(false);

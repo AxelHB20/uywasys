@@ -13,9 +13,21 @@ export interface ClinicProfile {
   email: string | null;
   logoUrl: string | null;
   openingHours: DayHours[];
+  /** El portal del dueño muestra el carnet completo y las recetas */
+  portalShowRecords: boolean;
 }
 
-export type ClinicProfileUpdate = Omit<ClinicProfile, 'id' | 'logoUrl' | 'openingHours'>;
+export type ClinicProfileUpdate = Omit<
+  ClinicProfile,
+  'id' | 'logoUrl' | 'openingHours' | 'portalShowRecords'
+> & { portalShowRecords?: boolean };
+
+/** Espacio que ocupan los archivos de la clínica */
+export interface StorageUsage {
+  attachments: { count: number; bytes: number };
+  purchaseFiles: { count: number; bytes: number };
+  totalBytes: number;
+}
 
 export interface SetupStatus {
   profileComplete: boolean;
@@ -38,6 +50,11 @@ export class ClinicService {
       .pipe(tap((clinic) => this.syncSession(clinic)));
   }
 
+  /** Horario de atención (cualquier rol: la agenda sombrea lo cerrado) */
+  hours(): Observable<DayHours[]> {
+    return this.http.get<DayHours[]>('/api/clinic/hours');
+  }
+
   updateHours(days: DayHours[]): Observable<ClinicProfile> {
     return this.http.put<ClinicProfile>('/api/clinic/hours', { days });
   }
@@ -54,6 +71,11 @@ export class ClinicService {
     return this.http
       .delete<ClinicProfile>('/api/clinic/logo')
       .pipe(tap((clinic) => this.syncSession(clinic)));
+  }
+
+  /** Espacio que ocupan los archivos (solo administrador) */
+  storage(): Observable<StorageUsage> {
+    return this.http.get<StorageUsage>('/api/clinic/storage');
   }
 
   setupStatus(): Observable<SetupStatus> {

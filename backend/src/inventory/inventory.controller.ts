@@ -25,7 +25,7 @@ import {
   UpdatePresentationDto,
   UpdateProductDto,
 } from './dto/inventory.dto.js';
-import { InventoryService } from './inventory.service.js';
+import { InventoryService, withoutCosts } from './inventory.service.js';
 import type { PresentationView, ProductDetail } from './inventory.service.js';
 
 /**
@@ -55,11 +55,14 @@ export class InventoryController {
   }
 
   @Get('products/:id')
-  get(
+  async get(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
   ): Promise<ProductDetail> {
-    return this.inventory.get(user.clinicId, id);
+    const detail = await this.inventory.get(user.clinicId, id);
+    return STOCK_ROLES.includes(user.role as (typeof STOCK_ROLES)[number])
+      ? detail
+      : withoutCosts(detail);
   }
 
   @Get('products/:id/movements')

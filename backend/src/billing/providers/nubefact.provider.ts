@@ -38,7 +38,7 @@ export function nubefactPayload(
     cliente_numero_de_documento: doc.customer.docNumber,
     cliente_denominacion: doc.customer.name,
     cliente_direccion: doc.customer.address ?? '',
-    cliente_email: '',
+    cliente_email: doc.customer.email ?? '',
     fecha_de_emision: nubefactDate(doc.issueDate),
     moneda: 1,
     porcentaje_de_igv: 18.0,
@@ -164,6 +164,7 @@ export class NubefactProvider implements BillingProviderClient {
       throw new ProviderError(
         'Falta la ruta o el token del PSE en Configuración → Facturación',
         false,
+        'auth',
       );
     let res: Response;
     try {
@@ -180,17 +181,20 @@ export class NubefactProvider implements BillingProviderClient {
       throw new ProviderError(
         `El PSE no respondió: ${error instanceof Error ? error.message : String(error)}`,
         true,
+        'network',
       );
     }
     if (res.status === 401 || res.status === 403)
       throw new ProviderError(
         'El PSE rechazó la ruta o el token: revísalos en Configuración → Facturación',
         false,
+        'auth',
       );
     if (res.status >= 500)
       throw new ProviderError(
         `El PSE tuvo un error (${res.status}); se reintentará`,
         true,
+        'network',
       );
     const body = (await res.json().catch(() => ({}))) as NubefactResponse;
     if (!res.ok || body.errors)

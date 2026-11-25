@@ -28,6 +28,12 @@ export function roleGuard(...roles: Role[]): CanActivateFn {
   };
 }
 
+/** Solo la cuenta de soporte técnico (configuración de facturación, token del PSE). */
+export const supportGuard: CanActivateFn = () => {
+  const session = inject(SessionService);
+  return session.isSupport() ? true : inject(Router).createUrlTree(['/dashboard']);
+};
+
 /** Si ya hay sesión, el login redirige directo al dashboard. */
 export const guestGuard: CanActivateFn = async () => {
   const auth = inject(AuthService);

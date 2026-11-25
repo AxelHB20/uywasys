@@ -1,92 +1,315 @@
 <section class="space-y-5">
   <!-- Encabezado -->
-  <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-    <div>
+  <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div class="min-w-0">
       <h1 class="font-display text-2xl font-semibold text-slate-900">Citas</h1>
       <p class="mt-1 text-sm text-slate-600">
-        @if (counts().total) {
-          {{ counts().total }} {{ counts().total === 1 ? 'cita' : 'citas' }}
-          @if (counts().pending) {
-            · <span class="text-amber-700">{{ counts().pending }} por confirmar</span>
-          }
-          @if (counts().arrived) {
-            · <span class="text-emerald-700">{{ counts().arrived }} llegaron</span>
-          }
-        } @else {
-          Agenda por veterinario. Al llegar, la cita pasa a la cola de hoy.
-        }
+        Agenda por profesional. Al llegar, la cita pasa a la cola de hoy.
       </p>
     </div>
-    @if (canEdit()) {
-      <button
-        type="button"
-        class="btn btn-primary self-start lg:self-auto"
-        (click)="openNew({ day: day() < today ? today : day() })"
-      >
-        <app-icon name="plus" class="size-4" /> Nueva cita
-      </button>
-    }
+    <div class="flex items-center gap-2 self-start sm:self-auto">
+      @if (toConfirm().length) {
+        <!-- Por confirmar: un botón con el número; la lista se abre al hacer clic -->
+        <div class="relative" #pendingBox>
+          <button
+            type="button"
+            class="btn h-10 gap-2 bg-amber-50 px-3 text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
+            [attr.aria-expanded]="pendingOpen()"
+            aria-controls="agenda-pending"
+            (click)="pendingOpen.set(!pendingOpen())"
+          >
+            <app-icon name="inbox" class="size-4" />
+            Por confirmar
+            <span
+              class="rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white tabular-nums"
+              >{{ toConfirm().length }}</span
+            >
+            <app-icon name="chevron-down" class="size-3.5" />
+          </button>
+          @if (pendingOpen()) {
+            <!-- Celular: hoja desde abajo (el menú flotante se cortaba); tablet y PC: menú -->
+            <div
+              class="fixed inset-0 z-40 bg-slate-900/40 sm:hidden"
+              aria-hidden="true"
+              (click)="pendingOpen.set(false)"
+            ></div>
+            <div
+              id="agenda-pending"
+              class="panel-in fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl ring-1 ring-slate-900/5 sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:bottom-auto sm:z-40 sm:mt-2 sm:w-[min(32rem,calc(100vw-2rem))] sm:origin-top-right sm:rounded-2xl sm:pb-0"
+              role="dialog"
+              aria-label="Citas por confirmar"
+            >
+              <span
+                class="mx-auto mt-2 block h-1 w-10 rounded-full bg-slate-300 sm:hidden"
+                aria-hidden="true"
+              ></span>
+              <p class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+                <span class="font-display text-sm font-semibold text-slate-900">Por confirmar</span>
+                <span class="ml-auto text-xs text-slate-500"
+                  >{{ remindedCount() }} de {{ toConfirm().length }} avisados</span
+                >
+                <button
+                  type="button"
+                  class="-mr-2 grid size-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 sm:hidden"
+                  aria-label="Cerrar"
+                  (click)="pendingOpen.set(false)"
+                >
+                  <app-icon name="x" class="size-4" />
+                </button>
+              </p>
+              <ul
+                class="max-h-[65dvh] divide-y divide-slate-100 overflow-y-auto border-t border-slate-100 sm:max-h-[60vh]"
+                role="list"
+              >
+                @for (a of toConfirm(); track a.id) {
+                  <li class="flex items-center gap-3 px-4 py-2.5">
+                    <button
+                      type="button"
+                      class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      (click)="pendingOpen.set(false); selected.set(a)"
+                    >
+                      <span class="w-11 shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
+                        @if (isWeek()) {
+                          <span class="block text-[11px] font-medium text-slate-500">{{
+                            shortDay(a)
+                          }}</span>
+                        }
+                        {{ startTime(a) }}</span
+                      >
+                      <span class="min-w-0">
+                        <span class="block truncate text-sm font-semibold text-slate-900">{{
+                          a.pet.name
+                        }}</span>
+                        <span class="block truncate text-xs text-slate-500"
+                          >{{ a.client.name }} · {{ formatPhone(a.client.phone) }}</span
+                        >
+                      </span>
+                    </button>
+                    @if (canEdit()) {
+                      <a
+                        class="btn h-9 shrink-0 px-2.5 text-xs"
+                        [class]="
+                          remindedOf(a).length ? 'btn-ghost text-emerald-700' : 'btn-secondary'
+                        "
+                        [href]="whatsapp(a)"
+                        target="_blank"
+                        rel="noopener"
+                        (click)="markReminded(a)"
+                        [attr.aria-label]="'Escribir por WhatsApp a ' + a.client.name"
+                      >
+                        <app-icon
+                          [name]="remindedOf(a).length ? 'check' : 'message-circle'"
+                          class="size-3.5"
+                        />
+                        {{ remindedOf(a).length ? 'Avisado' : 'WhatsApp' }}
+                      </a>
+                      <button
+                        type="button"
+                        class="btn btn-primary h-9 shrink-0 px-2.5 text-xs"
+                        [disabled]="acting()"
+                        (click)="act(a, 'confirm')"
+                        [attr.aria-label]="'Confirmar la cita de ' + a.pet.name"
+                      >
+                        Confirmar
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+        </div>
+      }
+      @if (canEdit()) {
+        <button type="button" class="btn btn-primary" (click)="newAppointment()">
+          <app-icon name="plus" class="size-4" /> Nueva cita
+        </button>
+      }
+    </div>
   </header>
 
-  <!-- Navegación de días y filtro -->
-  <div class="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        class="grid size-10 place-items-center rounded-xl ring-1 ring-slate-300 hover:bg-slate-50"
-        aria-label="Día anterior"
-        (click)="go(-1)"
+  <!-- Semana: navegación, tira de días y filtros -->
+  <div
+    class="card flex flex-col gap-3 p-3 xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:items-center xl:gap-4"
+  >
+    <div class="contents lg:flex lg:flex-row lg:items-center lg:justify-between xl:contents">
+      <div class="flex items-center gap-2">
+        <!-- Día | Semana -->
+        <div class="mr-1 flex rounded-xl bg-slate-100 p-1" role="group" aria-label="Vista">
+          @for (v of views; track v.id) {
+            <button
+              type="button"
+              class="h-8 rounded-lg px-3 text-sm font-medium transition-colors"
+              [class]="
+                view() === v.id
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              "
+              [attr.aria-pressed]="view() === v.id"
+              (click)="setView(v.id)"
+            >
+              {{ v.label }}
+            </button>
+          }
+        </div>
+        <button
+          type="button"
+          class="grid size-10 place-items-center rounded-xl ring-1 ring-slate-300 hover:bg-slate-50"
+          aria-label="Semana anterior"
+          (click)="go(-7)"
+        >
+          <app-icon name="chevron-left" class="size-4" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary h-10 px-3"
+          [disabled]="isWeek() ? week() === weekOfToday : day() === today"
+          (click)="setDay(today)"
+        >
+          Hoy
+        </button>
+        <button
+          type="button"
+          class="grid size-10 place-items-center rounded-xl ring-1 ring-slate-300 hover:bg-slate-50"
+          aria-label="Semana siguiente"
+          (click)="go(7)"
+        >
+          <app-icon name="chevron-right" class="size-4" />
+        </button>
+        <p
+          class="ml-2 hidden min-w-0 text-sm text-slate-600 sm:block"
+          [class]="isWeek() ? '' : 'xl:hidden'"
+        >
+          Semana del <span class="font-medium text-slate-900">{{ weekLabel() }}</span>
+        </p>
+      </div>
+      <div
+        class="grid gap-2 sm:flex sm:items-center xl:col-start-3 xl:row-start-1"
+        [class.grid-cols-2]="!isWeek()"
       >
-        <app-icon name="chevron-left" class="size-4" />
-      </button>
-      <button
-        type="button"
-        class="btn btn-secondary h-10 px-3"
-        [disabled]="day() === today"
-        (click)="setDay(today)"
-      >
-        Hoy
-      </button>
-      <button
-        type="button"
-        class="grid size-10 place-items-center rounded-xl ring-1 ring-slate-300 hover:bg-slate-50"
-        aria-label="Día siguiente"
-        (click)="go(1)"
-      >
-        <app-icon name="chevron-right" class="size-4" />
-      </button>
-      <div class="ml-2 min-w-0">
-        <p class="font-display text-base font-semibold text-slate-900">{{ dayLabel() }}</p>
-        @if (relativeLabel(); as rel) {
-          <p class="text-xs font-medium text-anil-700">{{ rel }}</p>
-        }
+        <app-month-picker [day]="day()" [today]="today" (picked)="setDay($event)" />
+        <label for="agenda-vet" class="sr-only">Profesional</label>
+        <select
+          id="agenda-vet"
+          class="field-input mt-0 h-10 sm:w-auto"
+          [class.hidden]="isWeek()"
+          (change)="setVet($any($event.target).value)"
+        >
+          <option value="">Todo el equipo</option>
+          @for (s of staff(); track s.id) {
+            <option [value]="s.id" [selected]="vetFilter() === s.id">{{ s.fullName }}</option>
+          }
+          <option value="0" [selected]="vetFilter() === 0">Sin asignar</option>
+        </select>
       </div>
     </div>
-    <div class="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-      <label for="agenda-day" class="sr-only">Ir a una fecha</label>
-      <input
-        id="agenda-day"
-        type="date"
-        class="field-input mt-0 h-10 sm:w-auto"
-        [value]="day()"
-        (change)="setDay($any($event.target).value)"
-      />
-      <label for="agenda-vet" class="sr-only">Veterinario</label>
-      <select
-        id="agenda-vet"
-        class="field-input mt-0 h-10 sm:w-auto"
-        (change)="setVet($any($event.target).value)"
+
+    @if (isWeek()) {
+      <!-- Pestañas: un médico a la vez o todo el equipo -->
+      <div
+        class="-mx-3 -my-1 flex gap-2 overflow-x-auto px-3 py-1 xl:col-span-3"
+        role="tablist"
+        aria-label="Profesional"
       >
-        <option value="">Todos</option>
-        @for (s of staff(); track s.id) {
-          <option [value]="s.id" [selected]="vetFilter() === s.id">{{ s.fullName }}</option>
+        @for (p of weekPeople(); track p.id) {
+          <button
+            type="button"
+            role="tab"
+            class="flex h-10 shrink-0 items-center gap-2 rounded-xl px-2.5 text-sm ring-1 transition-colors focus-visible:outline-offset-1"
+            [class]="
+              tab() === p.id
+                ? 'bg-anil-50 font-semibold text-slate-900 ring-anil-400'
+                : 'bg-white font-medium text-slate-700 ring-slate-200 hover:bg-slate-50'
+            "
+            [attr.aria-selected]="tab() === p.id"
+            [title]="p.name"
+            (click)="setTab(p.id)"
+          >
+            <span
+              class="grid size-6 place-items-center rounded-full text-[10px] font-semibold"
+              [class]="p.tint"
+              aria-hidden="true"
+              >{{ p.id === 0 ? '?' : initials(p.name) }}</span
+            >
+            {{ p.id === 0 ? p.name : shortName(p.name) }}
+            <span class="text-slate-500 tabular-nums">{{ p.items.length }}</span>
+          </button>
         }
-        <option value="0" [selected]="vetFilter() === 0">Sin asignar</option>
-      </select>
-    </div>
+        <button
+          type="button"
+          role="tab"
+          class="flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-sm ring-1 transition-colors focus-visible:outline-offset-1"
+          [class]="
+            tab() === 'ALL'
+              ? 'bg-anil-50 font-semibold text-slate-900 ring-anil-400'
+              : 'bg-white font-medium text-slate-700 ring-slate-200 hover:bg-slate-50'
+          "
+          [attr.aria-selected]="tab() === 'ALL'"
+          (click)="setTab('ALL')"
+        >
+          <app-icon name="clients" class="size-4 text-slate-500" />
+          Todo el equipo
+        </button>
+      </div>
+    }
+    <ol
+      class="grid grid-cols-7 gap-1 xl:col-start-2 xl:row-start-1"
+      [class.hidden]="isWeek()"
+      aria-label="Días de la semana"
+    >
+      @for (d of weekDays(); track d.day) {
+        <li>
+          <button
+            type="button"
+            class="group flex w-full flex-col items-center gap-1 rounded-xl px-1 pt-1 pb-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600"
+            [class]="
+              d.day === day()
+                ? 'bg-anil-50 text-anil-900 ring-1 ring-anil-300'
+                : 'hover:bg-slate-50 ' + (d.isPast ? 'text-slate-400' : 'text-slate-800')
+            "
+            [attr.aria-current]="d.day === day() ? 'date' : null"
+            [attr.aria-label]="
+              d.weekday +
+              ' ' +
+              d.number +
+              ': ' +
+              (d.total ? d.total + (d.total === 1 ? ' cita' : ' citas') : 'sin citas') +
+              (d.pending ? ', ' + d.pending + ' por confirmar' : '')
+            "
+            (click)="setDay(d.day)"
+          >
+            <span
+              class="text-[11px] font-medium tracking-wide uppercase"
+              [class]="d.day === day() ? 'text-anil-700' : 'text-slate-500'"
+              >{{ d.weekday }}</span
+            >
+            <span
+              class="grid size-8 place-items-center rounded-full font-display text-base font-semibold tabular-nums"
+              [class]="
+                d.isToday
+                  ? d.day === day()
+                    ? 'bg-anil-600 text-white'
+                    : 'text-anil-700 ring-1 ring-anil-300'
+                  : ''
+              "
+              >{{ d.number }}</span
+            >
+            <!-- Citas del día: hasta 4 puntitos (ámbar si hay por confirmar); el total va en aria-label -->
+            <span class="flex h-1.5 items-center gap-0.5" aria-hidden="true">
+              @for (n of d.dots; track n) {
+                <span
+                  class="size-1.5 rounded-full"
+                  [class]="d.pending ? 'bg-amber-400' : 'bg-anil-400'"
+                ></span>
+              }
+            </span>
+          </button>
+        </li>
+      }
+    </ol>
   </div>
 
-  @if (list.isLoading() && !list.value()) {
+  @if (list.isLoading() && !data()) {
     <div class="card h-96 animate-pulse" aria-busy="true" aria-label="Cargando agenda"></div>
   } @else if (list.error()) {
     <div class="card flex flex-col items-center px-6 py-12 text-center">
@@ -96,144 +319,392 @@
         Reintentar
       </button>
     </div>
+  } @else if (isWeek()) {
+    <ng-container *ngTemplateOutlet="weekTpl" />
   } @else {
-    <!-- Grilla (tablet y escritorio) -->
-    <div class="card hidden overflow-hidden md:block">
-      <div class="overflow-x-auto">
-        <div class="min-w-full" [style.min-width.px]="72 + columns().length * 220">
-          <!-- Cabecera de columnas -->
-          <div class="flex border-b border-slate-200 bg-slate-50/70">
-            <div class="w-[72px] shrink-0"></div>
-            @for (col of columns(); track col.id) {
-              <div class="min-w-0 flex-1 border-l border-slate-200 px-3 py-2.5">
-                <p class="truncate text-sm font-semibold text-slate-900">{{ col.name }}</p>
-                <p class="text-xs text-slate-500">
-                  {{ col.items.length }} {{ col.items.length === 1 ? 'cita' : 'citas' }}
-                </p>
-              </div>
+    <!-- Resumen del día -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 class="font-display text-lg font-semibold text-slate-900">
+          {{ dayLabel() }}
+          @if (relativeLabel(); as rel) {
+            <span
+              class="ml-1.5 rounded-full bg-anil-50 px-2 py-0.5 align-middle text-xs font-medium text-anil-700 ring-1 ring-anil-200"
+              >{{ rel }}</span
+            >
+          }
+        </h2>
+        <p class="mt-0.5 text-sm text-slate-600" aria-live="polite">
+          @if (counts().total) {
+            {{ counts().total }} {{ counts().total === 1 ? 'cita' : 'citas' }}
+            @if (counts().pending) {
+              · <span class="font-medium text-amber-800">{{ counts().pending }} por confirmar</span>
             }
-          </div>
-          <!-- Cuerpo -->
-          <div class="relative flex" [style.height.px]="hours().length * hourPx">
-            <div class="w-[72px] shrink-0">
-              @for (h of hours(); track h) {
-                <div
-                  class="relative border-b border-slate-100 pr-2 text-right text-xs text-slate-500 tabular-nums"
-                  [style.height.px]="hourPx"
-                >
-                  <span class="relative -top-2 bg-white px-1"
-                    >{{ (h < 10 ? '0' : '') + h }}:00</span
-                  >
-                </div>
-              }
-            </div>
-            @for (col of columns(); track col.id) {
-              <div
-                class="relative min-w-0 flex-1 border-l border-slate-200"
-                [class.cursor-copy]="canEdit()"
-                (click)="slotClick($event, col)"
-                [attr.aria-label]="'Agenda de ' + col.name"
-                role="region"
+            @if (counts().confirmed) {
+              ·
+              <span class="text-anil-700"
+                >{{ counts().confirmed }}
+                {{ counts().confirmed === 1 ? 'confirmada' : 'confirmadas' }}</span
               >
-                @for (h of hours(); track h) {
-                  <div class="border-b border-slate-100" [style.height.px]="hourPx">
-                    <div class="h-1/2 border-b border-dashed border-slate-100"></div>
-                  </div>
-                }
-                @for (a of col.items; track a.id) {
-                  @let lane = lanes().get(a.id) ?? { lane: 0, lanes: 1 };
-                  <button
-                    type="button"
-                    class="absolute flex flex-col justify-start overflow-hidden rounded-lg border-l-4 px-2 py-1 text-left shadow-sm ring-1 transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-anil-600"
-                    [class]="statusStyle[a.status]"
-                    [style.top.px]="top(a) + 1"
-                    [style.height.px]="height(a) - 2"
-                    [style.left]="'calc(' + (lane.lane * 100) / lane.lanes + '% + 4px)'"
-                    [style.width]="'calc(' + 100 / lane.lanes + '% - 8px)'"
-                    (click)="$event.stopPropagation(); selected.set(a)"
-                    [attr.aria-label]="
-                      timeRange(a) + ', ' + a.pet.name + ', ' + statusLabels[a.status]
-                    "
-                  >
-                    <p
-                      class="flex items-center gap-1.5 truncate text-xs font-semibold text-slate-900"
-                    >
-                      <span class="tabular-nums">{{ timeRange(a).split(' ')[0] }}</span>
-                      <span class="truncate">{{ a.pet.name }}</span>
-                      @if (a.pet.aggressive) {
-                        <app-icon name="alert" class="size-3 shrink-0 text-rose-600" />
-                      }
-                    </p>
-                    @if (a.durationMin >= 20) {
-                      <p class="truncate text-xs text-slate-600">
-                        {{ a.reason ?? typeLabels[a.type] }}
-                      </p>
-                    }
-                  </button>
-                }
-              </div>
             }
-            @if (nowTop(); as top) {
-              <div
-                class="pointer-events-none absolute right-0 left-[64px] z-10 flex items-center"
-                [style.top.px]="top"
-                aria-hidden="true"
+            @if (counts().arrived) {
+              ·
+              <span class="text-emerald-700"
+                >{{ counts().arrived }} {{ counts().arrived === 1 ? 'llegó' : 'llegaron' }}</span
               >
-                <span class="size-2.5 rounded-full bg-rose-500"></span>
-                <span class="h-px flex-1 bg-rose-500"></span>
-              </div>
             }
-          </div>
-        </div>
+          } @else {
+            Sin citas este día{{
+              canEdit() && day() >= today
+                ? ' · haz clic en un horario de la agenda para agendar'
+                : ''
+            }}.
+          }
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+        @for (s of legend; track s) {
+          <span class="flex items-center gap-1.5">
+            <span class="h-3 w-1 rounded-full" [class]="statusBar[s]"></span>
+            {{ statusLabels[s] }}
+          </span>
+        }
+        @if (hiddenColumns() > 0 || showAll()) {
+          <button
+            type="button"
+            class="hidden min-h-9 items-center gap-1 rounded-lg px-2 font-medium text-anil-700 hover:bg-anil-50 md:inline-flex"
+            (click)="showAll.set(!showAll())"
+            [attr.aria-pressed]="showAll()"
+          >
+            <app-icon name="clients" class="size-3.5" />
+            {{ showAll() ? 'Solo con citas' : 'Ver a todo el equipo (+' + hiddenColumns() + ')' }}
+          </button>
+        }
       </div>
     </div>
 
-    <!-- Lista (celular) -->
-    <div class="card overflow-hidden md:hidden">
-      @if (active().length) {
-        <ul class="divide-y divide-slate-100" role="list">
-          @for (a of active(); track a.id) {
-            <li>
+    <div>
+      <!-- Grilla (tablet y escritorio) -->
+      <div class="card hidden overflow-hidden md:block">
+        <div
+          #agendaScroll
+          class="relative max-h-[calc(100dvh-14rem)] min-h-[30rem] overflow-auto overscroll-contain"
+        >
+          <div class="min-w-full" [style.min-width.px]="64 + columns().length * 160">
+            <!-- Cabecera de columnas -->
+            <div class="sticky top-0 z-30 flex border-b border-slate-200 bg-white">
+              <div class="w-16 shrink-0"></div>
+              @for (col of columns(); track col.id; let i = $index) {
+                <div
+                  class="flex min-w-0 flex-1 items-center gap-2.5 border-l border-slate-100 px-3 py-2.5"
+                >
+                  <span
+                    class="grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold"
+                    [class]="
+                      col.id === 0
+                        ? 'bg-slate-100 text-slate-600'
+                        : avatarTints[i % avatarTints.length]
+                    "
+                    aria-hidden="true"
+                    >{{ col.id === 0 ? '?' : initials(col.name) }}</span
+                  >
+                  <div
+                    class="min-w-0"
+                    [title]="col.name + (col.role ? ' · ' + roleLabel[col.role] : '')"
+                  >
+                    <p class="truncate text-sm font-semibold text-slate-900">
+                      {{ shortName(col.name) }}
+                    </p>
+                    <p class="truncate text-xs text-slate-500">
+                      {{ col.items.length }} {{ col.items.length === 1 ? 'cita' : 'citas' }}
+                    </p>
+                  </div>
+                </div>
+              }
+            </div>
+            <!-- Cuerpo -->
+            <div class="relative mt-2 flex" [style.height.px]="hours().length * hourPx">
+              <!-- Cerrado y ya pasado: debajo de las citas, no tapan los clics -->
+              <div
+                class="pointer-events-none absolute inset-y-0 right-0 left-16"
+                aria-hidden="true"
+              >
+                @if (pastHeight()) {
+                  <div
+                    class="absolute inset-x-0 top-0 bg-slate-50/70"
+                    [style.height.px]="pastHeight()"
+                  ></div>
+                }
+                @for (b of closedBlocks(); track b.top) {
+                  <div
+                    class="absolute inset-x-0 flex items-start bg-slate-100/70 px-3 pt-1.5"
+                    [style.top.px]="b.top"
+                    [style.height.px]="b.height"
+                  >
+                    <span class="text-[11px] font-medium text-slate-400">{{ b.label }}</span>
+                  </div>
+                }
+              </div>
+              <div class="w-16 shrink-0">
+                @for (h of hours(); track h) {
+                  <div
+                    class="relative pr-2 text-right text-[11px] font-medium text-slate-400 tabular-nums"
+                    [style.height.px]="hourPx"
+                  >
+                    <span class="relative -top-2">{{ (h < 10 ? '0' : '') + h }}:00</span>
+                  </div>
+                }
+              </div>
+              @for (col of columns(); track col.id) {
+                <div
+                  class="group/col relative min-w-0 flex-1 border-l border-slate-100"
+                  [class.cursor-copy]="canEdit()"
+                  (click)="slotClick($event, col)"
+                  (mousemove)="slotHover($event, col)"
+                  (mouseleave)="hover.set(null)"
+                  [attr.aria-label]="'Agenda de ' + col.name"
+                  role="region"
+                >
+                  @if (hover(); as hv) {
+                    @if (hv.col === col.id) {
+                      <div
+                        class="pointer-events-none absolute inset-x-1 z-[5] flex items-start gap-1 rounded-lg border border-dashed border-anil-400 bg-anil-50/80 px-2 py-1 text-xs font-medium text-anil-800"
+                        [style.top.px]="hoverTop(hv.minutes) + 1"
+                        [style.height.px]="hourPx / 2 - 2"
+                        aria-hidden="true"
+                      >
+                        <app-icon name="plus" class="mt-px size-3.5 shrink-0" />
+                        <span class="truncate"
+                          ><span class="tabular-nums">{{ hhmm(hv.minutes) }}</span> · Nueva
+                          cita</span
+                        >
+                      </div>
+                    }
+                  }
+                  @for (h of hours(); track h) {
+                    <div class="border-t border-slate-100" [style.height.px]="hourPx">
+                      <div class="h-1/2 border-b border-dashed border-slate-100/80"></div>
+                    </div>
+                  }
+                  @for (a of col.items; track a.id) {
+                    @let lane = lanes().get(a.id) ?? { lane: 0, lanes: 1 };
+                    <div
+                      class="group absolute overflow-clip rounded-lg border shadow-xs transition hover:z-10 hover:shadow-md focus-within:z-10"
+                      [class]="statusStyle[a.status]"
+                      [class.opacity-75]="a.status === 'ARRIVED'"
+                      [style.top.px]="top(a) + 1"
+                      [style.height.px]="height(a) - 2"
+                      [style.left]="'calc(' + (lane.lane * 100) / lane.lanes + '% + 4px)'"
+                      [style.width]="'calc(' + 100 / lane.lanes + '% - 8px)'"
+                    >
+                      <span
+                        class="absolute inset-y-0 left-0 w-1"
+                        [class]="statusBar[a.status]"
+                        aria-hidden="true"
+                      ></span>
+                      <button
+                        type="button"
+                        class="flex size-full flex-col justify-start py-1 pr-2 pl-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-anil-600"
+                        (click)="$event.stopPropagation(); selected.set(a)"
+                        [attr.aria-label]="
+                          timeRange(a) + ', ' + a.pet.name + ', ' + statusLabels[a.status]
+                        "
+                      >
+                        <p
+                          class="flex items-center gap-1.5 truncate text-xs font-semibold text-slate-900"
+                        >
+                          <span class="text-slate-500 tabular-nums">{{ startTime(a) }}</span>
+                          <app-icon
+                            [name]="speciesIcons[a.pet.species]"
+                            class="size-3.5 shrink-0 text-slate-500"
+                          />
+                          <span class="truncate">{{ a.pet.name }}</span>
+                          @if (a.pet.aggressive) {
+                            <app-icon name="alert" class="size-3 shrink-0 text-rose-600" />
+                          }
+                        </p>
+                        @if (a.durationMin >= 20) {
+                          <p class="truncate text-xs text-slate-600">
+                            {{ a.reason ?? typeLabels[a.type] }}
+                          </p>
+                        }
+                        @if (a.durationMin >= 45) {
+                          <p class="truncate text-[11px] text-slate-500">{{ a.client.name }}</p>
+                        }
+                      </button>
+                      <!-- Por confirmar: WhatsApp y Confirmar al pasar el mouse, en la esquina (nunca tapan el centro:
+                           un clic en la cita la abre). Solo en citas que ocupan el ancho de la columna. -->
+                      @if (
+                        a.status === 'SCHEDULED' && canEdit() && lane.lanes === 1 && height(a) >= 34
+                      ) {
+                        <div
+                          class="absolute top-1 right-1 hidden gap-1 group-focus-within:flex group-hover:flex"
+                        >
+                          <a
+                            class="grid size-6 place-items-center rounded-md bg-white text-emerald-700 shadow-xs ring-1 ring-amber-200 hover:bg-emerald-50"
+                            [href]="whatsapp(a)"
+                            target="_blank"
+                            rel="noopener"
+                            (click)="$event.stopPropagation(); markReminded(a)"
+                            [title]="
+                              remindedOf(a).length
+                                ? 'Ya avisado por WhatsApp'
+                                : 'Avisar por WhatsApp'
+                            "
+                            [attr.aria-label]="'Escribir por WhatsApp a ' + a.client.name"
+                          >
+                            <app-icon
+                              [name]="remindedOf(a).length ? 'check' : 'message-circle'"
+                              class="size-3.5"
+                            />
+                          </a>
+                          <button
+                            type="button"
+                            class="grid size-6 place-items-center rounded-md bg-anil-600 text-white shadow-xs hover:bg-anil-700 disabled:opacity-50"
+                            [disabled]="acting()"
+                            (click)="$event.stopPropagation(); act(a, 'confirm')"
+                            title="Confirmar"
+                            [attr.aria-label]="'Confirmar la cita de ' + a.pet.name"
+                          >
+                            <app-icon name="check" class="size-3.5" />
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              @if (nowTop(); as top) {
+                <div
+                  class="pointer-events-none absolute right-0 left-0 z-10 flex items-center"
+                  [style.top.px]="top"
+                  aria-hidden="true"
+                >
+                  <span class="w-16 shrink-0 pr-1.5 text-right"
+                    ><span
+                      class="rounded-md bg-rose-500 px-1.5 py-0.5 text-[11px] font-semibold text-white tabular-nums"
+                      >{{ nowLabel() }}</span
+                    ></span
+                  >
+                  <span class="h-0.5 flex-1 bg-rose-500/80"></span>
+                </div>
+                <!-- Lo que sigue: sobre la línea de ahora, donde uno mira -->
+                @let group = nextGroup();
+                @if (group.length) {
+                  <div
+                    class="absolute left-[4.75rem] z-20 inline-flex max-w-[calc(100%-6rem)] -translate-y-1/2 items-center gap-1.5 rounded-full bg-white py-0.5 pr-3 pl-2 text-xs font-semibold text-rose-700 shadow-sm ring-1 ring-rose-200"
+                    [style.top.px]="top + 9"
+                  >
+                    <app-icon name="clock" class="size-3.5 shrink-0" />
+                    <span class="shrink-0"
+                      >Sigue: <span class="tabular-nums">{{ startTime(group[0]) }}</span></span
+                    >
+                    <!-- Varias a la misma hora: cada mascota se abre por separado -->
+                    @for (a of group.slice(0, 3); track a.id; let last = $last; let i = $index) {
+                      <span class="inline-flex min-w-0"
+                        ><button
+                          type="button"
+                          class="truncate rounded hover:underline focus-visible:outline-2 focus-visible:outline-rose-500"
+                          [title]="
+                            a.pet.name + ' · ' + (a.vet?.fullName ?? 'Quien esté disponible')
+                          "
+                          (click)="selected.set(a)"
+                        >
+                          {{ a.pet.name
+                          }}{{
+                            group.length > 1
+                              ? ' (' + (a.vet ? shortName(a.vet.fullName) : 'sin asignar') + ')'
+                              : ''
+                          }}
+                        </button>
+                        @if (!last) {
+                          <span aria-hidden="true">{{ i === group.length - 2 ? ' y' : ',' }}</span>
+                        }
+                      </span>
+                    }
+                    @if (group.length > 3) {
+                      <span class="shrink-0">y {{ group.length - 3 }} más</span>
+                    }
+                    <span class="shrink-0">· {{ startsIn(group[0]) }}</span>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista (celular) -->
+      <div class="card overflow-hidden md:hidden">
+        @if (active().length) {
+          <ul class="divide-y divide-slate-100" role="list">
+            @for (a of active(); track a.id; let i = $index) {
+              @if (i === nowIndex()) {
+                <li class="flex items-center gap-2 bg-rose-50/60 px-4 py-1.5" aria-hidden="true">
+                  <span
+                    class="rounded-md bg-rose-500 px-1.5 py-0.5 text-[11px] font-semibold text-white tabular-nums"
+                    >{{ nowLabel() }}</span
+                  >
+                  <span class="h-px flex-1 bg-rose-300"></span>
+                </li>
+              }
+              <li>
+                <button
+                  type="button"
+                  class="relative flex w-full items-center gap-3 py-3.5 pr-4 pl-5 text-left hover:bg-slate-50"
+                  [class.opacity-70]="a.status === 'ARRIVED'"
+                  (click)="selected.set(a)"
+                >
+                  <span
+                    class="absolute inset-y-2 left-0 w-1 rounded-r-full"
+                    [class]="statusBar[a.status]"
+                    aria-hidden="true"
+                  ></span>
+                  <div class="w-12 shrink-0 tabular-nums">
+                    <p class="text-sm font-semibold text-slate-900">{{ startTime(a) }}</p>
+                    <p class="text-xs text-slate-500">{{ a.durationMin }} min</p>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="flex items-center gap-1.5 font-medium text-slate-900">
+                      <app-icon
+                        [name]="speciesIcons[a.pet.species]"
+                        class="size-4 shrink-0 text-slate-400"
+                      />
+                      <span class="truncate">{{ a.pet.name }}</span>
+                    </p>
+                    <p class="truncate text-sm text-slate-500">
+                      {{ a.reason ?? typeLabels[a.type] }} · {{ a.vet?.fullName ?? 'Sin asignar' }}
+                    </p>
+                  </div>
+                  <span
+                    class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1"
+                    [class]="statusChip[a.status]"
+                    >{{ statusLabels[a.status] }}</span
+                  >
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="flex flex-col items-center px-6 py-10 text-center">
+            <span class="grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"
+              ><app-icon name="calendar" class="size-6"
+            /></span>
+            <p class="mt-3 font-medium text-slate-900">Sin citas este día</p>
+            @if (canEdit()) {
               <button
                 type="button"
-                class="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50"
-                (click)="selected.set(a)"
+                class="btn btn-secondary mt-4"
+                (click)="openNew({ day: day() < today ? today : day() })"
               >
-                <div class="w-14 shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
-                  {{ timeRange(a).split(' ')[0] }}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate font-medium text-slate-900">{{ a.pet.name }}</p>
-                  <p class="truncate text-sm text-slate-500">
-                    {{ a.reason ?? typeLabels[a.type] }} · {{ a.vet?.fullName ?? 'Sin asignar' }}
-                  </p>
-                </div>
-                <span class="flex shrink-0 items-center gap-1.5 text-xs text-slate-600">
-                  <span class="size-2 rounded-full" [class]="statusDot[a.status]"></span>
-                  {{ statusLabels[a.status] }}
-                </span>
+                <app-icon name="plus" class="size-4" /> Agendar
               </button>
-            </li>
-          }
-        </ul>
-      } @else {
-        <p class="px-4 py-10 text-center text-sm text-slate-500">No hay citas este día.</p>
-      }
-    </div>
+            }
+          </div>
+        }
+      </div>
 
-    <!-- Leyenda -->
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600">
-      @for (s of legend; track s) {
-        <span class="flex items-center gap-1.5">
-          <span class="size-2.5 rounded-full" [class]="statusDot[s]"></span>
-          {{ statusLabels[s] }}
-        </span>
-      }
-      @if (canEdit()) {
-        <span class="text-slate-500 max-md:hidden"
-          >· Haz clic en un espacio libre para agendar a esa hora.</span
-        >
-      }
+      <!-- Panel: lo que sigue y lo que falta confirmar -->
     </div>
 
     @if (inactive().length) {
@@ -276,7 +747,11 @@
         </span>
         <div class="min-w-0">
           <p class="font-semibold text-slate-900">
-            <a [routerLink]="['/mascotas', a.pet.id]" class="hover:underline">{{ a.pet.name }}</a>
+            @if (canSeeRecord()) {
+              <a [routerLink]="['/mascotas', a.pet.id]" class="hover:underline">{{ a.pet.name }}</a>
+            } @else {
+              {{ a.pet.name }}
+            }
             <span class="font-normal text-slate-500"> · {{ petCode(a.pet.number) }}</span>
           </p>
           <p class="text-sm text-slate-600">
@@ -327,11 +802,38 @@
             <dd class="text-slate-900">{{ a.notes }}</dd>
           </div>
         }
+        @if (a.transport && a.transport !== 'NONE') {
+          <div class="col-span-2">
+            <dt class="text-xs text-slate-500">Movilidad</dt>
+            <dd class="text-slate-900">
+              {{ transportLabels[a.transport] }}
+              @if (a.transportPrice) {
+                · <span class="tabular-nums">{{ money(+a.transportPrice) }}</span>
+              }
+              @if (a.transportAddress) {
+                <span class="block text-slate-600">{{ a.transportAddress }}</span>
+              }
+            </dd>
+          </div>
+        }
       </dl>
+
+      @if (reminderNote(a); as note) {
+        <p
+          class="flex items-center gap-2 rounded-xl px-3 py-2 text-sm ring-1"
+          [class]="
+            note.done
+              ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+              : 'bg-anil-50 text-anil-800 ring-anil-200'
+          "
+        >
+          <app-icon [name]="note.icon" class="size-4 shrink-0" /> {{ note.text }}
+        </p>
+      }
 
       @if (canEdit() && (a.status === 'SCHEDULED' || a.status === 'CONFIRMED')) {
         <div class="grid grid-cols-2 gap-2">
-          @if (day() === today) {
+          @if (apptDay(a) === today) {
             <button
               type="button"
               class="btn btn-primary col-span-2"
@@ -356,9 +858,11 @@
             [href]="whatsapp(a)"
             target="_blank"
             rel="noopener"
+            (click)="markReminded(a)"
             [attr.aria-label]="'Recordar por WhatsApp a ' + a.client.name"
           >
-            <app-icon name="message-circle" class="size-4" /> WhatsApp
+            <app-icon name="message-circle" class="size-4" />
+            {{ remindedOf(a).length ? 'Avisar otra vez' : 'Recordar por WhatsApp' }}
           </a>
           <button type="button" class="btn btn-secondary" (click)="reschedule(a)">
             <app-icon name="calendar" class="size-4" /> Reprogramar
@@ -461,3 +965,440 @@
     </button>
   </ng-container>
 </app-modal>
+
+<!-- Vista semana: un médico a la vez (grilla por horas) o todo el equipo (una fila por médico) -->
+<ng-template #weekTpl>
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h2 class="font-display text-lg font-semibold text-slate-900">
+        {{ tabPerson()?.name ?? 'Todo el equipo' }}
+      </h2>
+      <p class="mt-0.5 text-sm text-slate-600" aria-live="polite">
+        Semana del {{ weekLabel() }} ·
+        @if (weekCounts().total) {
+          {{ weekCounts().total }} {{ weekCounts().total === 1 ? 'cita' : 'citas' }}
+          @if (weekCounts().pending) {
+            ·
+            <span class="font-medium text-amber-800">{{ weekCounts().pending }} por confirmar</span>
+          }
+        } @else {
+          sin citas
+        }
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+      @for (s of legend; track s) {
+        <span class="flex items-center gap-1.5">
+          <span class="h-3 w-1 rounded-full" [class]="statusBar[s]"></span>
+          {{ statusLabels[s] }}
+        </span>
+      }
+    </div>
+  </div>
+
+  @if (tab() === 'ALL') {
+    <!-- Todo el equipo (tablet y PC): se ve quién está lleno y quién libre -->
+    <div class="card hidden overflow-x-auto md:block">
+      <table class="w-full min-w-[52rem] table-fixed border-collapse text-sm">
+        <caption class="sr-only">
+          Citas de la semana por profesional
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" class="w-44"><span class="sr-only">Profesional</span></th>
+            @for (d of weekCols(); track d.day) {
+              <th
+                scope="col"
+                class="border-l border-slate-100 p-0 text-left font-normal"
+                [class.bg-anil-50]="d.isToday"
+              >
+                <button
+                  type="button"
+                  class="flex w-full flex-col px-2.5 py-2 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-anil-600"
+                  [attr.aria-label]="'Ver el ' + d.weekday + ' ' + d.number + ' por profesional'"
+                  (click)="openDay(d.day)"
+                >
+                  <span class="flex items-baseline gap-1.5">
+                    <span
+                      class="font-display text-base font-semibold tabular-nums"
+                      [class]="
+                        d.isToday ? 'text-anil-700' : d.isPast ? 'text-slate-400' : 'text-slate-900'
+                      "
+                      >{{ d.number }}</span
+                    >
+                    <span
+                      class="text-[11px] font-semibold tracking-wide uppercase"
+                      [class]="d.isToday ? 'text-anil-700' : 'text-slate-500'"
+                      >{{ d.weekday }}{{ d.isToday ? ' · hoy' : '' }}</span
+                    >
+                  </span>
+                  <span class="text-xs text-slate-500">{{
+                    d.hours === null ? 'Cerrado' : d.total + (d.total === 1 ? ' cita' : ' citas')
+                  }}</span>
+                </button>
+              </th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of weekPeople(); track p.id) {
+            <tr class="border-t border-slate-200">
+              <th scope="row" class="p-0 text-left align-top font-normal">
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-anil-600"
+                  [title]="'Ver la semana de ' + p.name"
+                  (click)="setTab(p.id)"
+                >
+                  <span
+                    class="grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold"
+                    [class]="p.tint"
+                    aria-hidden="true"
+                    >{{ p.id === 0 ? '?' : initials(p.name) }}</span
+                  >
+                  <span class="min-w-0">
+                    <span class="block truncate font-semibold text-slate-900">{{
+                      p.id === 0 ? p.name : shortName(p.name)
+                    }}</span>
+                    <span class="block text-xs text-slate-500"
+                      >{{ p.items.length }} {{ p.items.length === 1 ? 'cita' : 'citas' }}
+                      @if (p.pending) {
+                        · <span class="text-amber-800">{{ p.pending }} por conf.</span>
+                      }
+                    </span>
+                  </span>
+                </button>
+              </th>
+              @for (d of weekCols(); track d.day) {
+                @let list = cell(p.id, d.day);
+                <td
+                  class="group/cell border-l border-slate-100 p-1.5 align-top"
+                  [class]="d.hours === null ? 'bg-slate-50' : d.isToday ? 'bg-anil-50/40' : ''"
+                >
+                  <div class="flex flex-col gap-1">
+                    @for (a of list.slice(0, 3); track a.id) {
+                      <button
+                        type="button"
+                        class="relative flex h-7 w-full items-center gap-1.5 overflow-hidden rounded-md border pr-1.5 pl-2.5 text-left text-xs text-slate-900 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-anil-600"
+                        [class]="statusStyle[a.status]"
+                        [class.opacity-60]="d.isPast || a.status === 'ARRIVED'"
+                        [attr.aria-label]="
+                          timeRange(a) + ', ' + a.pet.name + ', ' + statusLabels[a.status]
+                        "
+                        [title]="
+                          a.pet.name +
+                          ' · ' +
+                          (a.reason ?? typeLabels[a.type]) +
+                          ' · ' +
+                          a.client.name
+                        "
+                        (click)="selected.set(a)"
+                      >
+                        <span
+                          class="absolute inset-y-0 left-0 w-1"
+                          [class]="statusBar[a.status]"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="font-semibold text-slate-600 tabular-nums">{{
+                          startTime(a)
+                        }}</span>
+                        <span class="truncate font-medium">{{ a.pet.name }}</span>
+                      </button>
+                    }
+                    @if (list.length > 3) {
+                      <button
+                        type="button"
+                        class="h-7 rounded-md px-1.5 text-left text-xs font-semibold text-anil-700 hover:bg-anil-50"
+                        (click)="openDay(d.day, p.id)"
+                      >
+                        +{{ list.length - 3 }} más
+                      </button>
+                    }
+                    @if (!list.length) {
+                      @if (d.hours === null) {
+                        <span class="px-1 py-1 text-xs text-slate-400">Cerrado</span>
+                      } @else if (canBook(d.day)) {
+                        <button
+                          type="button"
+                          class="h-7 rounded-md border border-dashed border-anil-200 text-xs font-medium text-anil-700 opacity-0 group-hover/cell:opacity-100 hover:bg-anil-50 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                          [attr.aria-label]="
+                            'Agendar con ' + p.name + ' el ' + d.weekday + ' ' + d.number
+                          "
+                          (click)="bookOn(d.day, p.id)"
+                        >
+                          + Agendar
+                        </button>
+                      }
+                    }
+                  </div>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <!-- Un médico (tablet y PC): 7 columnas por hora; un hueco libre agenda ahí -->
+    <div class="card hidden overflow-hidden md:block">
+      <div
+        #weekScroll
+        class="relative max-h-[calc(100dvh-17rem)] min-h-[28rem] overflow-auto overscroll-contain"
+      >
+        <div class="min-w-[48rem]">
+          <div class="sticky top-0 z-30 flex border-b border-slate-200 bg-white">
+            <div class="w-14 shrink-0"></div>
+            @for (d of weekCols(); track d.day) {
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-2 border-l border-slate-100 px-2 py-2 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-anil-600"
+                [class.bg-anil-50]="d.isToday"
+                [attr.aria-label]="'Ver el ' + d.weekday + ' ' + d.number"
+                (click)="openDay(d.day, tabVet())"
+              >
+                <span
+                  class="grid size-8 shrink-0 place-items-center rounded-lg font-display text-base font-semibold tabular-nums"
+                  [class]="
+                    d.isToday
+                      ? 'bg-anil-600 text-white'
+                      : d.isPast
+                        ? 'text-slate-400'
+                        : 'text-slate-900'
+                  "
+                  >{{ d.number }}</span
+                >
+                <span class="min-w-0">
+                  <span
+                    class="block text-[11px] font-semibold tracking-wide uppercase"
+                    [class]="d.isToday ? 'text-anil-700' : 'text-slate-500'"
+                    >{{ d.weekday }}</span
+                  >
+                  <span class="block truncate text-xs text-slate-600"
+                    >{{
+                      d.hours === null
+                        ? 'Cerrado'
+                        : d.items.length
+                          ? d.items.length + (d.items.length === 1 ? ' cita' : ' citas')
+                          : 'Libre'
+                    }}
+                  </span>
+                </span>
+                @if (d.pending) {
+                  <span
+                    class="ml-auto shrink-0 rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-900 tabular-nums"
+                    [title]="d.pending + ' por confirmar'"
+                    >{{ d.pending }}<span class="sr-only"> por confirmar</span></span
+                  >
+                }
+              </button>
+            }
+          </div>
+          <div class="relative mt-2 flex" [style.height.px]="weekHours().length * weekPx">
+            <div class="w-14 shrink-0">
+              @for (h of weekHours(); track h) {
+                <div
+                  class="relative pr-2 text-right text-[11px] font-medium text-slate-400 tabular-nums"
+                  [style.height.px]="weekPx"
+                >
+                  <span class="relative -top-2">{{ (h < 10 ? '0' : '') + h }}:00</span>
+                </div>
+              }
+            </div>
+            @for (d of weekCols(); track d.day) {
+              <div
+                class="relative min-w-0 flex-1 border-l border-slate-100"
+                [class.cursor-copy]="canBook(d.day)"
+                role="region"
+                [attr.aria-label]="'Citas del ' + d.weekday + ' ' + d.number"
+                (click)="weekSlotClick($event, d.day)"
+                (mousemove)="weekSlotHover($event, d.day)"
+                (mouseleave)="weekHover.set(null)"
+              >
+                <div class="pointer-events-none absolute inset-0" aria-hidden="true">
+                  @if (d.past) {
+                    <div
+                      class="absolute inset-x-0 top-0 bg-slate-50/70"
+                      [style.height.px]="d.past"
+                    ></div>
+                  }
+                  @for (b of d.closed; track b.top) {
+                    <div
+                      class="absolute inset-x-0 bg-slate-100/70 pt-2 text-center"
+                      [style.top.px]="b.top"
+                      [style.height.px]="b.height"
+                    >
+                      @if (d.hours === null) {
+                        <span class="text-xs font-medium text-slate-400">Cerrado</span>
+                      }
+                    </div>
+                  }
+                </div>
+                @for (h of weekHours(); track h) {
+                  <div class="border-t border-slate-100" [style.height.px]="weekPx">
+                    <div class="h-1/2 border-b border-dashed border-slate-100/80"></div>
+                  </div>
+                }
+                @if (weekHover(); as hv) {
+                  @if (hv.day === d.day) {
+                    <div
+                      class="pointer-events-none absolute inset-x-1 z-[5] flex items-center gap-1 rounded-md border border-dashed border-anil-400 bg-anil-50/80 px-1.5 text-[11px] font-medium text-anil-800"
+                      [style.top.px]="((hv.minutes - weekHours()[0] * 60) * weekPx) / 60 + 1"
+                      [style.height.px]="weekPx / 2 - 2"
+                      aria-hidden="true"
+                    >
+                      <app-icon name="plus" class="size-3 shrink-0" />
+                      <span class="truncate tabular-nums">{{ hhmm(hv.minutes) }}</span>
+                    </div>
+                  }
+                }
+                @for (a of d.items; track a.id) {
+                  @let lane = d.lanes.get(a.id) ?? { lane: 0, lanes: 1 };
+                  <button
+                    type="button"
+                    class="absolute overflow-hidden rounded-md border py-0.5 pr-1.5 pl-2.5 text-left shadow-xs hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-anil-600"
+                    [class]="statusStyle[a.status]"
+                    [class.opacity-70]="a.status === 'ARRIVED' || d.isPast"
+                    [style.top.px]="wTop(a) + 1"
+                    [style.height.px]="wHeight(a) - 2"
+                    [style.left]="'calc(' + (lane.lane * 100) / lane.lanes + '% + 3px)'"
+                    [style.width]="'calc(' + 100 / lane.lanes + '% - 6px)'"
+                    [attr.aria-label]="
+                      timeRange(a) + ', ' + a.pet.name + ', ' + statusLabels[a.status]
+                    "
+                    (click)="$event.stopPropagation(); selected.set(a)"
+                  >
+                    <span
+                      class="absolute inset-y-0 left-0 w-1"
+                      [class]="statusBar[a.status]"
+                      aria-hidden="true"
+                    ></span>
+                    <span
+                      class="flex items-center gap-1 truncate text-xs font-semibold text-slate-900"
+                    >
+                      <span class="text-slate-500 tabular-nums">{{ startTime(a) }}</span>
+                      <span class="truncate">{{ a.pet.name }}</span>
+                      @if (a.pet.aggressive) {
+                        <app-icon name="alert" class="size-3 shrink-0 text-rose-600" />
+                      }
+                    </span>
+                    @if (a.durationMin >= 30) {
+                      <span class="block truncate text-[11px] text-slate-600">{{
+                        a.reason ?? typeLabels[a.type]
+                      }}</span>
+                    }
+                    @if (a.durationMin >= 45) {
+                      <span class="block truncate text-[11px] text-slate-500">{{
+                        a.client.name
+                      }}</span>
+                    }
+                  </button>
+                }
+                @if (d.isToday) {
+                  @if (weekNowTop(); as t) {
+                    <div
+                      class="pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-rose-500"
+                      [style.top.px]="t"
+                      aria-hidden="true"
+                    >
+                      <span
+                        class="absolute -top-1 -left-1 size-2.5 rounded-full bg-rose-500"
+                      ></span>
+                    </div>
+                  }
+                }
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Celular: la semana como lista por día (de la pestaña elegida) -->
+  <div class="space-y-3 md:hidden">
+    @for (d of weekCols(); track d.day) {
+      <section
+        class="card overflow-hidden"
+        [class.ring-anil-300]="d.isToday"
+        [class.opacity-75]="d.isPast"
+        [attr.aria-label]="d.weekday + ' ' + d.number"
+      >
+        <div
+          class="flex items-center justify-between gap-2 px-4 py-2"
+          [class]="d.isToday ? 'bg-anil-50' : 'bg-slate-50/70'"
+        >
+          <button
+            type="button"
+            class="flex min-h-9 items-center font-semibold"
+            [class]="d.isToday ? 'text-anil-800' : 'text-slate-900'"
+            (click)="openDay(d.day, tabVet())"
+          >
+            {{ d.weekday }} {{ d.number }}{{ d.isToday ? ' · Hoy' : '' }}
+          </button>
+          <span class="text-xs text-slate-600"
+            >{{
+              d.hours === null
+                ? 'Cerrado'
+                : d.items.length
+                  ? d.items.length + (d.items.length === 1 ? ' cita' : ' citas')
+                  : 'Sin citas'
+            }}
+            @if (d.pending) {
+              · <span class="font-medium text-amber-800">{{ d.pending }} por conf.</span>
+            }
+          </span>
+        </div>
+        @if (d.items.length) {
+          <ul class="divide-y divide-slate-100 border-t border-slate-100" role="list">
+            @for (a of d.items; track a.id) {
+              <li>
+                <button
+                  type="button"
+                  class="relative flex min-h-14 w-full items-center gap-3 py-2.5 pr-4 pl-5 text-left hover:bg-slate-50"
+                  [class.opacity-70]="a.status === 'ARRIVED'"
+                  (click)="selected.set(a)"
+                >
+                  <span
+                    class="absolute inset-y-2 left-0 w-1 rounded-r-full"
+                    [class]="statusBar[a.status]"
+                    aria-hidden="true"
+                  ></span>
+                  <span class="w-12 shrink-0 text-sm font-semibold text-slate-900 tabular-nums">{{
+                    startTime(a)
+                  }}</span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate font-medium text-slate-900">{{ a.pet.name }}</span>
+                    <span class="block truncate text-sm text-slate-500"
+                      >{{ a.reason ?? typeLabels[a.type]
+                      }}{{
+                        tab() === 'ALL'
+                          ? ' · ' + (a.vet ? shortName(a.vet.fullName) : 'Sin asignar')
+                          : ' · ' + a.client.name
+                      }}</span
+                    >
+                  </span>
+                  <span
+                    class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1"
+                    [class]="statusChip[a.status]"
+                    >{{ statusLabels[a.status] }}</span
+                  >
+                </button>
+              </li>
+            }
+          </ul>
+        }
+        @if (canBook(d.day) && (!d.items.length || d.isToday)) {
+          <div class="border-t border-slate-100 px-4 py-2">
+            <button
+              type="button"
+              class="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-anil-200 text-sm font-medium text-anil-700 hover:bg-anil-50"
+              (click)="bookOn(d.day, tabVet())"
+            >
+              <app-icon name="plus" class="size-4" /> Agendar
+            </button>
+          </div>
+        }
+      </section>
+    }
+  </div>
+</ng-template>

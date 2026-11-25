@@ -10,6 +10,53 @@ export const ESTIMATE_STATUS_LABELS: Record<EstimateStatus, string> = {
   EXPIRED: 'Vencido',
 };
 
+/** Color del estado (mismo que usa la insignia) */
+export const ESTIMATE_TONE: Record<
+  EstimateStatus,
+  'warning' | 'info' | 'success' | 'neutral' | 'danger'
+> = {
+  PENDING: 'warning',
+  ACCEPTED: 'info',
+  CONVERTED: 'success',
+  REJECTED: 'neutral',
+  EXPIRED: 'danger',
+};
+
+/** Indicadores de la bandeja */
+export interface EstimatesSummary {
+  pending: { count: number; amount: number };
+  expiringSoon: number;
+  accepted: { count: number; amount: number };
+  convertedMonth: { count: number; amount: number };
+  acceptance: { won: number; decided: number; rate: number | null };
+}
+
+/** Días entre hoy y la fecha de vigencia (ambas AAAA-MM-DD); negativo si ya pasó. */
+export function daysUntil(day: string, today: string): number {
+  return Math.round(
+    (Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+export type ValidityTone = 'urgent' | 'soon' | 'ok' | 'closed';
+
+/** Cuánto le queda a un presupuesto por responder: "Vence hoy", "Vence en 2 días"… */
+export function validityView(
+  e: Pick<Estimate, 'status' | 'validUntil'>,
+  today: string,
+): { text: string; tone: ValidityTone } {
+  const days = daysUntil(e.validUntil, today);
+  if (e.status === 'EXPIRED' || (e.status === 'PENDING' && days < 0)) {
+    const ago = Math.abs(days);
+    return { text: ago <= 1 ? 'Venció ayer' : `Venció hace ${ago} días`, tone: 'closed' };
+  }
+  if (e.status !== 'PENDING') return { text: '', tone: 'closed' };
+  if (days === 0) return { text: 'Vence hoy', tone: 'urgent' };
+  if (days === 1) return { text: 'Vence mañana', tone: 'soon' };
+  if (days <= 3) return { text: `Vence en ${days} días`, tone: 'soon' };
+  return { text: `Quedan ${days} días`, tone: 'ok' };
+}
+
 export interface EstimateItem {
   id: number;
   careServiceId: number | null;

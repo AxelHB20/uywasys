@@ -16,7 +16,10 @@ import type { Request } from 'express';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
 import { Roles } from '../common/auth/roles.decorator.js';
-import { FRONT_DESK_ROLES } from '../common/auth/staff-roles.js';
+import {
+  FRONT_DESK_ROLES,
+  CLINICAL_ROLES,
+} from '../common/auth/staff-roles.js';
 import {
   AttachmentsService,
   MAX_ATTACHMENT_BYTES,
@@ -36,6 +39,7 @@ import {
 export class AttachmentsController {
   constructor(private readonly attachments: AttachmentsService) {}
 
+  @Roles(...CLINICAL_ROLES)
   @Get('pets/:id/attachments')
   list(
     @CurrentUser() user: AuthUser,
@@ -62,6 +66,7 @@ export class AttachmentsController {
     return this.attachments.upload(user, id, dto, file, req.ip);
   }
 
+  @Roles(...CLINICAL_ROLES)
   @Get('attachments/:id/file')
   async file(
     @CurrentUser() user: AuthUser,

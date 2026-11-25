@@ -1,10 +1,5 @@
 <section class="space-y-6">
-  <a
-    routerLink="/inventario"
-    class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-  >
-    <app-icon name="chevron-left" class="size-4" /> Inventario
-  </a>
+  <app-back-link fallback="/inventario" fallbackLabel="Inventario" />
 
   @if (loading() && !product()) {
     <div class="card space-y-3 p-6" aria-busy="true">
@@ -23,10 +18,10 @@
       <div class="flex min-w-0 items-center gap-4">
         <span
           class="grid size-14 shrink-0 place-items-center rounded-2xl"
-          [class]="p.controlled ? 'bg-rose-50 text-rose-700' : 'bg-anil-50 text-anil-700'"
+          [class]="p.controlled ? 'bg-rose-50 text-rose-700' : categoryTint[p.category]"
           aria-hidden="true"
         >
-          <app-icon name="package" class="size-7" />
+          <app-icon [name]="categoryIcon[p.category]" class="size-7" />
         </span>
         <div class="min-w-0">
           <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
@@ -44,8 +39,13 @@
                 ><app-icon name="alert" class="size-3" />Controlado</app-badge
               >
             }
-            @if (p.requiresPrescription) {
-              <app-badge tone="info">Se vende con receta</app-badge>
+            @if (!p.tracksExpiry) {
+              <app-badge><app-icon name="package" class="size-3" />No vence</app-badge>
+            }
+            @if (p.chargeable === false) {
+              <app-badge title="Insumo: no sale al cobrar; se descuenta con el servicio"
+                >No se cobra</app-badge
+              >
             }
             @if (!p.active) {
               <app-badge>Inactivo</app-badge>
@@ -95,7 +95,10 @@
     </div>
 
     <!-- Indicadores -->
-    <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <ul
+      class="grid gap-3 sm:grid-cols-2"
+      [class]="canManage() ? 'xl:grid-cols-4' : 'xl:grid-cols-3'"
+    >
       <li class="card p-4 sm:col-span-2 xl:col-span-1">
         <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Stock</p>
         <p
@@ -104,13 +107,18 @@
         >
           {{ stockText() }}
         </p>
-        <p class="text-sm text-slate-500 tabular-nums">{{ units(p.totalStock) }} en total</p>
+        @if (stockTotal(); as t) {
+          <p class="text-sm text-slate-500 tabular-nums">= {{ t }}</p>
+        }
       </li>
       <li class="card p-4">
         <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-          Próximo vencimiento
+          {{ p.tracksExpiry ? 'Próximo vencimiento' : 'Vencimiento' }}
         </p>
-        @if (nextBatch(); as b) {
+        @if (!p.tracksExpiry) {
+          <p class="mt-1 font-display text-lg font-semibold text-slate-900">No vence</p>
+          <p class="text-sm text-slate-500">Se controla solo por cantidad</p>
+        } @else if (nextBatch(); as b) {
           <div class="mt-2">
             <app-badge [tone]="expiryBadge[b.expiry!.level].tone">{{
               expiryText(b.expiry!.days)
@@ -120,8 +128,9 @@
             {{ b.expiresAt | fecha: 'calendar' }} · Lote {{ b.lotNumber ?? '—' }}
           </p>
         } @else {
-          <p class="mt-1 text-slate-500">
-            {{ p.category === 'ACCESSORY' ? 'No vence' : 'Sin lotes con stock' }}
+          <p class="mt-1 font-display text-lg font-semibold text-slate-900">—</p>
+          <p class="text-sm text-slate-500">
+            {{ p.batches.length ? 'Los lotes no tienen fecha' : 'Sin lotes con stock' }}
           </p>
         }
       </li>
@@ -134,13 +143,15 @@
           <p class="text-sm font-medium text-amber-800">Por debajo del mínimo: toca comprar</p>
         }
       </li>
-      <li class="card p-4">
-        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Valor al costo</p>
-        <p class="mt-1 font-display text-lg font-semibold text-slate-900 tabular-nums">
-          {{ money(stockValue()) }}
-        </p>
-        <p class="text-sm text-slate-500">Según el costo de cada lote</p>
-      </li>
+      @if (canManage()) {
+        <li class="card p-4">
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Valor al costo</p>
+          <p class="mt-1 font-display text-lg font-semibold text-slate-900 tabular-nums">
+            {{ money(stockValue()) }}
+          </p>
+          <p class="text-sm text-slate-500">Según el costo sin IGV de cada lote</p>
+        </li>
+      }
     </ul>
 
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
@@ -149,21 +160,30 @@
         <section class="card overflow-hidden" aria-labelledby="batches-title">
           <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <h2 id="batches-title" class="font-display text-base font-semibold text-slate-900">
-              Lotes con stock
+              {{ p.tracksExpiry ? 'Lotes con stock' : 'Ingresos con stock' }}
             </h2>
-            <span class="text-sm text-slate-500">Se descuentan primero los que vencen antes</span>
+            <span class="text-sm text-slate-500">{{
+              p.tracksExpiry
+                ? 'Se descuentan primero los que vencen antes'
+                : 'Se descuentan en orden de llegada'
+            }}</span>
           </div>
           @if (p.batches.length) {
             <div class="overflow-x-auto">
-              <table class="w-full min-w-[40rem] text-left text-sm">
+              <table class="w-full min-w-[36rem] text-left text-sm">
                 <thead
                   class="bg-slate-50/70 text-xs font-medium tracking-wide text-slate-500 uppercase"
                 >
                   <tr>
-                    <th scope="col" class="px-5 py-2.5">Lote</th>
-                    <th scope="col" class="px-5 py-2.5">Vencimiento</th>
+                    <th scope="col" class="px-5 py-2.5">
+                      {{ p.tracksExpiry ? 'Lote y vencimiento' : 'Ingreso' }}
+                    </th>
                     <th scope="col" class="px-5 py-2.5">Cantidad</th>
-                    <th scope="col" class="px-5 py-2.5">Compra</th>
+                    @if (canManage()) {
+                      <th scope="col" class="px-5 py-2.5">
+                        {{ p.tracksExpiry ? 'Compra' : 'Costo y proveedor' }}
+                      </th>
+                    }
                     @if (canManage()) {
                       <th scope="col" class="px-3 py-2.5"><span class="sr-only">Acciones</span></th>
                     }
@@ -172,19 +192,30 @@
                 <tbody class="divide-y divide-slate-100">
                   @for (b of p.batches; track b.id) {
                     <tr class="align-top" [class.bg-rose-50/40]="b.expiry?.level === 'EXPIRED'">
-                      <td class="px-5 py-3 font-medium text-slate-900">
-                        {{ b.lotNumber ?? 'Sin lote' }}
-                      </td>
                       <td class="px-5 py-3">
-                        @if (b.expiry) {
-                          <app-badge [tone]="expiryBadge[b.expiry.level].tone">{{
-                            expiryText(b.expiry.days)
-                          }}</app-badge>
-                          <p class="mt-1 text-xs text-slate-500 tabular-nums">
-                            {{ b.expiresAt | fecha: 'calendar' }}
+                        @if (p.tracksExpiry) {
+                          <p class="font-medium whitespace-nowrap text-slate-900">
+                            {{ b.lotNumber ?? 'Sin lote' }}
                           </p>
+                          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            @if (b.expiry) {
+                              <app-badge
+                                class="whitespace-nowrap"
+                                [tone]="expiryBadge[b.expiry.level].tone"
+                                >{{ expiryText(b.expiry.days) }}</app-badge
+                              >
+                              <span class="text-xs whitespace-nowrap text-slate-500 tabular-nums">{{
+                                b.expiresAt | fecha: 'calendar'
+                              }}</span>
+                            } @else {
+                              <span class="text-xs text-slate-500">Sin fecha</span>
+                            }
+                          </div>
                         } @else {
-                          <span class="text-slate-500">No vence</span>
+                          <p class="font-medium whitespace-nowrap text-slate-900 tabular-nums">
+                            {{ b.receivedAt | fecha: 'date' }}
+                          </p>
+                          <p class="mt-0.5 text-xs text-slate-500">No vence</p>
                         }
                       </td>
                       <td class="px-5 py-3">
@@ -193,20 +224,30 @@
                           de {{ units(b.initialQuantity) }} ingresadas
                         </p>
                       </td>
-                      <td class="px-5 py-3 text-slate-700">
-                        <p class="whitespace-nowrap tabular-nums">
-                          {{ b.receivedAt | fecha: 'date' }}
-                          @if (b.unitCost !== null) {
-                            · {{ money(b.unitCost) }} c/u
-                          }
-                        </p>
-                        <p class="text-xs text-slate-500">
-                          {{ b.supplier ?? 'Proveedor no indicado' }}
-                          @if (b.documentNumber) {
-                            · {{ b.documentNumber }}
-                          }
-                        </p>
-                      </td>
+                      @if (canManage()) {
+                        <td class="px-5 py-3 text-slate-700">
+                          <p class="whitespace-nowrap tabular-nums">
+                            @if (p.tracksExpiry) {
+                              {{ b.receivedAt | fecha: 'date' }} ·
+                            }
+                            {{ b.unitCost !== null ? money(b.unitCost) + ' c/u' : 'Sin costo' }}
+                          </p>
+                          <p class="text-xs text-slate-500">
+                            {{ b.supplier ?? 'Proveedor no indicado' }}
+                            @if (b.purchase; as pu) {
+                              ·
+                              <a
+                                [routerLink]="['/inventario/compras', pu.id]"
+                                class="font-medium text-anil-700 hover:underline"
+                                [attr.aria-label]="'Ver la compra ' + pu.code"
+                                >{{ b.documentNumber ?? pu.code }}</a
+                              >
+                            } @else if (b.documentNumber) {
+                              · {{ b.documentNumber }}
+                            }
+                          </p>
+                        </td>
+                      }
                       @if (canManage()) {
                         <td class="px-3 py-3 text-right">
                           <button
@@ -225,7 +266,9 @@
             </div>
           } @else {
             <div class="px-6 py-10 text-center">
-              <p class="font-medium text-slate-900">No hay lotes con stock</p>
+              <p class="font-medium text-slate-900">
+                {{ p.tracksExpiry ? 'No hay lotes con stock' : 'Sin stock' }}
+              </p>
               @if (canManage() && p.active) {
                 <button type="button" class="btn btn-primary mt-4" (click)="openPurchase()">
                   <app-icon name="plus" class="size-4" /> Registrar compra
@@ -242,7 +285,8 @@
               Kardex
             </h2>
             <span class="text-sm text-slate-500 tabular-nums"
-              >{{ movementsTotal() }} movimientos</span
+              >{{ movementsTotal() }}
+              {{ movementsTotal() === 1 ? 'movimiento' : 'movimientos' }}</span
             >
           </div>
           @if (movements().length) {
@@ -254,17 +298,22 @@
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
-                      <app-badge [tone]="movementTone[m.type]">{{
-                        movementLabels[m.type]
-                      }}</app-badge>
-                      @if (m.batch) {
-                        <span class="text-xs text-slate-500"
-                          >Lote {{ m.batch.lotNumber ?? '—' }}</span
-                        >
+                      <app-badge [tone]="movementTone[m.type]">{{ movementLabel(m) }}</app-badge>
+                      @if (m.batch?.lotNumber; as lot) {
+                        <span class="text-xs text-slate-500">Lote {{ lot }}</span>
                       }
                     </div>
                     <p class="mt-1 text-sm text-slate-700">
-                      {{ m.reason ?? '' }}
+                      @if (m.sale; as sale) {
+                        <!-- Venta suelta: el comprobante y el cliente (no repite el producto) -->
+                        Venta
+                        @if (sale.document) {
+                          · <span class="tabular-nums">{{ sale.document }}</span>
+                        }
+                        · {{ sale.client }}
+                      } @else {
+                        {{ m.reason ?? '' }}
+                      }
                       @if (m.pet) {
                         ·
                         <a
@@ -400,7 +449,11 @@
 <app-modal
   [open]="modal() === 'purchase'"
   title="Registrar compra"
-  description="Se crea un lote nuevo con lo que llegó."
+  [description]="
+    needsLot()
+      ? 'Se crea un lote nuevo con lo que llegó.'
+      : 'Se suma al stock con su costo y proveedor.'
+  "
   [dismissible]="false"
   (closed)="close()"
 >
@@ -438,35 +491,61 @@
     } @else if (invalid(purchaseForm.controls.quantity)) {
       <p class="field-error -mt-2">Ingresa una cantidad mayor a 0</p>
     }
+    @if (needsLot()) {
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="pu-lot" class="field-label"
+            >Lote <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="pu-lot"
+            formControlName="lotNumber"
+            class="field-input"
+            autocomplete="off"
+            [attr.aria-invalid]="lotMissing()"
+          />
+          @if (lotMissing()) {
+            <p class="field-error">Ingresa el lote que figura en la caja</p>
+          }
+        </div>
+        <div>
+          <label for="pu-exp" class="field-label"
+            >Vencimiento <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="pu-exp"
+            type="date"
+            formControlName="expiresAt"
+            [min]="today"
+            class="field-input"
+            [attr.aria-invalid]="expiryMissing()"
+          />
+          @if (expiryMissing()) {
+            <p class="field-error">Ingresa la fecha de vencimiento</p>
+          }
+        </div>
+      </div>
+    } @else {
+      <p
+        class="flex items-start gap-2.5 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200"
+      >
+        <app-icon name="info" class="mt-0.5 size-4 shrink-0 text-slate-500" />
+        <span
+          ><span class="font-medium text-slate-900">Este producto no vence.</span> No se pide lote
+          ni fecha de vencimiento. Si sí vence (p. ej. un shampoo), cámbialo en
+          <button
+            type="button"
+            class="font-medium text-anil-700 underline underline-offset-2 hover:text-anil-800"
+            (click)="openEdit()"
+          >
+            Editar producto</button
+          >.</span
+        >
+      </p>
+    }
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
-        <label for="pu-lot" class="field-label"
-          >Lote
-          @if (needsLot()) {
-            <span class="text-rose-600" aria-hidden="true">*</span>
-          }
-        </label>
-        <input id="pu-lot" formControlName="lotNumber" class="field-input" autocomplete="off" />
-      </div>
-      <div>
-        <label for="pu-exp" class="field-label"
-          >Vencimiento
-          @if (needsLot()) {
-            <span class="text-rose-600" aria-hidden="true">*</span>
-          }
-        </label>
-        <input
-          id="pu-exp"
-          type="date"
-          formControlName="expiresAt"
-          [min]="today"
-          class="field-input"
-        />
-      </div>
-    </div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <div>
-        <label for="pu-cost" class="field-label">Costo de cada presentación</label>
+        <label for="pu-cost" class="field-label">Costo sin IGV de cada presentación</label>
         <div class="relative">
           <span
             class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-500"
@@ -491,13 +570,48 @@
           class="field-input"
           autocomplete="off"
           placeholder="F001-123"
+          aria-describedby="pu-doc-hint"
         />
       </div>
     </div>
+    @if (purchaseValue().documentNumber?.trim()) {
+      <!-- La compra rápida no es una compra de Compras: no sale en el Excel del contador -->
+      <p
+        id="pu-doc-hint"
+        class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200"
+      >
+        Con factura o boleta, regístrala en
+        <a
+          routerLink="/inventario/compras/nueva"
+          class="font-medium text-amber-950 underline hover:no-underline"
+          >Recibir compra</a
+        >
+        para que salga en Compras y en el Excel del contador.
+      </p>
+    }
     <div>
       <label for="pu-sup" class="field-label">Proveedor</label>
-      <input id="pu-sup" formControlName="supplier" class="field-input" autocomplete="off" />
+      @if (suppliersFailed()) {
+        <!-- Servidor anterior sin lista de proveedores: se escribe como antes -->
+        <input id="pu-sup" formControlName="supplier" class="field-input" autocomplete="off" />
+      } @else {
+        <select id="pu-sup" formControlName="supplierId" class="field-input">
+          <option [ngValue]="null">Sin indicar</option>
+          @for (s of suppliers(); track s.id) {
+            <option [ngValue]="s.id">{{ s.name }}</option>
+          }
+        </select>
+      }
     </div>
+    <p class="flex items-start gap-2 text-sm text-slate-600">
+      <app-icon name="receipt" class="mt-0.5 size-4 shrink-0 text-slate-500" />
+      <span
+        >¿Llegó una ficha con varios productos?
+        <a routerLink="/inventario/compras/nueva" class="font-medium text-anil-700 hover:underline"
+          >Recíbela completa en Compras</a
+        >.</span
+      >
+    </p>
   </form>
   <ng-container modal-actions>
     <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>
@@ -539,7 +653,9 @@
         >
           <input type="radio" class="sr-only" formControlName="type" value="TREATMENT" />
           <span class="font-medium text-slate-900">Uso interno</span>
-          <span class="text-xs text-slate-500">En consultorio o en un paciente</span>
+          <span class="text-xs text-slate-500"
+            >Guantes, algodón o gasas al abrir una caja, o lo usado en consultorio</span
+          >
         </label>
       </div>
     </fieldset>
@@ -568,14 +684,22 @@
         </select>
       </div>
     </div>
+    <p class="-mt-2 text-sm text-slate-600" data-available>
+      Hay <span class="font-medium text-slate-900 tabular-nums">{{ outflowAvailable() }}</span>
+    </p>
     <div>
-      <label for="ou-batch" class="field-label">Lote</label>
+      <label for="ou-batch" class="field-label">{{ needsLot() ? 'Lote' : 'Ingreso' }}</label>
       <select id="ou-batch" formControlName="batchId" class="field-input">
-        <option value="auto">Automático (el que vence primero)</option>
+        <option value="auto">
+          {{ needsLot() ? 'Automático (el que vence primero)' : 'Automático (el más antiguo)' }}
+        </option>
         @for (b of outflowBatches(); track b.id) {
           <option [ngValue]="b.id">
-            Lote {{ b.lotNumber ?? '—' }} · {{ (b.expiresAt | fecha: 'calendar') || 'no vence' }} ·
-            {{ units(b.quantity) }}
+            {{ batchName(b) }}
+            @if (needsLot()) {
+              · {{ (b.expiresAt | fecha: 'calendar') || 'sin fecha' }}
+            }
+            · {{ units(b.quantity) }}
           </option>
         }
       </select>
@@ -665,10 +789,19 @@
         @for (b of product()?.batches ?? []; track b.id; let i = $index) {
           <li class="flex items-center gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70">
             <div class="min-w-0 flex-1">
-              <p class="font-medium text-slate-900">Lote {{ b.lotNumber ?? '—' }}</p>
+              <p class="font-medium text-slate-900">{{ batchName(b) }}</p>
               <p class="text-xs text-slate-500 tabular-nums">Sistema: {{ units(b.quantity) }}</p>
+              @if (countDiff(i, b.quantity); as d) {
+                <p
+                  class="text-xs font-medium tabular-nums"
+                  [class]="d.startsWith('+') ? 'text-emerald-700' : 'text-rose-700'"
+                  aria-live="polite"
+                >
+                  Diferencia: {{ d }} (se registra el ajuste)
+                </p>
+              }
             </div>
-            <label [for]="'cnt-' + i" class="sr-only">Contado en el lote {{ b.lotNumber }}</label>
+            <label [for]="'cnt-' + i" class="sr-only">Contado en {{ batchName(b) }}</label>
             <input
               [id]="'cnt-' + i"
               type="number"
@@ -826,20 +959,31 @@
       </div>
       <div>
         <label for="ed-igv" class="field-label">Afectación del IGV</label>
-        <select id="ed-igv" formControlName="igv" class="field-input">
+        <select
+          id="ed-igv"
+          formControlName="igv"
+          class="field-input"
+          aria-describedby="ed-igv-hint"
+        >
           @for (t of igvTypes; track t) {
             <option [value]="t">{{ igvLabels[t] }}</option>
           }
         </select>
+        <p id="ed-igv-hint" class="field-hint">
+          {{
+            isAdmin()
+              ? 'Casi todo es Gravado. Cámbialo solo si el contador lo indica.'
+              : 'Lo cambia el administrador (consulta al contador).'
+          }}
+        </p>
       </div>
       <div>
         <label for="ed-sunat" class="field-label">Unidad SUNAT</label>
-        <input
-          id="ed-sunat"
-          formControlName="sunatUnit"
-          class="field-input uppercase"
-          maxlength="3"
-        />
+        <select id="ed-sunat" formControlName="sunatUnit" class="field-input">
+          @for (u of sunatUnits(); track u.code) {
+            <option [value]="u.code">{{ u.label }}</option>
+          }
+        </select>
       </div>
     </div>
     <div>
@@ -851,15 +995,18 @@
         class="field-input h-auto py-2.5"
       ></textarea>
     </div>
-    <div class="space-y-1">
-      <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
-        ><input
-          type="checkbox"
-          formControlName="requiresPrescription"
-          class="size-5 rounded accent-anil-600"
-        />
-        Se vende con receta</label
+    <app-expiry-choice [control]="editForm.controls.tracksExpiry" />
+    @if (dropsExpiry()) {
+      <p
+        class="-mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+        role="status"
       >
+        <app-icon name="alert" class="mt-0.5 size-4 shrink-0" />
+        Las fechas de vencimiento de sus lotes se borrarán y dejará de salir en las alertas de
+        vencimiento.
+      </p>
+    }
+    <div class="space-y-1">
       <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
         ><input
           type="checkbox"
@@ -867,6 +1014,19 @@
           class="size-5 rounded accent-rose-600"
         />
         Medicamento controlado</label
+      >
+      <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
+        ><input
+          type="checkbox"
+          formControlName="chargeable"
+          class="mt-0.5 size-5 shrink-0 rounded accent-anil-600"
+        />
+        <span
+          >Se cobra al cliente
+          <span class="block text-xs text-slate-500"
+            >Apagado: es un insumo, no sale al cobrar.</span
+          ></span
+        ></label
       >
       <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
         ><input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />

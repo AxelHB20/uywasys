@@ -98,6 +98,20 @@ const DOC_CODES: Record<DocumentType, string> = {
 /** Monto desde el que una boleta debe identificar al cliente (Res. 340-2017/SUNAT). */
 export const BOLETA_ID_THRESHOLD = 700;
 
+/** Comprador escrito en el cobro (ya validado por BuyerDto). */
+export interface BuyerInput {
+  docType: 'RUC' | 'DNI';
+  docNumber: string;
+  name: string;
+  address?: string | null;
+  email?: string | null;
+}
+
+/**
+ * A nombre de quién sale el comprobante. Factura: lo escrito en el cobro → el RUC del cliente →
+ * sus datos de facturación guardados. Boleta: lo escrito en el cobro → su documento → "clientes
+ * varios" (hasta S/ 700; SUNAT pide DNI cuando supera ese monto).
+ */
 export function customerFor(
   kind: 'BOLETA' | 'FACTURA',
   client: {
@@ -105,21 +119,47 @@ export function customerFor(
     docType: DocumentType | null;
     docNumber: string | null;
     address: string | null;
+    email?: string | null;
     walkIn: boolean;
+    invoiceRuc?: string | null;
+    invoiceName?: string | null;
+    invoiceAddress?: string | null;
+    invoiceEmail?: string | null;
   },
   total: number,
+  buyer?: BuyerInput | null,
 ) {
-  if (kind === 'FACTURA') {
-    if (client.docType !== 'RUC' || !client.docNumber)
-      throw new BadRequestException(
-        'Para emitir factura el cliente debe tener RUC: agrégalo en su ficha',
-      );
+  if (buyer) {
+    if (kind === 'FACTURA' && buyer.docType !== 'RUC')
+      throw new BadRequestException('La factura lleva el RUC del comprador');
     return {
-      docType: '6',
-      docNumber: client.docNumber,
-      name: client.name,
-      address: client.address,
+      docType: buyer.docType === 'RUC' ? '6' : '1',
+      docNumber: buyer.docNumber,
+      name: buyer.name,
+      address: buyer.address?.trim() || null,
+      email: buyer.email?.trim() || null,
     };
+  }
+  if (kind === 'FACTURA') {
+    if (!client.walkIn && client.docType === 'RUC' && client.docNumber)
+      return {
+        docType: '6',
+        docNumber: client.docNumber,
+        name: client.name,
+        address: client.address,
+        email: client.invoiceEmail ?? client.email ?? null,
+      };
+    if (!client.walkIn && client.invoiceRuc)
+      return {
+        docType: '6',
+        docNumber: client.invoiceRuc,
+        name: client.invoiceName || client.name,
+        address: client.invoiceAddress ?? null,
+        email: client.invoiceEmail ?? null,
+      };
+    throw new BadRequestException(
+      'Para emitir factura escribe el RUC y la razón social del comprador',
+    );
   }
   if (!client.walkIn && client.docType && client.docNumber)
     return {
@@ -127,15 +167,17 @@ export function customerFor(
       docNumber: client.docNumber,
       name: client.name,
       address: client.address,
+      email: null,
     };
-  if (total >= BOLETA_ID_THRESHOLD)
+  if (total > BOLETA_ID_THRESHOLD)
     throw new BadRequestException(
-      `Una boleta desde S/ ${BOLETA_ID_THRESHOLD} debe llevar el DNI u otro documento del cliente: agrégalo en su ficha`,
+      `Una boleta de más de S/ ${BOLETA_ID_THRESHOLD} lleva el DNI del comprador: escríbelo en el cobro`,
     );
   return {
     docType: '-',
     docNumber: '-',
     name: client.walkIn ? 'CLIENTES VARIOS' : client.name,
     address: null,
+    email: null,
   };
 }

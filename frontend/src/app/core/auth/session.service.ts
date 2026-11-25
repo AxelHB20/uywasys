@@ -11,11 +11,14 @@ export class SessionService {
   readonly firstName = computed(() => this.fullName().split(' ')[0]);
   readonly initials = computed(() => initialsOf(this.fullName()));
   readonly roleLabel = computed(() => {
-    const role = this.user()?.role;
-    return role ? ROLE_LABELS[role] : '';
+    const user = this.user();
+    if (user?.support) return 'Soporte técnico';
+    return user?.role ? ROLE_LABELS[user.role] : '';
   });
   readonly role = computed(() => this.user()?.role ?? null);
   readonly isAdmin = computed(() => this.role() === 'ADMIN');
+  /** Soporte técnico: configura la facturación (proveedor, ruta, series) y el RUC */
+  readonly isSupport = computed(() => this.user()?.support === true);
   readonly mustChangePassword = computed(() => this.user()?.mustChangePassword ?? false);
   readonly clinicName = computed(() => this.user()?.clinic.name ?? '');
   readonly clinicLogo = computed(() => this.user()?.clinic.logoUrl ?? null);

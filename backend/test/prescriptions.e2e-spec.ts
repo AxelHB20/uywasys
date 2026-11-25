@@ -280,29 +280,20 @@ describe('Recetas (e2e)', () => {
       .expect(404);
   });
 
-  it('para anular hay que quitar antes lo entregado', async () => {
+  it('anular quita de la cuenta lo entregado y lo devuelve al inventario', async () => {
     await http()
       .post(`/api/prescriptions/${ids.rx}/void`)
       .set('Cookie', cookies.novet)
       .send({ reason: 'No es mía' })
       .expect(403);
-    const blocked = await http()
-      .post(`/api/prescriptions/${ids.rx}/void`)
-      .set('Cookie', cookies.vet)
-      .send({ reason: 'Dosis equivocada' })
-      .expect(409);
-    expect(blocked.body.message).toContain('Primero quita');
-
-    const visit = await http()
+    const before = await http()
       .get(`/api/visits/${ids.visit}`)
       .set('Cookie', cookies.vet)
       .expect(200);
-    for (const charge of visit.body.charges)
-      await http()
-        .post(`/api/charges/${charge.id}/void`)
-        .set('Cookie', cookies.vet)
-        .send({ reason: 'Receta con dosis equivocada' })
-        .expect(201);
+    const delivered = before.body.charges.filter(
+      (c: { status: string }) => c.status !== 'VOID',
+    );
+    expect(delivered.length).toBeGreaterThan(0);
 
     const res = await http()
       .post(`/api/prescriptions/${ids.rx}/void`)
@@ -310,6 +301,24 @@ describe('Recetas (e2e)', () => {
       .send({ reason: 'Dosis equivocada' })
       .expect(201);
     expect(res.body.voidReason).toBe('Dosis equivocada');
+    const after = await http()
+      .get(`/api/visits/${ids.visit}`)
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    for (const c of delivered) {
+      const now = after.body.charges.find((x: { id: number }) => x.id === c.id);
+      expect(now.status).toBe('VOID');
+      expect(now.voidReason).toContain('anulada: Dosis equivocada');
+    }
+    // El stock volvió al lote
+    const moves = await prisma.stockMovement.count({
+      where: {
+        refType: 'charge',
+        refId: { in: delivered.map((c: { id: number }) => c.id) },
+        type: 'RETURN',
+      },
+    });
+    expect(moves).toBeGreaterThan(0);
     await http()
       .post(`/api/prescriptions/${ids.rx}/void`)
       .set('Cookie', cookies.admin)

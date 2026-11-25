@@ -79,12 +79,6 @@ describe('Grooming (e2e)', () => {
     await login(mine, 'GROOMER', 'groomer');
     await login(mine, 'CASHIER', 'cashier');
     await login(other, 'ADMIN', 'other');
-    // El groomer gana 30 % de lo cobrado de sus servicios
-    await http()
-      .patch(`/api/users/${userIds.groomer}`)
-      .set('Cookie', cookies.admin)
-      .send({ commissionPercent: 30 })
-      .expect(200);
 
     const service = async (body: object) =>
       (
@@ -300,7 +294,7 @@ describe('Grooming (e2e)', () => {
     });
   });
 
-  it('comisiona lo cobrado de sus servicios, con el porcentaje que tenía al entregar', async () => {
+  it('se cobra en caja como cualquier cuenta; ya no hay reporte de comisiones', async () => {
     const detail = await http()
       .get(`/api/grooming/${ids.session}`)
       .set('Cookie', cookies.reception)
@@ -322,56 +316,21 @@ describe('Grooming (e2e)', () => {
         document: 'NOTE',
       })
       .expect(201);
-    // Subirle el porcentaje después no cambia lo ya entregado
-    await http()
-      .patch(`/api/users/${userIds.groomer}`)
-      .set('Cookie', cookies.admin)
-      .send({ commissionPercent: 50 })
+    const account = await http()
+      .get(`/api/clients/${detail.body.client.id}/account`)
+      .set('Cookie', cookies.cashier)
       .expect(200);
+    expect(account.body.pendingTotal).toBe(55);
 
-    const day = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Lima',
-    }).format(new Date());
-    const query = `from=${day}&to=${day}`;
-    await http()
-      .get(`/api/grooming/commissions?${query}`)
-      .set('Cookie', cookies.reception)
-      .expect(403);
-    const res = await http()
-      .get(`/api/grooming/commissions?${query}`)
-      .set('Cookie', cookies.groomer)
-      .expect(200);
-    expect(res.body.rows).toEqual([
-      {
-        groomer: { id: userIds.groomer, fullName: 'GROOMER groomer' },
-        currentPercent: 50,
-        services: 1,
-        paid: 70,
-        pending: 55,
-        commission: 21,
-      },
-    ]);
-    expect(res.body.lines[0]).toMatchObject({
-      code: 'GR-00001',
-      percent: 30,
-      commission: 21,
-    });
-
-    const excel = await http()
-      .get(`/api/grooming/commissions/excel?${query}`)
+    const gone = await http()
+      .get('/api/grooming/commissions?from=2026-11-01&to=2026-11-30')
+      .set('Cookie', cookies.admin);
+    expect(gone.status).not.toBe(200);
+    const groomer = await http()
+      .get('/api/users')
       .set('Cookie', cookies.admin)
-      .buffer(true)
-      .parse((r, cb) => {
-        const chunks: Buffer[] = [];
-        r.on('data', (c: Buffer) => chunks.push(c));
-        r.on('end', () => cb(null, Buffer.concat(chunks)));
-      })
       .expect(200);
-    expect((excel.body as Buffer).subarray(0, 2).toString()).toBe('PK');
-    await http()
-      .get('/api/grooming/commissions?from=2026-01-01&to=2026-12-31')
-      .set('Cookie', cookies.admin)
-      .expect(400);
+    expect(groomer.body[0]).not.toHaveProperty('commissionPercent');
   });
 
   it('cancelar quita los cargos; solo recepción o el administrador', async () => {
@@ -414,6 +373,26 @@ describe('Grooming (e2e)', () => {
       .post(`/api/grooming/${res.body.id}/cancel`)
       .set('Cookie', cookies.admin)
       .send({ reason: 'Otra vez' })
+      .expect(409);
+  });
+  it('una mascota en consulta puede pasar a grooming sin cerrar la consulta', async () => {
+    const pet = await newPet('Rulos');
+    const consult = await http()
+      .post('/api/visits')
+      .set('Cookie', cookies.admin)
+      .send({ petId: pet })
+      .expect(201);
+    const res = await checkIn('reception', {
+      petId: pet,
+      size: 'SMALL',
+      services: [{ careServiceId: ids.bath }],
+    }).expect(201);
+    expect(res.body.visitId).not.toBe(consult.body.id);
+    // Otra consulta a la vez, no
+    await http()
+      .post('/api/visits')
+      .set('Cookie', cookies.admin)
+      .send({ petId: pet })
       .expect(409);
   });
 });

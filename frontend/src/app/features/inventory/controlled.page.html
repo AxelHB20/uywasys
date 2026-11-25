@@ -1,11 +1,6 @@
 <section class="space-y-6">
   <div class="print:hidden">
-    <a
-      routerLink="/inventario"
-      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-    >
-      <app-icon name="chevron-left" class="size-4" /> Inventario
-    </a>
+    <app-back-link fallback="/inventario" fallbackLabel="Inventario" />
   </div>
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
@@ -59,7 +54,7 @@
             <th scope="col" class="px-4 py-3">Fecha</th>
             <th scope="col" class="px-4 py-3">Producto · lote</th>
             <th scope="col" class="px-4 py-3">Movimiento</th>
-            <th scope="col" class="px-4 py-3">Paciente</th>
+            <th scope="col" class="px-4 py-3">Paciente u origen</th>
             <th scope="col" class="px-4 py-3">Veterinario · receta</th>
             <th scope="col" class="px-4 py-3">Registró</th>
           </tr>
@@ -100,6 +95,12 @@
                     >{{ m.pet.name }}</a
                   >
                   <p class="text-xs text-slate-500">{{ m.pet.client.name }}</p>
+                } @else if (m.type === 'PURCHASE' && m.batch?.supplier) {
+                  <!-- Entrada: de qué proveedor y ficha vino (DIGEMID) -->
+                  <p class="text-slate-900">{{ m.batch?.supplier }}</p>
+                  @if (m.batch?.documentNumber) {
+                    <p class="text-xs text-slate-500 tabular-nums">{{ m.batch?.documentNumber }}</p>
+                  }
                 } @else {
                   <span class="text-slate-500">—</span>
                 }

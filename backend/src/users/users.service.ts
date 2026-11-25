@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,12 +22,12 @@ export interface TeamMember {
   email: string;
   role: Role;
   licenseNumber: string | null;
-  /** % de comisión (groomers) */
-  commissionPercent: number | null;
   active: boolean;
   mustChangePassword: boolean;
   locked: boolean;
   lastLoginAt: Date | null;
+  /** Soporte técnico: nadie de la clínica la edita, desactiva ni le cambia la clave */
+  support: boolean;
 }
 
 const MEMBER_SELECT = {
@@ -35,11 +36,11 @@ const MEMBER_SELECT = {
   email: true,
   role: true,
   licenseNumber: true,
-  commissionPercent: true,
   active: true,
   mustChangePassword: true,
   lockedUntil: true,
   lastLoginAt: true,
+  isSupport: true,
 } as const;
 
 type MemberRow = Prisma.UserGetPayload<{ select: typeof MEMBER_SELECT }>;
@@ -78,7 +79,6 @@ export class UsersService {
           email: dto.email,
           role: dto.role,
           licenseNumber: dto.licenseNumber ?? null,
-          commissionPercent: dto.commissionPercent ?? null,
           passwordHash: await hashPassword(temporaryPassword),
           mustChangePassword: true,
         },
@@ -113,6 +113,7 @@ export class UsersService {
     ip?: string,
   ): Promise<TeamMember> {
     const target = await this.findInClinic(actor.clinicId, id);
+    guardSupport(actor, target);
     const next = {
       fullName: dto.fullName ?? target.fullName,
       role: dto.role ?? target.role,
@@ -120,10 +121,6 @@ export class UsersService {
         dto.licenseNumber === undefined
           ? target.licenseNumber
           : dto.licenseNumber,
-      commissionPercent:
-        dto.commissionPercent === undefined
-          ? num(target.commissionPercent)
-          : dto.commissionPercent,
       active: dto.active ?? target.active,
     };
 
@@ -138,10 +135,7 @@ export class UsersService {
       await this.ensureAnotherActiveAdmin(actor.clinicId, id);
     }
 
-    const before = {
-      ...target,
-      commissionPercent: num(target.commissionPercent),
-    };
+    const before = target;
     const changed = (Object.keys(next) as (keyof typeof next)[]).filter(
       (key) => before[key] !== next[key],
     );
@@ -180,7 +174,7 @@ export class UsersService {
         'Para tu propia cuenta usa la opción "Cambiar contraseña"',
       );
     }
-    await this.findInClinic(actor.clinicId, id);
+    guardSupport(actor, await this.findInClinic(actor.clinicId, id));
     const temporaryPassword = generateTemporaryPassword();
     await this.prisma.user.update({
       where: { id },
@@ -219,7 +213,14 @@ export class UsersService {
     excludeId: number,
   ): Promise<void> {
     const others = await this.prisma.user.count({
-      where: { clinicId, role: 'ADMIN', active: true, id: { not: excludeId } },
+      // Soporte técnico no cuenta: la clínica siempre conserva un administrador propio
+      where: {
+        clinicId,
+        role: 'ADMIN',
+        active: true,
+        isSupport: false,
+        id: { not: excludeId },
+      },
     });
     if (others === 0)
       throw new ConflictException(
@@ -240,14 +241,18 @@ function requireLicenseForVet(
 }
 
 function toMember(user: MemberRow): TeamMember {
-  const { lockedUntil, commissionPercent, ...rest } = user;
+  const { lockedUntil, isSupport, ...rest } = user;
   return {
     ...rest,
-    commissionPercent: num(commissionPercent),
     locked: Boolean(lockedUntil && lockedUntil > new Date()),
+    support: isSupport,
   };
 }
 
-function num(value: { toNumber(): number } | null | undefined): number | null {
-  return value == null ? null : value.toNumber();
+/** La cuenta de soporte técnico solo la toca soporte técnico (se marca en el servidor). */
+function guardSupport(actor: AuthUser, target: { isSupport: boolean }): void {
+  if (target.isSupport && !actor.support)
+    throw new ForbiddenException(
+      'La cuenta de soporte técnico no se puede modificar desde la clínica',
+    );
 }

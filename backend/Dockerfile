@@ -14,7 +14,12 @@ COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
-RUN npm run build
+# En servidores con poca RAM (1 GB + swap) Node necesita permiso para usar más memoria al compilar
+ARG BUILD_MEMORY_MB=2048
+RUN NODE_OPTIONS=--max-old-space-size=$BUILD_MEMORY_MB npm run build
+# Compacta el JS y borra los mapas de código: en el servidor no queda código fuente legible
+COPY scripts/minify-dist.mjs ./scripts/minify-dist.mjs
+RUN node scripts/minify-dist.mjs
 
 FROM node:24-slim
 RUN apt-get update \

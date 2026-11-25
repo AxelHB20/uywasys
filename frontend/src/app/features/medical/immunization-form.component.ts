@@ -64,7 +64,7 @@ const KIND_ICONS: Record<ImmunizationKind, IconName> = {
               <app-icon
                 [name]="kindIcons[k]"
                 class="size-[18px]"
-                [class]="kind() === k ? 'text-anil-600' : 'text-slate-400'"
+                [class]="kind() === k ? 'text-anil-600' : 'text-slate-500'"
               />
               {{ kindShort[k] }}
             </button>

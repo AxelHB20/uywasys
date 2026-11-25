@@ -108,7 +108,7 @@ describe('customerFor', () => {
     walkIn: true,
   };
 
-  it('boleta con DNI, o "clientes varios" por menos de S/ 700', () => {
+  it('boleta con DNI, o "clientes varios" hasta S/ 700', () => {
     expect(customerFor('BOLETA', rosa, 1500)).toMatchObject({
       docType: '1',
       docNumber: '45678912',
@@ -118,10 +118,71 @@ describe('customerFor', () => {
       docNumber: '-',
       name: 'CLIENTES VARIOS',
       address: null,
+      email: null,
     });
+    // SUNAT: el DNI va cuando la boleta supera S/ 700 (700.00 justos aún no)
+    expect(customerFor('BOLETA', varios, 700).docType).toBe('-');
     expect(() =>
-      customerFor('BOLETA', { ...rosa, docType: null, docNumber: null }, 700),
-    ).toThrow('desde S/ 700');
+      customerFor(
+        'BOLETA',
+        { ...rosa, docType: null, docNumber: null },
+        700.01,
+      ),
+    ).toThrow('más de S/ 700');
+  });
+
+  it('lo escrito en el cobro manda: factura a la empresa del cliente, boleta con DNI', () => {
+    const ruc = {
+      docType: 'RUC' as const,
+      docNumber: '20601847834',
+      name: 'OSYS COMPANY S.A.C.',
+      address: ' Av. Surco 125 ',
+      email: 'conta@osys.pe',
+    };
+    expect(customerFor('FACTURA', rosa, 50, ruc)).toEqual({
+      docType: '6',
+      docNumber: '20601847834',
+      name: 'OSYS COMPANY S.A.C.',
+      address: 'Av. Surco 125',
+      email: 'conta@osys.pe',
+    });
+    // Cliente varios que pide factura
+    expect(customerFor('FACTURA', varios, 50, ruc).docNumber).toBe(
+      '20601847834',
+    );
+    // Boleta de más de S/ 700 con el DNI escrito en el cobro
+    expect(
+      customerFor('BOLETA', varios, 900, {
+        docType: 'DNI',
+        docNumber: '45678912',
+        name: 'ROSA PEÑA',
+      }),
+    ).toMatchObject({ docType: '1', docNumber: '45678912', name: 'ROSA PEÑA' });
+    expect(() =>
+      customerFor('FACTURA', rosa, 50, { ...ruc, docType: 'DNI' }),
+    ).toThrow('RUC');
+  });
+
+  it('factura con los datos de facturación guardados en la ficha', () => {
+    expect(
+      customerFor(
+        'FACTURA',
+        {
+          ...rosa,
+          invoiceRuc: '20601847834',
+          invoiceName: 'OSYS COMPANY S.A.C.',
+          invoiceAddress: null,
+          invoiceEmail: 'conta@osys.pe',
+        },
+        50,
+      ),
+    ).toEqual({
+      docType: '6',
+      docNumber: '20601847834',
+      name: 'OSYS COMPANY S.A.C.',
+      address: null,
+      email: 'conta@osys.pe',
+    });
   });
 
   it('la factura exige RUC', () => {

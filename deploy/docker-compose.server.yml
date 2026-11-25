@@ -1,0 +1,131 @@
+# Producción en el servidor de la clínica, SIN código fuente.
+# El servidor solo descarga las imágenes ya armadas desde el registro privado de GitHub (GHCR);
+# el código (src, pruebas, migraciones legibles) nunca se copia al servidor.
+#
+# En el servidor solo hacen falta DOS archivos: este y deploy/.env. No se clona el repositorio.
+# Uso (en el servidor, dentro de la carpeta que tenga estos dos archivos):
+#   docker compose -f docker-compose.server.yml --env-file .env pull
+#   docker compose -f docker-compose.server.yml --env-file .env up -d
+# Las imágenes se arman y se suben desde TU PC con deploy/publicar-imagenes.ps1 (ver docs/DEPLOY.md).
+#
+# IMAGE_OWNER: tu usuario u organización de GitHub en minúsculas (p. ej. axelhb20).
+# IMAGE_TAG:   la versión a usar (p. ej. v0.4.0). "latest" apunta a la última que subiste.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements,auto_explain
+      - -c
+      - pg_stat_statements.track=top
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - auto_explain.log_min_duration=1000
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=3GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: uywasys
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: uywasys
+      TZ: America/Lima
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uywasys -d uywasys"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  api:
+    image: ghcr.io/${IMAGE_OWNER:?Define IMAGE_OWNER en .env}/uywasys-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://uywasys:${POSTGRES_PASSWORD}@db:5432/uywasys
+      CORS_ORIGIN: https://${DOMAIN:?Define DOMAIN en .env}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY: "true"
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-600}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
+      SEED_CLINIC_NAME: ${SEED_CLINIC_NAME:-Mi veterinaria}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrador}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+      BILLING_SECRET: ${BILLING_SECRET:-}
+      # Producción: sin comprobantes simulados. true solo en el servidor de prueba.
+      BILLING_ALLOW_SIMULATED: ${BILLING_ALLOW_SIMULATED:-false}
+    logging: *logging
+
+  web:
+    image: ghcr.io/${IMAGE_OWNER}/uywasys-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    logging: *logging
+
+  backup:
+    image: ghcr.io/${IMAGE_OWNER}/uywasys-backup:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: uywasys
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: uywasys
+      BACKUP_PASSWORD: ${BACKUP_PASSWORD:?Define BACKUP_PASSWORD en .env (contraseña que cifra los respaldos)}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-30}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      RCLONE_REMOTE: ${RCLONE_REMOTE:-}
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
+      PERF_PING_URL: ${PERF_PING_URL:-}
+      PERF_SLOW_MS: ${PERF_SLOW_MS:-300}
+      TZ: America/Lima
+    volumes:
+      - backups:/backups
+      - ./backup/rclone:/config/rclone:ro
+    logging: *logging
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
+  backups:

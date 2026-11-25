@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   input,
+  untracked,
   signal,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -20,6 +21,7 @@ import { IconName } from '../../shared/ui/icon/icons';
 import { SignaturePadComponent } from '../../shared/ui/signature-pad/signature-pad.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 interface Signer {
   key: string;
@@ -50,17 +52,20 @@ const PROCEDURE_PLACEHOLDER: Record<ConsentType, string> = {
  */
 @Component({
   selector: 'app-consent-sign-page',
-  imports: [ReactiveFormsModule, RouterLink, IconComponent, SignaturePadComponent],
+  imports: [
+    BackLinkComponent,
+    ReactiveFormsModule,
+    RouterLink,
+    IconComponent,
+    SignaturePadComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="mx-auto max-w-3xl space-y-6">
-      <a
-        [routerLink]="backLink()"
-        class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-      >
-        <app-icon name="chevron-left" class="size-4" />
-        {{ atencion() ? 'Volver a la atención' : 'Historia clínica' }}
-      </a>
+      <app-back-link
+        [fallback]="backLink().join('/')"
+        [fallbackLabel]="atencion() ? 'Volver a la atención' : 'Historia clínica'"
+      />
 
       <header>
         <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
@@ -321,6 +326,8 @@ export class ConsentSignPage {
   readonly id = input.required<string>();
   /** ?atencion= */
   readonly atencion = input<string | undefined>();
+  /** ?tipo=HOSPITALIZATION: llega con el tipo elegido */
+  readonly tipo = input<string | undefined>();
 
   protected readonly types = TYPES;
   protected readonly labels = CONSENT_TYPE_LABELS;
@@ -368,6 +375,10 @@ export class ConsentSignPage {
   );
 
   constructor() {
+    effect(() => {
+      const tipo = this.tipo() as ConsentType | undefined;
+      if (tipo && tipo in CONSENT_TYPE_LABELS) untracked(() => this.setType(tipo));
+    });
     effect(() => {
       const petId = Number(this.id());
       this.immunizations.card(petId).subscribe({
@@ -450,7 +461,7 @@ export class ConsentSignPage {
       .subscribe({
         next: (consent) => {
           this.toast.success(`Consentimiento ${consent.code} guardado.`);
-          void this.router.navigate(['/consentimientos', consent.id]);
+          void this.router.navigate(['/consentimientos', consent.id], { replaceUrl: true });
         },
         error: (error: unknown) => {
           this.saving.set(false);

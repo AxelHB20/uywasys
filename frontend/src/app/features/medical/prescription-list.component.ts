@@ -17,88 +17,94 @@ import { apiErrorMessage } from '../../shared/utils/validators';
   imports: [ReactiveFormsModule, RouterLink, FechaPipe, IconComponent, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @for (rx of items(); track rx.id) {
-      <article
-        class="rounded-2xl p-4 ring-1"
-        [class]="rx.voidedAt ? 'bg-slate-50 ring-slate-200' : 'bg-white ring-slate-200'"
-      >
-        <header class="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p class="flex items-center gap-2">
-              <span class="font-display text-base font-semibold text-slate-900">{{ rx.code }}</span>
-              @if (rx.voidedAt) {
-                <span
-                  class="rounded-md bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-700"
-                  >Anulada</span
-                >
-              }
-            </p>
-            <p class="text-xs text-slate-500">
-              {{ rx.vet.fullName }}
-              @if (rx.vet.licenseNumber) {
-                · CMVP {{ rx.vet.licenseNumber }}
-              }
-              · {{ rx.createdAt | fecha: 'datetime' }}
-            </p>
-          </div>
-          @if (!rx.voidedAt) {
-            <div class="flex gap-2">
-              <a [routerLink]="['/recetas', rx.id]" class="btn btn-secondary h-10 px-3">
-                <app-icon name="file-text" class="size-4" /> Imprimir
-              </a>
-              @if (canVoid(rx)) {
-                <button
-                  type="button"
-                  class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                  [attr.aria-label]="'Anular receta ' + rx.code"
-                  (click)="askVoid(rx)"
-                >
-                  <app-icon name="trash" class="size-4" />
-                </button>
-              }
-            </div>
-          }
-        </header>
-        <ol class="mt-3 space-y-2" [class.opacity-60]="rx.voidedAt">
-          @for (item of rx.items; track item.id) {
-            <li class="flex gap-3 text-sm">
-              <span class="font-display font-semibold text-anil-600" aria-hidden="true">℞</span>
-              <div class="min-w-0">
-                <p class="font-medium text-slate-900" [class.line-through]="rx.voidedAt">
-                  {{ item.drug }}
-                  @if (item.controlled) {
-                    <span
-                      class="ml-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-medium text-rose-700"
-                      >Controlado</span
-                    >
-                  }
-                </p>
-                <p class="text-slate-600">{{ posology(item) }}</p>
-                @if (item.instructions) {
-                  <p class="text-slate-500">{{ item.instructions }}</p>
+    <div class="space-y-3">
+      @for (rx of items(); track rx.id) {
+        <article
+          class="rounded-2xl p-4 ring-1"
+          [class]="rx.voidedAt ? 'bg-slate-50 ring-slate-200' : 'bg-white ring-slate-200'"
+        >
+          <header class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="flex items-center gap-2">
+                <span class="font-display text-base font-semibold text-slate-900">{{
+                  rx.code
+                }}</span>
+                @if (rx.voidedAt) {
+                  <span
+                    class="rounded-md bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-700"
+                    >Anulada</span
+                  >
                 }
-                @if (item.dispensedQuantity) {
-                  <p class="text-xs text-emerald-700">
-                    Entregado: {{ formatQty(item.dispensedQuantity) }} × {{ item.presentation }}
-                    @if (item.charge?.status === 'VOID') {
-                      <span class="text-slate-500">(cargo quitado)</span>
-                    }
-                  </p>
+              </p>
+              <p class="text-xs text-slate-500">
+                {{ rx.vet.fullName }}
+                @if (rx.vet.licenseNumber) {
+                  · CMVP {{ rx.vet.licenseNumber }}
+                }
+                · {{ rx.createdAt | fecha: 'datetime' }}
+              </p>
+            </div>
+            @if (!rx.voidedAt) {
+              <div class="flex gap-2">
+                <a [routerLink]="['/recetas', rx.id]" class="btn btn-secondary h-10 px-3">
+                  <app-icon name="file-text" class="size-4" /> Imprimir
+                </a>
+                @if (canVoid(rx)) {
+                  <button
+                    type="button"
+                    class="grid size-11 place-items-center rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+                    [attr.aria-label]="'Anular receta ' + rx.code"
+                    (click)="askVoid(rx)"
+                  >
+                    <app-icon name="trash" class="size-4" />
+                  </button>
                 }
               </div>
-            </li>
+            }
+          </header>
+          <ol class="mt-3 space-y-2" [class.opacity-60]="rx.voidedAt">
+            @for (item of rx.items; track item.id) {
+              <li class="flex gap-3 text-sm">
+                <span class="font-display font-semibold text-anil-600" aria-hidden="true">℞</span>
+                <div class="min-w-0">
+                  <p class="font-medium text-slate-900" [class.line-through]="rx.voidedAt">
+                    {{ item.drug }}
+                    @if (item.controlled) {
+                      <span
+                        class="ml-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-medium text-rose-700"
+                        >Controlado</span
+                      >
+                    }
+                  </p>
+                  <p class="text-slate-600">{{ posology(item) }}</p>
+                  @if (item.instructions) {
+                    <p class="text-slate-500">{{ item.instructions }}</p>
+                  }
+                  @if (item.dispensedQuantity) {
+                    <p class="text-xs text-emerald-700">
+                      Entregado: {{ formatQty(item.dispensedQuantity) }} × {{ item.presentation }}
+                      @if (item.charge?.status === 'VOID') {
+                        <span class="text-slate-500">(cargo quitado)</span>
+                      }
+                    </p>
+                  }
+                </div>
+              </li>
+            }
+          </ol>
+          @if (rx.notes) {
+            <p
+              class="mt-3 border-t border-slate-100 pt-2 text-sm whitespace-pre-line text-slate-600"
+            >
+              {{ rx.notes }}
+            </p>
           }
-        </ol>
-        @if (rx.notes) {
-          <p class="mt-3 border-t border-slate-100 pt-2 text-sm whitespace-pre-line text-slate-600">
-            {{ rx.notes }}
-          </p>
-        }
-        @if (rx.voidedAt) {
-          <p class="mt-2 text-xs text-slate-500">Motivo de anulación: {{ rx.voidReason }}</p>
-        }
-      </article>
-    }
+          @if (rx.voidedAt) {
+            <p class="mt-2 text-xs text-slate-500">Motivo de anulación: {{ rx.voidReason }}</p>
+          }
+        </article>
+      }
+    </div>
 
     <app-modal
       [open]="!!voiding()"
@@ -109,6 +115,22 @@ import { apiErrorMessage } from '../../shared/utils/validators';
     >
       @if (voiding(); as rx) {
         <p class="mb-4 text-slate-700">{{ rx.code }} · {{ rx.items.length }} medicamento(s)</p>
+        @if (delivered(rx).length) {
+          <div
+            class="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+            role="note"
+          >
+            <p class="font-medium">Lo entregado se quita de la cuenta y vuelve al inventario:</p>
+            <ul class="mt-1 list-disc pl-5">
+              @for (item of delivered(rx); track item.id) {
+                <li>
+                  {{ item.drug }} · {{ formatQty(item.dispensedQuantity!) }} ×
+                  {{ item.presentation }}
+                </li>
+              }
+            </ul>
+          </div>
+        }
       }
       <form id="rx-void-form" (submit)="$event.preventDefault(); confirmVoid()" novalidate>
         <label for="rx-void-reason" class="field-label"
@@ -161,6 +183,11 @@ export class PrescriptionListComponent {
     this.voiding.set(rx);
   }
 
+  /** Lo entregado en la clínica que sigue en la cuenta */
+  protected delivered(rx: PrescriptionSummary) {
+    return rx.items.filter((i) => i.dispensedQuantity && i.charge && i.charge.status !== 'VOID');
+  }
+
   protected confirmVoid(): void {
     const rx = this.voiding();
     if (!rx || this.saving()) return;
@@ -169,11 +196,16 @@ export class PrescriptionListComponent {
       return;
     }
     this.saving.set(true);
+    const returned = this.delivered(rx).length > 0;
     this.api.void(rx.id, this.reason.value.trim()).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.voiding.set(null);
-        this.toast.success(`Receta ${updated.code} anulada.`);
+        this.toast.success(
+          returned
+            ? `Receta ${updated.code} anulada: lo entregado salió de la cuenta y volvió al inventario.`
+            : `Receta ${updated.code} anulada.`,
+        );
         this.changed.emit(updated);
       },
       error: (error: unknown) => {

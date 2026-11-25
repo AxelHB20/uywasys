@@ -2,13 +2,14 @@ import { Module } from '@nestjs/common';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { ChargesService } from './charges.service.js';
 import { ChargesController, VisitsController } from './visits.controller.js';
+import { TransportService } from './transport.service.js';
 import { VisitsService } from './visits.service.js';
 
 /** Fase 3: atenciones, cargos y cuenta del cliente. El stock se toca solo por StockService. */
 @Module({
   imports: [InventoryModule],
   controllers: [VisitsController, ChargesController],
-  providers: [VisitsService, ChargesService],
-  exports: [ChargesService, VisitsService],
+  providers: [VisitsService, ChargesService, TransportService],
+  exports: [ChargesService, VisitsService, TransportService],
 })
 export class VisitsModule {}

@@ -2,8 +2,9 @@
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <h1 class="font-display text-2xl font-semibold text-slate-900">Servicios y precios</h1>
-      <p class="mt-1 text-slate-600">
-        Lo que cobra la clínica y los insumos que cada servicio descuenta del inventario.
+      <p class="mt-1 max-w-2xl text-slate-600">
+        Aquí fijas lo que cobra la clínica. La Atención, la Caja, los Presupuestos, Grooming,
+        Exámenes y Hospitalización toman el precio de aquí.
       </p>
     </div>
     @if (isAdmin()) {
@@ -47,6 +48,33 @@
       }
     </div>
   } @else {
+    @if (missing().length) {
+      <ul class="space-y-2" aria-label="Servicios que faltan">
+        @for (m of missing(); track m.category) {
+          <li
+            class="flex flex-col gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span class="flex gap-2">
+              <app-icon name="alert" class="mt-0.5 size-4 shrink-0" />
+              <span
+                >No tienes servicios de
+                <strong class="font-semibold">{{ categoryLabels[m.category] }}</strong
+                >: {{ m.problem }}</span
+              >
+            </span>
+            @if (isAdmin()) {
+              <button
+                type="button"
+                class="btn btn-secondary h-9 shrink-0 px-3 text-sm"
+                (click)="openNew(m.category)"
+              >
+                <app-icon name="plus" class="size-4" /> Crear
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    }
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
       <div class="relative flex-1">
         <app-icon
@@ -83,6 +111,9 @@
         >
           {{ categoryLabels[g.category] }}
           <span class="font-normal tabular-nums">· {{ g.items.length }}</span>
+          <span class="ml-1 font-normal tracking-normal text-slate-400 normal-case"
+            >— {{ whereShort[g.category] }}</span
+          >
         </h2>
         <ul class="card divide-y divide-slate-100">
           @for (s of g.items; track s.id) {
@@ -157,8 +188,9 @@
   [dismissible]="false"
   (closed)="close()"
 >
-  <form id="svc-form" [formGroup]="form" (ngSubmit)="save()" novalidate class="space-y-5">
-    <div>
+  <form id="svc-form" [formGroup]="form" (ngSubmit)="save()" novalidate class="space-y-6">
+    <h3 class="text-sm font-semibold text-slate-900">1. Qué es</h3>
+    <div class="-mt-3">
       <label for="svc-name" class="field-label"
         >Nombre <span class="text-rose-600" aria-hidden="true">*</span></label
       >
@@ -191,11 +223,23 @@
         }
       </div>
       @if (invalid(form.controls.category)) {
-        <p class="field-error">Elige la categoría</p>
+        <p class="field-error">Elige la categoría: decide en qué pantallas aparece</p>
+      } @else if (form.controls.category.value; as cat) {
+        <p
+          class="mt-2 flex gap-2 rounded-lg bg-anil-50 px-3 py-2 text-sm text-anil-900"
+          aria-live="polite"
+        >
+          <app-icon name="info" class="mt-0.5 size-4 shrink-0 text-anil-600" />
+          {{ where[cat] }}
+        </p>
+      } @else {
+        <p class="field-hint">La categoría decide en qué pantallas aparece el servicio.</p>
       }
     </fieldset>
 
-    <div class="grid gap-4 sm:grid-cols-3">
+    <h3 class="border-t border-slate-100 pt-5 text-sm font-semibold text-slate-900">2. Precio</h3>
+
+    <div class="grid gap-4 sm:grid-cols-2">
       <div>
         <label for="svc-price" class="field-label"
           >Precio (S/) <span class="text-rose-600" aria-hidden="true">*</span></label
@@ -212,18 +256,38 @@
         />
         @if (invalid(form.controls.price)) {
           <p class="field-error">Precio válido, hasta 2 decimales</p>
+        } @else if (priceBreakdown(); as b) {
+          <p class="field-hint tabular-nums">
+            @if (b.igv) {
+              Sin IGV {{ money(b.base) }} · IGV {{ money(b.igv) }}
+            } @else {
+              Sin IGV
+            }
+          </p>
+        } @else {
+          <p class="field-hint">Lo que paga el cliente, con IGV.</p>
         }
       </div>
       <div>
         <label for="svc-igv" class="field-label">IGV</label>
-        <select id="svc-igv" formControlName="igv" class="field-input">
+        <select
+          id="svc-igv"
+          formControlName="igv"
+          class="field-input"
+          aria-describedby="svc-igv-hint"
+        >
           @for (t of igvTypes; track t) {
             <option [value]="t">{{ igvLabels[t] }}</option>
           }
         </select>
+        <p id="svc-igv-hint" class="field-hint">
+          Casi todo es Gravado. Cámbialo solo si el contador lo indica.
+        </p>
       </div>
       <div>
-        <label for="svc-duration" class="field-label">Duración (min)</label>
+        <label for="svc-duration" class="field-label"
+          >Duración aprox. <span class="font-normal text-slate-500">(min)</span></label
+        >
         <input
           id="svc-duration"
           type="number"
@@ -237,6 +301,8 @@
         />
         @if (invalid(form.controls.durationMin)) {
           <p class="field-error">Entre 1 y 1440 minutos</p>
+        } @else {
+          <p class="field-hint">Solo de referencia; no cambia la agenda.</p>
         }
       </div>
     </div>
@@ -272,10 +338,17 @@
       </fieldset>
     }
 
-    <fieldset>
-      <legend class="field-label">Insumos que usa</legend>
-      <p class="text-sm text-slate-500">
-        En la unidad mínima del producto (ej.: 2 ml de ketamina, 1 jeringa).
+    <h3 class="border-t border-slate-100 pt-5 text-sm font-semibold text-slate-900">
+      3. Insumos del inventario <span class="font-normal text-slate-500">(opcional)</span>
+    </h3>
+    <fieldset class="-mt-3">
+      <legend class="sr-only">Insumos del inventario que gasta</legend>
+      <p class="text-sm text-slate-600">
+        Se descuentan solos del stock cada vez que se registra este servicio. Ya están incluidos en
+        el precio: <strong class="font-medium text-slate-800">no se cobran aparte</strong>.
+      </p>
+      <p class="mt-1 text-sm text-slate-500">
+        Cantidad en la unidad mínima del producto (ej.: 2 ml de ketamina, 1 jeringa).
       </p>
 
       @if (supplies.length) {
@@ -285,9 +358,14 @@
               [formGroupName]="i"
               class="flex items-center gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70"
             >
-              <p class="min-w-0 flex-1 truncate font-medium text-slate-900">
-                {{ g.controls.name.value }}
-              </p>
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium text-slate-900">{{ g.controls.name.value }}</p>
+                @if (supplyCostOf(g); as cost) {
+                  <p class="text-xs text-slate-500 tabular-nums">Costo ≈ {{ money(cost) }}</p>
+                } @else if (g.controls.unitCost.value === null) {
+                  <p class="text-xs text-slate-500">Sin costo registrado</p>
+                }
+              </div>
               <label [for]="'sup-qty-' + i" class="sr-only"
                 >Cantidad de {{ g.controls.name.value }}</label
               >
@@ -316,7 +394,61 @@
             }
           }
         </ul>
+
+        @if (supplyCost(); as c) {
+          <div
+            class="mt-3 rounded-xl p-3 text-sm ring-1"
+            [class]="
+              c.margin !== null && c.margin < 0
+                ? 'bg-rose-50 ring-rose-200'
+                : 'bg-white ring-slate-200'
+            "
+            aria-live="polite"
+          >
+            <dl class="grid grid-cols-3 gap-2">
+              <div>
+                <dt class="text-xs text-slate-500">Insumos</dt>
+                <dd class="font-semibold text-slate-900 tabular-nums">{{ money(c.total) }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Precio sin IGV</dt>
+                <dd class="font-semibold text-slate-900 tabular-nums">
+                  {{ c.base === null ? '—' : money(c.base) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Te queda</dt>
+                <dd
+                  class="font-semibold tabular-nums"
+                  [class.text-rose-700]="c.margin !== null && c.margin < 0"
+                  [class.text-emerald-700]="c.margin !== null && c.margin >= 0"
+                >
+                  {{ c.margin === null ? '—' : money(c.margin) }}
+                  @if (c.percent !== null) {
+                    <span class="text-xs font-medium">({{ c.percent }} %)</span>
+                  }
+                </dd>
+              </div>
+            </dl>
+            @if (c.margin !== null && c.margin < 0) {
+              <p class="mt-2 text-rose-800">
+                Los insumos cuestan más que el precio: revisa el precio o las cantidades.
+              </p>
+            }
+            @if (c.missing.length) {
+              <p class="mt-2 text-xs text-slate-500">
+                Sin costo registrado: {{ c.missing.join(', ') }}. Se calcula cuando se ingrese una
+                compra con costo.
+              </p>
+            }
+          </div>
+        }
       }
+
+      <p class="mt-3 text-xs text-slate-500">
+        Pon solo lo que se usa siempre y conviene controlar (vacunas, medicamentos, jeringas). Lo
+        barato de uso general —guantes, algodón, alcohol— no hace falta ponerlo.
+      </p>
 
       <div class="mt-3">
         <div class="relative">
@@ -361,10 +493,32 @@
     </fieldset>
 
     @if (editing()) {
-      <label class="flex cursor-pointer items-center gap-3 text-sm text-slate-800">
-        <input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />
-        Activo (se puede cobrar)
-      </label>
+      <div class="border-t border-slate-100 pt-5">
+        <label class="flex cursor-pointer items-start gap-3 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            formControlName="active"
+            class="mt-0.5 size-5 rounded accent-anil-600"
+          />
+          <span>
+            <span class="font-medium">Activo (se puede cobrar)</span>
+            <span class="block text-slate-500"
+              >Desactivado deja de aparecer para cobros nuevos. Lo ya cobrado y los presupuestos
+              pendientes no cambian.</span
+            >
+          </span>
+        </label>
+        @if (quotedWarning(); as n) {
+          <p
+            class="mt-2 flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200"
+            role="status"
+          >
+            <app-icon name="info" class="mt-0.5 size-4 shrink-0" />
+            Está en {{ n }} {{ n === 1 ? 'presupuesto pendiente' : 'presupuestos pendientes' }}: se
+            {{ n === 1 ? 'podrá' : 'podrán' }} cobrar igual con el precio presupuestado.
+          </p>
+        }
+      </div>
     }
   </form>
   <ng-container modal-actions>

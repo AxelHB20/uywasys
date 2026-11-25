@@ -28,8 +28,8 @@ import { IconName } from '../../shared/ui/icon/icons';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { CLINICAL_ACCEPT, clinicalFileError } from '../../shared/utils/image';
 
-const ACCEPT = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const KIND_ICONS: Record<AttachmentKind, IconName> = {
   PHOTO: 'image',
   LAB: 'activity',
@@ -43,6 +43,8 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
  */
 @Component({
   selector: 'app-pet-documents',
+  // Bloque: así el espacio entre tarjetas de la página (space-y) también le aplica
+  host: { class: 'block' },
   imports: [ReactiveFormsModule, RouterLink, FechaPipe, IconComponent, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -53,7 +55,8 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
             Archivos y consentimientos
           </h2>
           <p class="mt-0.5 text-sm text-slate-500">
-            Fotos, análisis y radiografías (JPG, PNG o PDF de hasta {{ maxMb }} MB).
+            Fotos, análisis y radiografías: las fotos se comprimen solas; PDF de hasta
+            {{ maxMb }} MB.
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -116,6 +119,26 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
           @if (fileError(); as error) {
             <p class="field-error" role="alert">{{ error }}</p>
           }
+          @if (isPhotoFile()) {
+            <label class="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                class="mt-0.5 size-4 accent-anil-600"
+                [checked]="original()"
+                (change)="setOriginal($any($event.target).checked)"
+              />
+              <span>
+                Subir en calidad original
+                <span class="block text-xs text-slate-500">
+                  {{
+                    original()
+                      ? 'Sin comprimir (máximo 10 MB): para radiografías o imágenes de microscopio.'
+                      : 'La foto se comprime al subir: se ve igual y ocupa unas 15 veces menos.'
+                  }}
+                </span>
+              </span>
+            </label>
+          }
           <div class="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
             <div>
               <label for="doc-kind" class="field-label">Tipo</label>
@@ -154,10 +177,10 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
         </form>
       }
 
-      <!-- Archivos -->
-      @if (activeFiles().length) {
-        <ul class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" role="list">
-          @for (a of activeFiles(); track a.id) {
+      <!-- Archivos: fotos en miniatura, PDFs como tarjetas compactas -->
+      @if (images().length) {
+        <ul class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6" role="list">
+          @for (a of images(); track a.id) {
             <li class="group relative overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
               <button
                 type="button"
@@ -165,34 +188,61 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
                 (click)="view(a)"
                 [attr.aria-label]="'Ver ' + a.title"
               >
-                <span class="grid aspect-[4/3] place-items-center overflow-hidden bg-slate-50">
-                  @if (isImage(a)) {
-                    <img
-                      [src]="url(a.id)"
-                      alt=""
-                      loading="lazy"
-                      class="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                  } @else {
-                    <span class="flex flex-col items-center gap-1 text-slate-400">
-                      <app-icon [name]="kindIcons[a.kind]" class="size-8" />
-                      <span class="text-xs font-semibold">PDF</span>
-                    </span>
-                  }
+                <span class="block aspect-square overflow-hidden bg-slate-50">
+                  <img [src]="url(a.id)" alt="" loading="lazy" class="size-full object-cover" />
                 </span>
-                <span class="block px-3 py-2">
+                <span class="block px-2 py-1.5">
+                  <span class="block truncate text-xs font-medium text-slate-900">{{
+                    a.title
+                  }}</span>
+                  <span class="block truncate text-xs text-slate-500">{{
+                    a.createdAt | fecha
+                  }}</span>
+                </span>
+              </button>
+              @if (canVoid(a)) {
+                <button
+                  type="button"
+                  class="absolute top-1 right-1 grid size-11 place-items-center rounded-lg bg-white/90 text-slate-500 opacity-0 ring-1 ring-slate-200 transition-opacity group-hover:opacity-100 hover:text-rose-600 focus-visible:opacity-100 max-sm:opacity-100"
+                  [attr.aria-label]="'Anular ' + a.title"
+                  (click)="askVoid(a)"
+                >
+                  <app-icon name="trash" class="size-4" />
+                </button>
+              }
+            </li>
+          }
+        </ul>
+      }
+      @if (documents().length) {
+        <ul class="mt-3 grid gap-2 sm:grid-cols-2" role="list">
+          @for (a of documents(); track a.id) {
+            <li class="flex items-center gap-1 rounded-xl bg-white pr-1 ring-1 ring-slate-200">
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-anil-600"
+                (click)="view(a)"
+                [attr.aria-label]="'Abrir ' + a.title"
+              >
+                <span
+                  class="grid size-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600"
+                  aria-hidden="true"
+                >
+                  <app-icon [name]="kindIcons[a.kind]" class="size-4" />
+                </span>
+                <span class="min-w-0">
                   <span class="block truncate text-sm font-medium text-slate-900">{{
                     a.title
                   }}</span>
                   <span class="block truncate text-xs text-slate-500">
-                    {{ kindLabels[a.kind] }} · {{ a.createdAt | fecha }}
+                    {{ kindLabels[a.kind] }} · PDF · {{ a.createdAt | fecha }}
                   </span>
                 </span>
               </button>
               @if (canVoid(a)) {
                 <button
                   type="button"
-                  class="absolute top-2 right-2 grid size-8 place-items-center rounded-lg bg-white/90 text-slate-500 opacity-0 ring-1 ring-slate-200 transition-opacity group-hover:opacity-100 hover:text-rose-600 focus-visible:opacity-100 max-sm:opacity-100"
+                  class="grid size-11 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600"
                   [attr.aria-label]="'Anular ' + a.title"
                   (click)="askVoid(a)"
                 >
@@ -229,7 +279,7 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
                     }
                   </span>
                 </span>
-                <app-icon name="chevron-right" class="size-4 shrink-0 text-slate-400" />
+                <app-icon name="chevron-right" class="size-4 shrink-0 text-slate-500" />
               </a>
             </li>
           }
@@ -237,11 +287,7 @@ const KIND_ICONS: Record<AttachmentKind, IconName> = {
       }
 
       @if (!activeFiles().length && !consents().length && !uploading()) {
-        <p
-          class="mt-4 rounded-xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500 ring-1 ring-slate-200"
-        >
-          Sin archivos ni consentimientos todavía.
-        </p>
+        <p class="mt-3 text-sm text-slate-500">Sin archivos ni consentimientos todavía.</p>
       }
     </section>
 
@@ -315,7 +361,9 @@ export class PetDocumentsComponent {
   readonly visitId = input<number | null>(null);
 
   protected readonly maxMb = MAX_ATTACHMENT_MB;
-  protected readonly accept = ACCEPT.join(',');
+  protected readonly accept = CLINICAL_ACCEPT;
+  /** Subir la foto sin comprimir (radiografía, microscopio) */
+  protected readonly original = signal(false);
   protected readonly kinds = Object.keys(ATTACHMENT_KIND_LABELS) as AttachmentKind[];
   protected readonly kindLabels = ATTACHMENT_KIND_LABELS;
   protected readonly kindIcons = KIND_ICONS;
@@ -331,6 +379,8 @@ export class PetDocumentsComponent {
   protected readonly files = signal<Attachment[]>([]);
   protected readonly consents = signal<ConsentSummary[]>([]);
   protected readonly activeFiles = computed(() => this.files().filter((a) => !a.voidedAt));
+  protected readonly images = computed(() => this.activeFiles().filter((a) => this.isImage(a)));
+  protected readonly documents = computed(() => this.activeFiles().filter((a) => !this.isImage(a)));
 
   protected readonly uploading = signal(false);
   protected readonly dragging = signal(false);
@@ -374,6 +424,7 @@ export class PetDocumentsComponent {
   protected openUpload(): void {
     this.file.set(null);
     this.fileError.set(null);
+    this.original.set(false);
     this.title.reset('');
     this.uploading.set(true);
   }
@@ -387,20 +438,25 @@ export class PetDocumentsComponent {
   protected pick(files: FileList | null): void {
     const f = files?.[0];
     if (!f) return;
-    if (!ACCEPT.includes(f.type)) {
-      this.fileError.set('Solo fotos (JPG, PNG, WebP) o PDF.');
-      return;
-    }
-    if (f.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
-      this.fileError.set(
-        `El archivo pesa ${fileSize(f.size)}: el máximo es ${MAX_ATTACHMENT_MB} MB.`,
-      );
+    const error = clinicalFileError(f, this.original());
+    if (error) {
+      this.fileError.set(error);
       return;
     }
     this.fileError.set(null);
     this.file.set(f);
     this.kind.setValue(f.type === 'application/pdf' ? 'LAB' : 'PHOTO');
     if (!this.title.value) this.title.setValue(f.name.replace(/\.[^.]+$/, '').slice(0, 150));
+  }
+
+  protected isPhotoFile(): boolean {
+    return this.file()?.type.startsWith('image/') ?? false;
+  }
+
+  protected setOriginal(value: boolean): void {
+    this.original.set(value);
+    const f = this.file();
+    this.fileError.set(f ? clinicalFileError(f, value) : null);
   }
 
   protected upload(): void {
@@ -413,6 +469,11 @@ export class PetDocumentsComponent {
       this.title.markAsTouched();
       return;
     }
+    const error = clinicalFileError(f, this.original());
+    if (error) {
+      this.fileError.set(error);
+      return;
+    }
     this.saving.set(true);
     this.api
       .upload(this.petId(), {
@@ -420,6 +481,7 @@ export class PetDocumentsComponent {
         kind: this.kind.value,
         title: this.title.value.trim(),
         visitId: this.visitId() ?? undefined,
+        original: this.original(),
       })
       .subscribe({
         next: (a) => {

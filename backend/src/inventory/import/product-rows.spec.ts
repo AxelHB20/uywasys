@@ -22,6 +22,12 @@ describe('importación de productos', () => {
     );
     expect(productFieldFor('Stock')).toBe('quantity');
     expect(productFieldFor('Vencimiento')).toBe('expiresAt');
+    expect(productFieldFor('Código')).toBe('code');
+    expect(productFieldFor('Código de barras')).toBe('barcode');
+    expect(productFieldFor('EAN')).toBe('barcode');
+    expect(productFieldFor('Precio con IGV')).toBe('price');
+    expect(productFieldFor('IGV (Gravado/Exonerado/Inafecto)')).toBe('igv');
+    expect(productFieldFor('IGV')).toBe('igv');
   });
 
   it('agrupa las presentaciones de un producto y lee precios y fechas', () => {
@@ -47,6 +53,7 @@ describe('importación de productos', () => {
       name: 'Caja x 100',
       factor: 100,
       price: 150,
+      barcode: null,
     });
     expect(rows[0].stock).toMatchObject({
       quantity: 2,
@@ -100,12 +107,174 @@ describe('importación de productos', () => {
       ],
       today,
     );
-    expect(med.errors).toContain(
-      'Con cantidad inicial, indica el lote y el vencimiento',
-    );
+    expect(med.errors).toContain('Con cantidad inicial, indica el vencimiento');
     expect(acc.status).toBe('ok');
     expect(old.errors).toContain(
       'Ese lote ya está vencido: no se puede ingresar',
     );
+  });
+
+  it('acepta plurales y abreviaturas en categoría y unidad', () => {
+    const [a, b] = validateProductRows(
+      [
+        row(2, {
+          name: 'Bravecto 10-20 kg',
+          category: 'Antiparasitarios',
+          baseUnit: 'Tabs',
+          presentation: 'Tableta',
+          factor: '1',
+          price: '120',
+        }),
+        row(3, {
+          name: 'Jeringa 3 ml',
+          category: 'INSUMOS',
+          baseUnit: 'Unid.',
+          presentation: 'Unidad',
+          factor: '1',
+          price: '1',
+        }),
+      ],
+      today,
+    );
+    expect(a.product).toMatchObject({
+      category: 'ANTIPARASITIC',
+      baseUnit: 'TABLET',
+    });
+    expect(b.product).toMatchObject({ category: 'SUPPLY', baseUnit: 'UNIT' });
+  });
+
+  it('dos lotes de la misma presentación: la segunda fila solo suma el lote', () => {
+    const other = { ...base, name: 'Otro producto' };
+    const third = { ...base, name: 'Tercer producto' };
+    const rows = validateProductRows(
+      [
+        row(2, {
+          ...base,
+          presentation: 'Caja x 100',
+          factor: '100',
+          price: '150',
+          quantity: '2',
+          lotNumber: 'L1',
+          expiresAt: '2027-03-31',
+          cost: '90',
+        }),
+        row(3, {
+          ...base,
+          presentation: 'Caja x 100',
+          factor: '100',
+          quantity: '1',
+          lotNumber: 'L2',
+          expiresAt: '2027-09-30',
+          cost: '92',
+        }),
+        row(4, { ...other, presentation: 'Caja', factor: '10', price: '5' }),
+        row(5, { ...other, presentation: 'Caja', factor: '10' }),
+        row(6, { ...third, presentation: 'Caja', factor: '10', price: '5' }),
+        row(7, {
+          ...third,
+          presentation: 'Caja',
+          factor: '50',
+          quantity: '1',
+          expiresAt: '2027-09-30',
+        }),
+      ],
+      today,
+    );
+    expect(rows[1]).toMatchObject({ extraLot: true, errors: [] });
+    expect(rows[1].warnings).toEqual([]);
+    expect(rows[3].errors[0]).toContain('para otro lote, pon su cantidad');
+    expect(rows[5].errors[0]).toContain('otra equivalencia o precio');
+  });
+
+  it('el lote es obligatorio solo en vacunas y controlados; alimento basta con vencimiento', () => {
+    const [food, vac, ctrl] = validateProductRows(
+      [
+        row(2, {
+          name: 'Alimento cachorro 3 kg',
+          category: 'Alimentos',
+          baseUnit: 'Unidad',
+          presentation: 'Bolsa 3 kg',
+          factor: '1',
+          price: '89',
+          quantity: '4',
+          expiresAt: '2027-05-01',
+          cost: '60',
+        }),
+        row(3, {
+          name: 'Nobivac Rabia',
+          category: 'Vacuna',
+          baseUnit: 'Unidad',
+          presentation: 'Dosis',
+          factor: '1',
+          price: '40',
+          quantity: '10',
+          expiresAt: '2027-05-01',
+        }),
+        row(4, {
+          name: 'Tramadol 50 mg',
+          category: 'Medicamento',
+          baseUnit: 'Tableta',
+          presentation: 'Tableta',
+          factor: '1',
+          price: '3',
+          controlled: 'Sí',
+          quantity: '20',
+          expiresAt: '2027-05-01',
+        }),
+      ],
+      today,
+    );
+    expect(food.status).toBe('ok');
+    expect(food.stock?.lotNumber).toBeNull();
+    expect(vac.errors[0]).toContain('indica el lote');
+    expect(ctrl.errors[0]).toContain('indica el lote');
+  });
+
+  it('lee el IGV y el código de barras; avisa sin bloquear si falta precio o costo o vence pronto', () => {
+    const rows = validateProductRows(
+      [
+        row(2, {
+          ...base,
+          presentation: 'Tableta',
+          factor: '1',
+          igv: 'Exonerado',
+          barcode: ' 7751234 ',
+          quantity: '10',
+          lotNumber: 'L1',
+          expiresAt: '2026-11-10',
+        }),
+        row(3, {
+          name: 'Otro',
+          category: 'Medicamento',
+          baseUnit: 'Tableta',
+          presentation: 'Tableta',
+          factor: '1',
+          price: '2',
+          barcode: '7751234',
+        }),
+        row(4, {
+          name: 'Tercero',
+          category: 'Medicamento',
+          baseUnit: 'Tableta',
+          presentation: 'Tableta',
+          factor: '1',
+          price: '2',
+          igv: 'Libre',
+        }),
+      ],
+      today,
+    );
+    expect(rows[0].status).toBe('ok');
+    expect(rows[0].product.igv).toBe('EXEMPT');
+    expect(rows[0].presentation.barcode).toBe('7751234');
+    expect(rows[0].warnings).toEqual([
+      'Vence en 14 días',
+      'Sin costo: el margen de este lote saldrá incompleto',
+      'Sin precio: no se podrá cobrar hasta ponérselo',
+    ]);
+    expect(rows[1].errors).toContain(
+      'El código de barras ya está en la fila 2',
+    );
+    expect(rows[2].errors[0]).toContain('IGV «Libre» no reconocido');
   });
 });

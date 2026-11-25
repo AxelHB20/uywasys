@@ -60,12 +60,14 @@
     <nav class="flex-1 overflow-y-auto px-3 pb-3">
       @for (group of groups(); track group.label; let first = $first) {
         <div [class.mt-5]="!first">
-          <p
-            class="px-3 pb-1.5 text-xs font-semibold text-slate-500"
-            [class.lg:hidden]="layout.collapsed()"
-          >
-            {{ group.label }}
-          </p>
+          @if (group.label) {
+            <p
+              class="px-3 pb-1.5 text-xs font-semibold text-slate-500"
+              [class.lg:hidden]="layout.collapsed()"
+            >
+              {{ group.label }}
+            </p>
+          }
           @if (!first) {
             <hr class="mx-3 mb-3 hidden border-slate-100" [class.lg:block]="layout.collapsed()" />
           }
@@ -74,10 +76,12 @@
               <li>
                 <a
                   [routerLink]="item.route"
-                  routerLinkActive="is-active bg-anil-600 text-white! shadow-sm shadow-anil-600/30 hover:bg-anil-600!"
-                  [routerLinkActiveOptions]="{ exact: !!item.exact }"
-                  #rla="routerLinkActive"
-                  [attr.aria-current]="rla.isActive ? 'page' : null"
+                  [class]="
+                    active() === item.route
+                      ? 'is-active bg-anil-600 text-white! shadow-sm shadow-anil-600/30 hover:bg-anil-600!'
+                      : ''
+                  "
+                  [attr.aria-current]="active() === item.route ? 'page' : null"
                   [attr.title]="layout.collapsed() ? item.label : null"
                   (click)="layout.closeMobile()"
                   class="group flex h-11 items-center gap-3 rounded-xl px-3 lg:h-10 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"

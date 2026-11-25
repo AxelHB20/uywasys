@@ -235,10 +235,12 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
   });
 
   it('valida los medios de pago y el monto', async () => {
-    await collect(cookies.cashier, {
+    // El código de Yape es opcional, pero si se escribe no puede ser muy corto
+    const short = await collect(cookies.cashier, {
       amount: 30,
-      payments: [{ method: 'YAPE', amount: 30 }],
+      payments: [{ method: 'YAPE', amount: 30, operationCode: '12' }],
     }).expect(400);
+    expect(short.body.message).toContain('al menos 4');
     await collect(cookies.cashier, {
       amount: 30,
       payments: [{ method: 'CASH', amount: 20 }],
@@ -272,7 +274,7 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
       ]),
     ).toEqual([
       ['Consulta general', 50],
-      ['Pipeta antipulgas · Unidad', 30],
+      ['Pipeta antipulgas', 30],
     ]);
 
     const acc = await account();
@@ -280,7 +282,7 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
     expect(
       acc.pending.map((c) => [c.description, c.paidAmount, c.balance]),
     ).toEqual([
-      ['Pipeta antipulgas · Unidad', 30, 15],
+      ['Pipeta antipulgas', 30, 15],
       ['Vacunación', 0, 60],
     ]);
   });
@@ -327,6 +329,9 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
         charges: 2,
       }),
     ]);
+    // Con la mascota y de dónde viene la deuda, para reconocerlo en caja
+    // De dónde viene la deuda (aquí, cargos sin atención: mostrador)
+    expect(res.body[0]).toMatchObject({ pets: [], sources: ['COUNTER'] });
     await http()
       .get('/api/cash/pending')
       .set('Cookie', cookies.vet)
@@ -375,6 +380,14 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
       .expect(201);
     expect(retry.body.receipt.id).toBe(res.body.receipt.id);
     expect(await stock(ids.pipette)).toBe(before - 1);
+    // El kardex dice a quién se vendió (no repite el nombre del producto)
+    const kardex = await http()
+      .get(`/api/inventory/products/${ids.pipette}/movements`)
+      .set('Cookie', cookies.admin)
+      .expect(200);
+    expect(kardex.body.items[0].sale).toMatchObject({
+      client: 'Cliente varios',
+    });
 
     const list = await http()
       .get('/api/clients')
@@ -385,7 +398,7 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
     );
   });
 
-  it('mostrador: sin deuda para anónimos, identificar desde S/ 700 y nada si falta stock', async () => {
+  it('mostrador: sin deuda para anónimos, identificar desde S/ 700.01 y nada si falta stock', async () => {
     const receipts = await prisma.receipt.count({
       where: { clinicId: clinicIds[0] },
     });
@@ -405,7 +418,7 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
     const big = await sell([monitor], [{ method: 'CARD', amount: 800 }]).expect(
       400,
     );
-    expect(big.body.message).toContain('Desde S/ 700');
+    expect(big.body.message).toContain('Más de S/ 700');
     await sell(
       [
         {
@@ -433,6 +446,20 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
   });
 
   it('egresos de caja chica: registra el personal de caja, anula solo el administrador', async () => {
+    // No puede salir más efectivo del que hay en el cajón
+    const live = await http()
+      .get('/api/cash/sessions/current')
+      .set('Cookie', cookies.reception)
+      .expect(200);
+    const tooMuch = await http()
+      .post('/api/cash/expenses')
+      .set('Cookie', cookies.reception)
+      .send({
+        amount: live.body.expectedCash + 0.01,
+        reason: 'Más de lo que hay',
+      })
+      .expect(400);
+    expect(tooMuch.body.message).toContain('en efectivo en caja');
     await http()
       .post('/api/cash/expenses')
       .set('Cookie', cookies.reception)
@@ -543,6 +570,26 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
       ['YAPE', 30, 30],
       ['CARD', 45, 0],
     ]);
+    const yape = live.body.byMethod.find(
+      (m: { method: string }) => m.method === 'YAPE',
+    );
+    expect(yape).toMatchObject({ payments: 1, withoutCode: 0 });
+    // El cobro dividido muestra sus dos medios
+    const mixed = live.body.receipts.find(
+      (r: { id: number }) => r.id === ids.receipt,
+    );
+    expect(
+      mixed.payments.map(
+        (p: { method: string; amount: number; hasCode: boolean }) => [
+          p.method,
+          p.amount,
+          p.hasCode,
+        ],
+      ),
+    ).toEqual([
+      ['CASH', 50, false],
+      ['YAPE', 30, true],
+    ]);
 
     const url = `/api/cash/sessions/${ids.session}/close`;
     const noNote = await http()
@@ -598,7 +645,45 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
       .set('Cookie', cookies.groomer)
       .expect(200);
     // 50 + 30 + 10 + 45 cobrados − 80 devueltos; cobros vigentes: el de 10 y el de mostrador
-    expect(dash.body.sales).toEqual({ total: 55, receipts: 2 });
+    // Los anulados hoy salen de "cobrado"; "devuelto" es solo por cobros de días anteriores
+    expect(dash.body.sales).toEqual({
+      total: 55,
+      collected: 55,
+      refunded: 0,
+      receipts: 2,
+    });
+    // Anular hoy un cobro de ayer: no toca lo cobrado hoy y sale aparte como devuelto
+    const refund = await prisma.cashMovement.findFirstOrThrow({
+      where: {
+        clinicId: clinicIds[0],
+        kind: 'REFUND',
+        receiptId: { not: null },
+      },
+      orderBy: { id: 'asc' },
+    });
+    const older = await prisma.receipt.findUniqueOrThrow({
+      where: { id: refund.receiptId! },
+    });
+    await prisma.receipt.update({
+      where: { id: older.id },
+      data: { createdAt: new Date(Date.now() - 2 * 86_400_000) },
+    });
+    const later = await http()
+      .get('/api/dashboard')
+      .set('Cookie', cookies.groomer)
+      .expect(200);
+    const back = await prisma.cashMovement.aggregate({
+      where: { receiptId: older.id, kind: 'REFUND', voidedAt: null },
+      _sum: { amount: true },
+    });
+    expect(later.body.sales).toMatchObject({
+      collected: 55,
+      refunded: Number(back._sum.amount),
+    });
+    await prisma.receipt.update({
+      where: { id: older.id },
+      data: { createdAt: older.createdAt },
+    });
     expect(dash.body.clients.active).toBe(1);
 
     await http()
@@ -613,6 +698,60 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
     expect(report.body.days).toEqual([
       { day: today, collected: 135, refunded: 80, net: 55 },
     ]);
+  });
+
+  it('cobro con productos agregados en caja: un comprobante, se pagan primero y se devuelven al anular', async () => {
+    // La caja del día se cerró en el arqueo: se abre otra
+    const open = await http()
+      .post('/api/cash/sessions')
+      .set('Cookie', cookies.cashier)
+      .send({ openingAmount: 0 });
+    expect([201, 409]).toContain(open.status);
+    const before = await account();
+    const [bed, bedPres] = await product(`Cama e2e ${stamp}`, 110, 3);
+    const items = [{ productId: bed, presentationId: bedPres, quantity: 1 }];
+    const first = before.pending[0];
+    const charge = { id: first.id, balance: first.balance };
+
+    // El abono no puede dejar sin pagar lo agregado
+    const short = await collect(cookies.cashier, {
+      chargeIds: [charge.id],
+      items,
+      amount: 100,
+      payments: [{ method: 'YAPE', amount: 100 }],
+    }).expect(409);
+    expect(short.body.message).toContain('lo agregado en caja (S/ 110.00)');
+    expect(await stock(bed)).toBe(3);
+
+    // Cargo pendiente + cama: un solo cobro y un solo comprobante
+    const total = 110 + charge.balance;
+    const res = await collect(cookies.cashier, {
+      chargeIds: [charge.id],
+      items,
+      payments: [{ method: 'YAPE', amount: total }],
+    }).expect(201);
+    expect(res.body.totals.paid).toBe(total);
+    const lines = res.body.lines as {
+      description: string;
+      returnable: boolean;
+    }[];
+    expect(lines).toHaveLength(2);
+    expect(lines.filter((l) => l.returnable).map((l) => l.description)).toEqual(
+      [expect.stringContaining('Cama e2e')],
+    );
+    expect(await stock(bed)).toBe(2);
+    expect((await account()).pendingTotal).toBe(
+      before.pendingTotal - charge.balance,
+    );
+
+    // Anular devolviendo lo vendido: la cama vuelve al stock y no queda como deuda
+    await http()
+      .post(`/api/cash/receipts/${res.body.id}/void`)
+      .set('Cookie', cookies.admin)
+      .send({ reason: 'Devolvió la cama', returnProducts: true })
+      .expect(201);
+    expect(await stock(bed)).toBe(3);
+    expect((await account()).pendingTotal).toBe(before.pendingTotal);
   });
 
   it('otra clínica no ve ni toca la caja, los cobros ni los clientes ajenos', async () => {

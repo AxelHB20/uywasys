@@ -10,7 +10,7 @@ export class DashboardController {
 
   @Get()
   summary(@CurrentUser() user: AuthUser): Promise<DashboardSummary> {
-    return this.dashboard.summary(user.clinicId);
+    return this.dashboard.summary(user);
   }
 
   /** Avisos de la campana del encabezado (según el rol) */

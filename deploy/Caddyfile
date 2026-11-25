@@ -21,12 +21,16 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "DENY"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Es la app privada de las clínicas: fuera de los buscadores (la página de venta irá aparte)
+		X-Robots-Tag "noindex, nofollow"
 		-Server
 	}
 
 	# Los archivos con huella en el nombre no cambian nunca; index.html siempre se revisa
 	@hashed path_regexp [-.][A-Za-z0-9]{8,}\.(js|css|woff2?)$
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@manifest path *.webmanifest
+	header @manifest Content-Type "application/manifest+json"
 	@index path / /index.html
 	header @index Cache-Control "no-cache"
 

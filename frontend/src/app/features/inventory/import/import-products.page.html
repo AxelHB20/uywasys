@@ -1,11 +1,6 @@
 <section class="mx-auto max-w-5xl space-y-6">
   <div>
-    <a
-      routerLink="/inventario"
-      class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-    >
-      <app-icon name="chevron-left" class="size-4" /> Inventario
-    </a>
+    <app-back-link fallback="/inventario" fallbackLabel="Inventario" />
     <h1 class="font-display text-2xl font-semibold text-slate-900">
       Importar productos desde Excel
     </h1>
@@ -62,7 +57,8 @@
               </li>
               <li class="flex gap-2">
                 <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />El stock
-                inicial es opcional y va con lote y vencimiento (salvo accesorios).
+                inicial es opcional y va con su vencimiento; el lote es obligatorio solo en vacunas
+                y controlados. ¿Dos lotes? Repite la fila con el otro lote.
               </li>
               <li class="flex gap-2">
                 <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />Antes de
@@ -217,7 +213,7 @@
                 [attr.aria-selected]="filter() === 'problems'"
                 (click)="filter.set('problems')"
               >
-                Con observaciones ({{ p.summary.errors + p.summary.exists }})
+                Para revisar ({{ remarks() }})
               </button>
               <button
                 type="button"
@@ -238,8 +234,9 @@
                 >
                   <tr>
                     <th scope="col" class="px-4 py-2.5">Fila</th>
-                    <th scope="col" class="px-4 py-2.5">Cliente</th>
-                    <th scope="col" class="px-4 py-2.5">Mascota</th>
+                    <th scope="col" class="px-4 py-2.5">Producto</th>
+                    <th scope="col" class="px-4 py-2.5">Presentación</th>
+                    <th scope="col" class="px-4 py-2.5">Stock inicial</th>
                     <th scope="col" class="px-4 py-2.5">Estado</th>
                   </tr>
                 </thead>
@@ -257,29 +254,56 @@
                           @if (r.product.controlled) {
                             · Controlado
                           }
+                          @if (r.product.igv !== 'TAXED') {
+                            · {{ igvLabels[r.product.igv] }}
+                          }
                         </p>
                       </td>
                       <td class="px-4 py-3 text-slate-700">
                         <p>{{ r.presentation.name || '—' }}</p>
-                        <p class="text-xs text-slate-500 tabular-nums">
-                          = {{ units(r, 1) }} · {{ money(r.presentation.price) }}
-                        </p>
+                        @if (r.extraLot) {
+                          <p class="text-xs text-slate-500">Otro lote de esta presentación</p>
+                        } @else {
+                          <p class="text-xs text-slate-500 tabular-nums">
+                            = {{ units(r, 1) }} ·
+                            {{
+                              r.presentation.price === null
+                                ? 'sin precio'
+                                : money(r.presentation.price)
+                            }}
+                          </p>
+                          @if (r.presentation.barcode) {
+                            <p class="text-xs text-slate-500 tabular-nums">
+                              Cód. barras {{ r.presentation.barcode }}
+                            </p>
+                          }
+                        }
                       </td>
                       <td class="px-4 py-3 text-slate-700">
                         @if (r.stock; as st) {
                           <p class="tabular-nums">{{ st.quantity }} × {{ r.presentation.name }}</p>
                           <p class="text-xs text-slate-500">
-                            Lote {{ st.lotNumber ?? '—' }} ·
+                            {{ st.lotNumber ? 'Lote ' + st.lotNumber : 'Sin lote' }} ·
                             {{ (st.expiresAt | fecha: 'calendar') || 'no vence' }}
                           </p>
+                          @if (st.supplier) {
+                            <p class="text-xs text-slate-500">{{ st.supplier }}</p>
+                          }
                         } @else {
                           <span class="text-slate-400">—</span>
                         }
                       </td>
                       <td class="px-4 py-3">
-                        <app-badge [tone]="status[r.status].tone">{{
-                          status[r.status].label
-                        }}</app-badge>
+                        @if (r.status === 'ok' && r.warnings.length) {
+                          <app-badge tone="warning">Lista, con aviso</app-badge>
+                        } @else {
+                          <app-badge [tone]="status[r.status].tone">{{
+                            status[r.status].label
+                          }}</app-badge>
+                        }
+                        @for (w of r.warnings; track $index) {
+                          <p class="mt-1 text-xs text-amber-800">{{ w }}</p>
+                        }
                         @for (e of r.errors; track $index) {
                           <p
                             class="mt-1 text-xs"

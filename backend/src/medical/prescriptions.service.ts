@@ -82,7 +82,7 @@ export class PrescriptionsService {
     const prep: ChargePrep = await this.charges.prepare(actor);
     if (!prep.licenseNumber)
       throw new ForbiddenException(
-        'Para emitir recetas registra tu N.º de colegiatura (CMVP) en Usuarios',
+        'Para emitir recetas falta tu N.º de colegiatura (CMVP): el administrador lo agrega en Usuarios, editando tu usuario',
       );
     for (const item of dto.items)
       if (item.dispenseQuantity != null && !item.productId)
@@ -277,7 +277,19 @@ export class PrescriptionsService {
         vetId: true,
         voidedAt: true,
         visitId: true,
-        items: { select: { charge: { select: { status: true } } } },
+        number: true,
+        items: {
+          select: {
+            charge: {
+              select: {
+                id: true,
+                status: true,
+                description: true,
+                total: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!current) throw new NotFoundException('La receta no existe');
@@ -287,18 +299,47 @@ export class PrescriptionsService {
       );
     if (current.voidedAt)
       throw new ConflictException('La receta ya está anulada');
-    if (current.items.some((i) => i.charge && i.charge.status !== 'VOID'))
-      throw new ConflictException(
-        'Primero quita de la atención lo que se entregó con esta receta',
-      );
-    await this.prisma.prescription.update({
-      where: { id },
-      data: {
-        voidedAt: new Date(),
-        voidedById: actor.id,
-        voidReason: dto.reason,
+    // Lo entregado con la receta se quita de la cuenta y vuelve a su lote, en la misma operación
+    const delivered = current.items.flatMap((i) =>
+      i.charge && i.charge.status !== 'VOID' ? [i.charge] : [],
+    );
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const charge of delivered)
+          await this.charges.voidInTx(
+            tx,
+            actor,
+            charge.id,
+            `Receta ${prescriptionCode(current.number)} anulada: ${dto.reason}`.slice(
+              0,
+              200,
+            ),
+          );
+        await tx.prescription.update({
+          where: { id },
+          data: {
+            voidedAt: new Date(),
+            voidedById: actor.id,
+            voidReason: dto.reason,
+          },
+        });
       },
-    });
+      { timeout: 20_000 },
+    );
+    for (const charge of delivered)
+      await this.audit.log({
+        clinicId: actor.clinicId,
+        userId: actor.id,
+        action: 'charge.void',
+        entity: 'charge',
+        entityId: charge.id,
+        ip,
+        data: {
+          description: charge.description,
+          total: Number(charge.total),
+          reason: `Receta anulada: ${dto.reason}`,
+        },
+      });
     await this.audit.log({
       clinicId: actor.clinicId,
       userId: actor.id,

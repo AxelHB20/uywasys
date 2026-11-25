@@ -1,2 +1,4 @@
 # Todos los días a las 03:15 (hora de Lima)
 15 3 * * * /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1
+# Revisión de rendimiento: lunes 07:10
+10 7 * * 1 /usr/local/bin/perf-check.sh >> /proc/1/fd/1 2>&1

@@ -1,41 +1,121 @@
-<section class="space-y-6">
-  <div>
-    <h1 class="font-display text-2xl font-semibold text-slate-900">Atenciones</h1>
-    <p class="mt-1 text-slate-600">
-      Lo que se le hizo a cada mascota. Para atender a alguien nuevo, ponlo en la cola o ábrelo
-      desde su ficha.
-    </p>
+<section class="space-y-5">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Atenciones</h1>
+      <p class="mt-1 text-sm text-pretty text-slate-600">
+        Consultas e internamientos. Para atender a alguien nuevo, ponlo en la cola o ábrelo desde su
+        ficha; el grooming se maneja en su tablero.
+      </p>
+    </div>
+    <div class="relative lg:w-80">
+      <label for="visits-q" class="sr-only">Buscar por mascota o dueño</label>
+      <app-icon
+        name="search"
+        class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-500"
+      />
+      <input
+        id="visits-q"
+        type="search"
+        [formControl]="search"
+        class="field-input mt-0 pl-10"
+        placeholder="Mascota, dueño, DNI o celular"
+        autocomplete="off"
+        maxlength="60"
+      />
+    </div>
   </div>
 
-  <div class="flex gap-2" role="tablist" aria-label="Filtrar atenciones">
-    <button
-      type="button"
-      role="tab"
-      class="btn h-10"
-      [class]="tab() === 'open' ? 'btn-primary' : 'btn-secondary'"
-      [attr.aria-selected]="tab() === 'open'"
-      (click)="setTab('open')"
-    >
-      Abiertas
-    </button>
-    <button
-      type="button"
-      role="tab"
-      class="btn h-10"
-      [class]="tab() === 'all' ? 'btn-primary' : 'btn-secondary'"
-      [attr.aria-selected]="tab() === 'all'"
-      (click)="setTab('all')"
-    >
-      Todas
-    </button>
+  <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Filtros de estado: botones con aria-pressed (no pestañas: no hay paneles) -->
+      <div class="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="Estado">
+        @for (v of views; track v.id) {
+          @if (v.id !== 'stale' || stale() > 0 || view() === 'stale') {
+            <button
+              type="button"
+              class="inline-flex h-11 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors sm:h-10"
+              [class]="
+                view() === v.id
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              "
+              [attr.aria-pressed]="view() === v.id"
+              (click)="setView(v.id)"
+            >
+              {{ v.label }}
+              @if (v.id === 'open' && openCount() !== null) {
+                <span class="text-slate-500 tabular-nums">{{ openCount() }}</span>
+              }
+              @if (v.id === 'stale') {
+                <span
+                  class="min-w-6 rounded-full bg-rose-600 px-1.5 text-xs leading-5 font-semibold text-white tabular-nums"
+                  >{{ stale() }}<span class="sr-only"> abiertas de otros días</span></span
+                >
+              }
+            </button>
+          }
+        }
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      @if (attendants().length > 1) {
+        <label for="visits-vet" class="sr-only">Quién atendió</label>
+        <select
+          id="visits-vet"
+          class="field-input mt-0 h-11 w-full sm:w-auto sm:min-w-44"
+          [value]="vetId() ?? ''"
+          (change)="setVet($any($event.target).value)"
+        >
+          <option value="">Todos los veterinarios</option>
+          @for (s of attendants(); track s.id) {
+            <option [value]="s.id" [selected]="vetId() === s.id">{{ s.fullName }}</option>
+          }
+        </select>
+      }
+      <label for="visits-day" class="sr-only">Día</label>
+      <input
+        id="visits-day"
+        type="date"
+        class="field-input mt-0 h-11 w-full sm:w-auto"
+        [max]="today"
+        [value]="day() ?? ''"
+        (change)="setDay($any($event.target).value)"
+      />
+      @if (filtered()) {
+        <button type="button" class="btn btn-ghost h-11" (click)="clearFilters()">
+          <app-icon name="x" class="size-4" /> Limpiar
+        </button>
+      }
+    </div>
   </div>
 
-  @if (list.isLoading() && !items().length) {
+  @if (view() === 'open' && stale() > 0) {
+    <div
+      class="flex items-center gap-3 rounded-2xl bg-rose-50 p-3 text-sm text-rose-900 ring-1 ring-rose-200 sm:p-4"
+      role="status"
+    >
+      <app-icon name="alert" class="size-5 shrink-0 text-rose-600" />
+      <p class="flex-1">
+        <strong>
+          {{ stale() === 1 ? '1 atención sigue abierta' : stale() + ' atenciones siguen abiertas' }}
+        </strong>
+        desde días anteriores.
+        <span class="hidden sm:inline">Ciérralas para que se puedan cobrar.</span>
+      </p>
+      <button type="button" class="btn btn-secondary h-10 shrink-0 px-3" (click)="setView('stale')">
+        Ver cuáles
+      </button>
+    </div>
+  }
+
+  @if (list.isLoading() && !data()) {
     <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando atenciones">
       @for (i of [1, 2, 3]; track i) {
         <div class="flex items-center gap-4 p-5">
+          <div class="size-10 animate-pulse rounded-xl bg-slate-100"></div>
           <div class="h-4 w-56 animate-pulse rounded bg-slate-100"></div>
-          <div class="ml-auto h-4 w-16 animate-pulse rounded bg-slate-100"></div>
+          <div class="ml-auto h-4 w-20 animate-pulse rounded bg-slate-100"></div>
         </div>
       }
     </div>
@@ -50,48 +130,107 @@
   } @else if (!items().length) {
     <div class="card flex flex-col items-center px-6 py-14 text-center">
       <span class="grid size-14 place-items-center rounded-2xl bg-anil-50 text-anil-700"
-        ><app-icon name="stethoscope" class="size-7"
+        ><app-icon [name]="filtered() ? 'search' : 'stethoscope'" class="size-7"
       /></span>
-      <p class="mt-4 font-medium text-slate-900">
-        {{ tab() === 'open' ? 'No hay atenciones abiertas' : 'Aún no hay atenciones' }}
-      </p>
-      <a routerLink="/cola" class="btn btn-secondary mt-5">Ir a la cola de hoy</a>
+      @if (filtered()) {
+        <p class="mt-4 font-medium text-slate-900">Nada con esos filtros</p>
+        <button type="button" class="btn btn-secondary mt-5" (click)="clearFilters()">
+          Limpiar filtros
+        </button>
+      } @else {
+        <p class="mt-4 font-medium text-slate-900">
+          {{
+            view() === 'open'
+              ? 'No hay atenciones abiertas'
+              : view() === 'stale'
+                ? 'Ya no quedan abiertas de otros días'
+                : 'Aún no hay atenciones'
+          }}
+        </p>
+        <a routerLink="/cola" class="btn btn-secondary mt-5">Ir a la cola de hoy</a>
+      }
     </div>
   } @else {
-    <ul class="card divide-y divide-slate-100">
-      @for (v of items(); track v.id) {
-        <li>
-          <a
-            [routerLink]="['/atenciones', v.id]"
-            class="flex items-center gap-4 px-5 py-4 hover:bg-slate-50"
+    <div class="space-y-4" [class.opacity-60]="list.isLoading()">
+      @for (g of groups(); track g.day) {
+        <section [attr.aria-labelledby]="'day-' + g.day">
+          <h2
+            [id]="'day-' + g.day"
+            class="mb-2 px-1 text-xs font-semibold tracking-wide text-slate-600 uppercase"
           >
-            <span
-              class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700"
-              aria-hidden="true"
-              ><app-icon [name]="icons[v.pet.species]" class="size-5"
-            /></span>
-            <div class="min-w-0 flex-1">
-              <p class="font-medium text-slate-900">
-                {{ v.pet.name }}
-                <span class="text-sm font-normal text-slate-500">· {{ v.client.name }}</span>
-              </p>
-              <p class="truncate text-sm text-slate-500">
-                <span [class]="isOld(v) ? 'font-medium text-amber-700' : ''">{{ day(v) }}</span>
-                {{ v.openedAt | fecha: 'time' }}
-                · {{ v.attendedBy.fullName }}
-                @if (v.reason) {
-                  · {{ v.reason }}
-                }
-              </p>
-            </div>
-            <div class="shrink-0 text-right">
-              <p class="font-semibold text-slate-900 tabular-nums">{{ money(v.total) }}</p>
-              <app-badge [tone]="tone[v.status]" class="mt-1">{{ labels[v.status] }}</app-badge>
-            </div>
-          </a>
-        </li>
+            {{ g.label }}
+            <span class="font-normal text-slate-500 normal-case">
+              · {{ g.items.length }} {{ g.items.length === 1 ? 'atención' : 'atenciones' }}</span
+            >
+          </h2>
+          <ul class="card divide-y divide-slate-100">
+            @for (v of g.items; track v.id) {
+              @let s = state(v);
+              @let h = headline(v);
+              @let pay = payment(v);
+              <li>
+                <a
+                  [routerLink]="['/atenciones', v.id]"
+                  class="flex items-start gap-3 px-4 py-4 hover:bg-slate-50 sm:items-center sm:gap-4 sm:px-5"
+                >
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700"
+                    aria-hidden="true"
+                    ><app-icon [name]="icons[v.pet.species]" class="size-5"
+                  /></span>
+                  <div class="min-w-0 flex-1">
+                    <p class="flex flex-wrap items-baseline gap-x-2">
+                      <span class="font-semibold text-slate-900">{{ v.pet.name }}</span
+                      >&ngsp;
+                      @if (v.type === 'HOSPITALIZATION' && v.status !== 'OPEN') {
+                        <span
+                          class="rounded-md bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-800 ring-1 ring-violet-600/20"
+                          >Internamiento</span
+                        >&ngsp;
+                      }
+                      <span
+                        class="min-w-0 truncate pr-0.5"
+                        [class]="h.muted ? 'text-sm text-slate-500 italic' : 'text-slate-800'"
+                        >{{ h.text }}</span
+                      >
+                    </p>
+                    <p class="mt-0.5 text-sm text-slate-600 sm:truncate">
+                      {{ v.client.name }} · {{ v.attendedBy.fullName }} ·
+                      <span class="tabular-nums">{{ v.openedAt | fecha: 'time' }}</span>
+                    </p>
+                    <!-- Celular: el estado y el cobro en su propia línea, sin cortar a quién atendió -->
+                    <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 sm:hidden">
+                      <span
+                        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset"
+                        [class]="s.classes"
+                        >{{ s.label }}</span
+                      >
+                      @if (pay) {
+                        <span class="text-sm tabular-nums" [class]="pay.classes">{{
+                          pay.label
+                        }}</span>
+                      }
+                    </p>
+                  </div>
+                  <div class="hidden shrink-0 flex-col items-end gap-1.5 text-right sm:flex">
+                    <span
+                      class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset"
+                      [class]="s.classes"
+                      >{{ s.label }}</span
+                    >
+                    @if (pay) {
+                      <span class="text-sm tabular-nums" [class]="pay.classes">{{
+                        pay.label
+                      }}</span>
+                    }
+                  </div>
+                </a>
+              </li>
+            }
+          </ul>
+        </section>
       }
-    </ul>
+    </div>
     @if (pages() > 1) {
       <nav class="flex items-center justify-between" aria-label="Páginas">
         <button

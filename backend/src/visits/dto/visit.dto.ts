@@ -8,6 +8,7 @@ import {
   IsString,
   Length,
   Max,
+  Matches,
   MaxLength,
   Min,
   ValidateIf,
@@ -174,4 +175,33 @@ export class ListVisitsQuery {
   @IsInt()
   @Min(1)
   page?: number;
+
+  /** Consultas o grooming */
+  @IsOptional()
+  @IsIn(['CONSULTATION', 'GROOMING'])
+  type?: VisitType;
+
+  /** Mascota o dueño (nombre, DNI, celular) */
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  vetId?: number;
+
+  /** Día de apertura (AAAA-MM-DD, hora de la clínica) */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha no es válida' })
+  day?: string;
+
+  /** Solo las abiertas desde un día anterior (plata sin cobrar) */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  stale?: boolean;
 }

@@ -20,7 +20,11 @@ import {
   ListEstimatesQuery,
 } from './dto/estimate.dto.js';
 import { EstimatesService } from './estimates.service.js';
-import type { EstimatePrint, EstimateView } from './estimates.service.js';
+import type {
+  EstimatePrint,
+  EstimatesSummary,
+  EstimateView,
+} from './estimates.service.js';
 
 /** Presupuestos: todos los ven; los emiten y gestionan veterinario, recepción y administrador. */
 @Controller('estimates')
@@ -33,6 +37,11 @@ export class EstimatesController {
     @Query() query: ListEstimatesQuery,
   ): Promise<EstimateView[]> {
     return this.estimates.list(user.clinicId, query);
+  }
+
+  @Get('summary')
+  summary(@CurrentUser() user: AuthUser): Promise<EstimatesSummary> {
+    return this.estimates.summary(user.clinicId);
   }
 
   @Get(':id')

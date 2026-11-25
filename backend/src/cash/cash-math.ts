@@ -13,8 +13,11 @@ export const METHOD_LABELS: Record<PaymentMethod, string> = {
   TRANSFER: 'Transferencia',
 };
 
-/** Medios que exigen el código de operación para poder verificarlos después */
-const NEEDS_CODE: PaymentMethod[] = ['YAPE', 'PLIN', 'TRANSFER'];
+/**
+ * Medios con código de operación. Es opcional (el dueño no siempre lo tiene); los que
+ * entran sin código se cuentan al cerrar la caja para revisarlos en la app.
+ */
+export const NEEDS_CODE: PaymentMethod[] = ['YAPE', 'PLIN', 'TRANSFER'];
 
 export interface PaymentInput {
   method: PaymentMethod;
@@ -30,7 +33,7 @@ export interface PaymentLine {
   operationCode: string | null;
 }
 
-const soles = (d: Decimal) => `S/ ${d.toFixed(2)}`;
+export const soles = (d: Decimal) => `S/ ${d.toFixed(2)}`;
 
 /**
  * Revisa los medios de pago de un cobro: deben sumar exactamente lo que se cobra.
@@ -63,9 +66,9 @@ export function checkPayments(
     }
     if (p.tendered != null)
       throw new BadRequestException('Solo el efectivo tiene vuelto');
-    if (NEEDS_CODE.includes(p.method) && (!code || code.length < 4))
+    if (NEEDS_CODE.includes(p.method) && code && code.length < 4)
       throw new BadRequestException(
-        `Ingresa el código de operación de ${METHOD_LABELS[p.method]}`,
+        `El código de ${METHOD_LABELS[p.method]} debe tener al menos 4 caracteres; si no lo tiene, déjalo vacío`,
       );
     return { method: p.method, amount, tendered: null, operationCode: code };
   });

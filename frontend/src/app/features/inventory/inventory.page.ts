@@ -6,6 +6,7 @@ import {
   inject,
   input,
   signal,
+  Signal,
 } from '@angular/core';
 import { rxResource, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -18,11 +19,14 @@ import {
   of,
   startWith,
   switchMap,
+  Observable,
 } from 'rxjs';
 import { SessionService } from '../../core/auth/session.service';
 import {
   CATEGORIES,
+  CATEGORY_ICON,
   CATEGORY_LABELS,
+  CATEGORY_TINT,
   ProductCategory,
   ProductPage,
   ProductSummary,
@@ -33,18 +37,28 @@ import { InventoryService } from '../../core/services/inventory.service';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { IconName } from '../../shared/ui/icon/icons';
-import { EXPIRY_BADGE, expiryText, money, readableStock } from '../../shared/utils/stock';
+import {
+  baseTotal,
+  EXPIRY_BADGE,
+  expiryText,
+  money,
+  readableStock,
+} from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
+import { InventoryTabsComponent } from './inventory-tabs.component';
 import { ShortagesPanelComponent } from './shortages-panel.component';
 
 type LoadState =
   { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; data: ProductPage };
 
+const FILTERS: StockFilter[] = ['low', 'expiring', 'expired', 'exp30', 'exp60'];
+
 @Component({
   selector: 'app-inventory-page',
   imports: [
     FechaPipe,
+    InventoryTabsComponent,
     ShortagesPanelComponent,
     ReactiveFormsModule,
     RouterLink,
@@ -59,8 +73,9 @@ export class InventoryPage {
   private readonly router = inject(Router);
   private readonly session = inject(SessionService);
 
-  /** Query params: ?q=&categoria=&filtro=&page= */
+  /** Query params: ?q=&categoria=&filtro=&estado=&page= */
   readonly q = input<string>();
+  readonly estado = input<string>();
   readonly categoria = input<string>();
   readonly filtro = input<string>();
   readonly page = input<string>();
@@ -69,6 +84,9 @@ export class InventoryPage {
   protected readonly categoryLabels = CATEGORY_LABELS;
   protected readonly expiryBadge = EXPIRY_BADGE;
   protected readonly expiryText = expiryText;
+  protected readonly money = money;
+  protected readonly categoryIcon = CATEGORY_ICON;
+  protected readonly categoryTint = CATEGORY_TINT;
   protected readonly canManage = computed(() =>
     STOCK_ROLES.includes(this.session.role() ?? 'CASHIER'),
   );
@@ -83,18 +101,29 @@ export class InventoryPage {
     category: (CATEGORIES as string[]).includes(this.categoria() ?? '')
       ? (this.categoria() as ProductCategory)
       : null,
-    filter: (['low', 'expiring'].includes(this.filtro() ?? '')
-      ? this.filtro()
-      : 'all') as StockFilter,
+    filter: (FILTERS.includes(this.filtro() as StockFilter) ? this.filtro() : 'all') as StockFilter,
+    // Inactivos solo para quien gestiona el inventario
+    status: (this.canManage() && (this.estado() === 'inactivos' || this.estado() === 'todos')
+      ? { inactivos: 'inactive', todos: 'all' }[this.estado()!]
+      : 'active') as 'active' | 'inactive' | 'all',
     page: Math.max(1, Number(this.page()) || 1),
     retry: this.retry(),
   }));
   protected readonly filter = computed(() => this.query().filter);
+  protected readonly status = computed(() => this.query().status);
+  protected readonly filterLabels: Record<StockFilter, string> = {
+    all: '',
+    low: 'Stock bajo',
+    expiring: 'Por vencer (60 días) o vencidos',
+    expired: 'Lotes vencidos',
+    exp30: 'Vencen en 30 días',
+    exp60: 'Vencen en 31 a 60 días',
+  };
 
-  protected readonly state = toSignal(
+  protected readonly state: Signal<LoadState> = toSignal(
     toObservable(this.query).pipe(
-      switchMap((query) =>
-        this.inventory.list(query).pipe(
+      switchMap((query): Observable<LoadState> => {
+        const request = this.inventory.list(query).pipe(
           map((data): LoadState => ({ kind: 'ready', data })),
           catchError((error: unknown) =>
             of<LoadState>({
@@ -102,9 +131,13 @@ export class InventoryPage {
               message: apiErrorMessage(error, 'No se pudo cargar el inventario.'),
             }),
           ),
-          startWith<LoadState>({ kind: 'loading' }),
-        ),
-      ),
+        );
+        // Solo la primera vez se muestra "cargando": al filtrar, la lista anterior se queda hasta
+        // que llega la nueva (la página no se achica ni salta arriba)
+        return this.state?.().kind === 'ready'
+          ? request
+          : request.pipe(startWith<LoadState>({ kind: 'loading' }));
+      }),
     ),
     { initialValue: { kind: 'loading' } as LoadState },
   );
@@ -126,21 +159,21 @@ export class InventoryPage {
       {
         label: 'Lotes vencidos',
         value: a?.expired ?? null,
-        filter: 'expiring',
+        filter: 'expired',
         icon: 'alert',
         tint: 'bg-rose-50 text-rose-700',
       },
       {
         label: 'Vencen en 30 días',
         value: a?.red ?? null,
-        filter: 'expiring',
+        filter: 'exp30',
         icon: 'clock',
         tint: 'bg-rose-50 text-rose-700',
       },
       {
         label: 'Vencen en 31 a 60 días',
         value: a?.yellow ?? null,
-        filter: 'expiring',
+        filter: 'exp60',
         icon: 'clock',
         tint: 'bg-maiz-100 text-amber-800',
       },
@@ -166,7 +199,11 @@ export class InventoryPage {
     return s.kind === 'ready' && s.data.page * s.data.pageSize < s.data.total;
   });
   protected readonly filtering = computed(
-    () => !!this.query().q || !!this.query().category || this.query().filter !== 'all',
+    () =>
+      !!this.query().q ||
+      !!this.query().category ||
+      this.query().filter !== 'all' ||
+      this.query().status !== 'active',
   );
 
   constructor() {
@@ -186,6 +223,13 @@ export class InventoryPage {
     this.category.valueChanges.subscribe((c) =>
       this.navigate({ categoria: c || null, page: null }),
     );
+  }
+
+  protected setStatus(value: string): void {
+    this.navigate({
+      estado: value === 'inactive' ? 'inactivos' : value === 'all' ? 'todos' : null,
+      page: null,
+    });
   }
 
   protected setFilter(filter: StockFilter): void {
@@ -209,12 +253,17 @@ export class InventoryPage {
     return readableStock(p.totalStock, p.baseUnit, p.presentations);
   }
 
+  /** "200 tabletas" debajo de "2 cajas" (null si ya está en la unidad mínima) */
+  protected total(p: ProductSummary): string | null {
+    return baseTotal(p.totalStock, p.baseUnit, p.presentations);
+  }
+
   /** Precio de la presentación más chica: lo que se vende suelto */
-  protected price(p: ProductSummary): string {
+  protected cheapest(p: ProductSummary): { price: number; name: string } | null {
     const smallest = [...p.presentations]
       .filter((x) => x.price !== null)
       .sort((a, b) => a.factor - b.factor)[0];
-    return smallest ? `${money(smallest.price)} · ${smallest.name}` : 'Sin precio';
+    return smallest ? { price: smallest.price!, name: smallest.name } : null;
   }
 
   private navigate(params: Record<string, string | number | null>): void {

@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { OPEN_STATUSES } from '../queue/queue.service.js';
 import { ChargesService } from '../visits/charges.service.js';
 import type { CreateChargesDto } from '../visits/dto/charge.dto.js';
+import { TransportService } from '../visits/transport.service.js';
 import { VisitsService } from '../visits/visits.service.js';
 import type {
   AssignDto,
@@ -22,6 +23,7 @@ import type {
   CheckInDto,
   DeliverDto,
   MoveDto,
+  TransportDto,
 } from './dto/grooming.dto.js';
 import {
   CARD_SELECT,
@@ -67,16 +69,13 @@ export class GroomingService {
     private readonly visits: VisitsService,
     private readonly charges: ChargesService,
     private readonly audit: AuditService,
+    private readonly transportCharges: TransportService,
   ) {}
 
-  /** Quienes pueden tener servicios asignados: groomers y quien tenga comisión configurada */
+  /** Quienes pueden tener servicios asignados: los usuarios activos con rol de groomer */
   groomers(clinicId: number): Promise<Groomer[]> {
     return this.prisma.user.findMany({
-      where: {
-        clinicId,
-        active: true,
-        OR: [{ role: 'GROOMER' }, { commissionPercent: { not: null } }],
-      },
+      where: { clinicId, active: true, role: 'GROOMER' },
       select: { id: true, fullName: true },
       orderBy: { fullName: 'asc' },
     });
@@ -207,6 +206,20 @@ export class GroomingService {
           } as CreateChargesDto,
           prep,
         );
+        // Movilidad con el precio que puso recepción: una línea más de la cuenta del grooming
+        if (transport !== 'NONE' && (dto.transportPrice ?? 0) > 0) {
+          const chargeId = await this.transportCharges.syncInTx(tx, actor, {
+            clientId: visit.clientId,
+            petId: dto.petId,
+            visitId,
+            transport,
+            price: dto.transportPrice,
+          });
+          await tx.groomingSession.update({
+            where: { id: session.id },
+            data: { transportChargeId: chargeId },
+          });
+        }
         return { id: session.id, visitId, created };
       },
       { timeout: 20_000 },
@@ -225,6 +238,8 @@ export class GroomingService {
         size: dto.size,
         services: names,
         signed: Boolean(signature),
+        transport: dto.transport ?? 'NONE',
+        transportPrice: dto.transportPrice ?? null,
       },
     });
     await this.charges.logCreated(actor, visitId, created, ip);
@@ -283,6 +298,54 @@ export class GroomingService {
     return this.card(actor.clinicId, id);
   }
 
+  /**
+   * Cambia la movilidad después del ingreso: el dueño lo trajo y ahora pide que se lo llevemos
+   * (o ya no la quiere). Su línea de la cuenta se crea, cambia de precio o se quita.
+   */
+  async changeTransport(
+    actor: AuthUser,
+    id: number,
+    dto: TransportDto,
+    ip?: string,
+  ): Promise<GroomingDetail> {
+    const transport = dto.transport;
+    const address =
+      transport === 'NONE' ? null : (dto.transportAddress ?? null);
+    await this.prisma.$transaction(async (tx) => {
+      const row = await this.lockActive(tx, actor.clinicId, id);
+      const session = await tx.groomingSession.findUniqueOrThrow({
+        where: { id },
+        select: { clientId: true, petId: true },
+      });
+      const chargeId = await this.transportCharges.syncInTx(tx, actor, {
+        clientId: session.clientId,
+        petId: session.petId,
+        visitId: row.visit_id,
+        transport,
+        price: transport === 'NONE' ? 0 : dto.transportPrice,
+        chargeId: row.transport_charge_id,
+      });
+      await tx.groomingSession.update({
+        where: { id },
+        data: {
+          transport,
+          transportAddress: address,
+          transportChargeId: chargeId,
+        },
+      });
+    });
+    await this.audit.log({
+      clinicId: actor.clinicId,
+      userId: actor.id,
+      action: 'grooming.transport',
+      entity: 'grooming',
+      entityId: id,
+      ip,
+      data: { transport, price: dto.transportPrice ?? null },
+    });
+    return this.get(actor.clinicId, id);
+  }
+
   async assign(
     actor: AuthUser,
     id: number,
@@ -337,18 +400,10 @@ export class GroomingService {
           'Primero pasa la mascota a "Listo" en el tablero',
         );
       const now = new Date();
-      // La comisión se congela con el porcentaje que el groomer tiene hoy
-      const groomer = row.groomer_id
-        ? await tx.user.findUnique({
-            where: { id: row.groomer_id },
-            select: { commissionPercent: true },
-          })
-        : null;
       await tx.groomingSession.update({
         where: { id },
         data: {
           status: 'DELIVERED',
-          commissionPercent: groomer?.commissionPercent ?? null,
           deliveredAt: now,
           deliveredById: actor.id,
           pickedUpBy: dto.pickedUpBy,
@@ -404,7 +459,15 @@ export class GroomingService {
           throw new ConflictException(
             'El servicio tiene pagos: primero anula el cobro en caja',
           );
-        for (const charge of charges)
+        for (const charge of charges) {
+          // Ya fueron a recogerlo: la movilidad queda en la cuenta del cliente, fuera del grooming
+          if (dto.chargeTransport && charge.id === row.transport_charge_id) {
+            await tx.charge.update({
+              where: { id: charge.id },
+              data: { visitId: null },
+            });
+            continue;
+          }
           await this.charges.voidInTx(
             tx,
             actor,
@@ -412,6 +475,7 @@ export class GroomingService {
             `Grooming cancelado: ${dto.reason}`,
             true,
           );
+        }
         const now = new Date();
         await tx.groomingSession.update({
           where: { id },
@@ -448,7 +512,11 @@ export class GroomingService {
       entity: 'grooming',
       entityId: id,
       ip,
-      data: { reason: dto.reason, voidedCharges: voided },
+      data: {
+        reason: dto.reason,
+        voidedCharges: voided,
+        chargedTransport: Boolean(dto.chargeTransport),
+      },
     });
     return this.get(actor.clinicId, id);
   }
@@ -473,8 +541,10 @@ export class GroomingService {
         bathing_at: Date | null;
         cutting_at: Date | null;
         ready_at: Date | null;
+        transport_charge_id: number | null;
       }[]
-    >`SELECT status::text AS status, visit_id, groomer_id, bathing_at, cutting_at, ready_at
+    >`SELECT status::text AS status, visit_id, groomer_id, bathing_at, cutting_at, ready_at,
+             transport_charge_id
       FROM grooming_sessions WHERE id = ${id} AND clinic_id = ${clinicId} FOR UPDATE`;
     if (!row) throw new NotFoundException('El servicio de grooming no existe');
     if (row.status === 'DELIVERED')
@@ -490,7 +560,7 @@ export class GroomingService {
         id: groomerId,
         clinicId,
         active: true,
-        OR: [{ role: 'GROOMER' }, { commissionPercent: { not: null } }],
+        role: 'GROOMER',
       },
     });
     if (!ok)

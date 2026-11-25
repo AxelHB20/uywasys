@@ -1,58 +1,250 @@
-<section class="space-y-6">
+<section class="space-y-5">
   <div>
     <h1 class="font-display text-2xl font-semibold text-slate-900">Actividad</h1>
     <p class="mt-1 max-w-3xl text-slate-600">
-      Quién hizo qué y cuándo. Lo marcado con
-      <strong class="font-semibold">Revisar</strong> conviene mirarlo: anulaciones, ajustes de
-      stock, cambios de precio y accesos fallidos.
+      Quién hizo qué y cuándo. Lo marcado con <strong class="font-semibold">Revisar</strong>
+      conviene mirarlo.
     </p>
   </div>
 
-  <form
-    [formGroup]="filters"
-    class="card grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:items-end"
-    aria-label="Filtrar actividad"
-    (submit)="$event.preventDefault()"
-  >
-    <div>
-      <label for="act-area" class="field-label">Área</label>
-      <select id="act-area" formControlName="area" class="field-input">
-        <option [ngValue]="null">Todas</option>
-        @for (a of areas; track a[0]) {
-          <option [ngValue]="a[0]">{{ a[1] }}</option>
-        }
-      </select>
-    </div>
-    <div>
-      <label for="act-user" class="field-label">Persona</label>
-      <select id="act-user" formControlName="userId" class="field-input">
-        <option [ngValue]="null">Todo el equipo</option>
-        @for (u of users.value() ?? []; track u.id) {
-          <option [ngValue]="u.id">{{ u.fullName }}{{ u.active ? '' : ' (inactivo)' }}</option>
-        }
-      </select>
-    </div>
-    <div>
-      <label for="act-from" class="field-label">Desde</label>
-      <input id="act-from" type="date" formControlName="from" class="field-input" />
-    </div>
-    <div>
-      <label for="act-to" class="field-label">Hasta</label>
-      <input id="act-to" type="date" formControlName="to" class="field-input" />
-    </div>
-    <label
-      class="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-medium text-slate-800 sm:col-span-2 lg:col-span-1"
+  <!-- Para revisar: la semana de un vistazo -->
+  @if (reviewData(); as rv) {
+    @if (rv.total) {
+      <section
+        aria-labelledby="review-title"
+        class="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 sm:p-4"
+      >
+        <div class="mb-2.5 flex items-center justify-between gap-3">
+          <h2
+            id="review-title"
+            class="flex items-center gap-2 text-sm font-semibold text-amber-900 sm:text-[15px]"
+          >
+            <app-icon name="alert" class="size-4 text-amber-700" /> Para revisar · últimos 7 días
+          </h2>
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center gap-1 text-sm font-semibold whitespace-nowrap text-amber-900 hover:underline"
+            (click)="openReview()"
+          >
+            Ver {{ rv.total === 1 ? 'el registro' : 'los ' + rv.total }}
+            <app-icon name="chevron-right" class="size-4" />
+          </button>
+        </div>
+        <ul
+          class="-mx-3.5 flex gap-2 overflow-x-auto px-3.5 pb-1 sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] sm:overflow-visible sm:px-0 sm:pb-0"
+        >
+          @for (k of rv.kinds; track k.kind) {
+            <li class="w-52 shrink-0 sm:w-auto">
+              <button
+                type="button"
+                class="flex h-full w-full items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/60"
+                [attr.aria-pressed]="kind() === k.kind"
+                (click)="openKind(k.kind)"
+              >
+                <span
+                  class="grid size-9 shrink-0 place-items-center rounded-xl"
+                  [class]="reviewLabels[k.kind].tone"
+                  aria-hidden="true"
+                  ><app-icon [name]="reviewLabels[k.kind].icon" class="size-[18px]"
+                /></span>
+                <span class="min-w-0">
+                  <b class="block text-sm leading-snug font-semibold text-slate-900">{{
+                    kindText(k.kind, k.count)
+                  }}</b>
+                  <span class="text-xs text-slate-600">{{ reviewLabels[k.kind].hint }}</span>
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    } @else {
+      <p class="flex items-center gap-2 text-sm text-emerald-700">
+        <app-icon name="check" class="size-4" /> Nada para revisar en los últimos 7 días.
+      </p>
+    }
+  }
+
+  <!-- Filtros -->
+  <div class="card space-y-3 p-3.5 sm:p-4">
+    <div
+      role="group"
+      aria-label="Qué ver"
+      class="-mx-3.5 flex gap-2 overflow-x-auto px-3.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
     >
-      <input type="checkbox" formControlName="important" class="size-5 rounded accent-anil-600" />
-      Solo lo que conviene revisar
-    </label>
-  </form>
+      <button
+        type="button"
+        class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-white px-3.5 text-sm font-medium whitespace-nowrap text-slate-700 ring-1 ring-slate-200 transition-colors ring-inset hover:bg-slate-50 aria-pressed:bg-anil-600 aria-pressed:text-white aria-pressed:ring-anil-600 pointer-coarse:min-h-11"
+        [attr.aria-pressed]="scope() === 'all' && !kind()"
+        (click)="setScope('all')"
+      >
+        Todo
+      </button>
+      <button
+        type="button"
+        class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-white px-3.5 text-sm font-medium whitespace-nowrap text-slate-700 ring-1 ring-slate-200 transition-colors ring-inset hover:bg-slate-50 aria-pressed:bg-anil-600 aria-pressed:text-white aria-pressed:ring-anil-600 pointer-coarse:min-h-11"
+        [attr.aria-pressed]="scope() === 'review'"
+        (click)="setScope('review')"
+      >
+        Revisar
+        @if (reviewData()?.total) {
+          <span
+            class="grid min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[11px] font-bold text-amber-900"
+            >{{ reviewData()!.total }}</span
+          >
+        }
+      </button>
+      @for (a of areas; track a[0]) {
+        <button
+          type="button"
+          class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-white px-3.5 text-sm font-medium whitespace-nowrap text-slate-700 ring-1 ring-slate-200 transition-colors ring-inset hover:bg-slate-50 aria-pressed:bg-anil-600 aria-pressed:text-white aria-pressed:ring-anil-600 pointer-coarse:min-h-11"
+          [attr.aria-pressed]="scope() === a[0]"
+          (click)="setScope(a[0])"
+        >
+          {{ a[1] }}
+        </button>
+      }
+    </div>
+    @if (kind(); as k) {
+      <p class="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+        Solo:
+        <span
+          class="inline-flex items-center gap-1 rounded-full bg-amber-100 py-1 pr-1 pl-3 font-medium text-amber-900"
+        >
+          {{ reviewLabels[k].many }}
+          <button
+            type="button"
+            class="grid size-7 place-items-center rounded-full hover:bg-amber-200"
+            [attr.aria-label]="'Quitar filtro ' + reviewLabels[k].many"
+            (click)="kind.set(null)"
+          >
+            <app-icon name="x" class="size-3.5" />
+          </button>
+        </span>
+      </p>
+    }
+
+    <!-- PC y tablet: persona y período en la misma tarjeta -->
+    <div class="hidden border-t border-slate-100 pt-3 sm:block">
+      <ng-container *ngTemplateOutlet="moreFilters; context: { $implicit: 'pc' }" />
+    </div>
+    <!-- Celular: en una hoja -->
+    <div class="flex items-center gap-2 sm:hidden">
+      <button
+        type="button"
+        class="btn btn-secondary min-h-11 flex-1"
+        aria-haspopup="dialog"
+        (click)="filtersOpen.set(true)"
+      >
+        <app-icon name="calendar" class="size-4" /> Persona y fechas
+        @if (extraFilters()) {
+          <span
+            class="grid min-w-5 place-items-center rounded-full bg-anil-600 px-1.5 text-[11px] font-bold text-white"
+            >{{ extraFilters() }}</span
+          >
+        }
+      </button>
+    </div>
+  </div>
+
+  <app-modal [open]="filtersOpen()" title="Persona y fechas" (closed)="filtersOpen.set(false)">
+    @if (filtersOpen()) {
+      <ng-container *ngTemplateOutlet="moreFilters; context: { $implicit: 'cel' }" />
+    }
+    <div modal-actions class="flex gap-2">
+      <button type="button" class="btn btn-secondary flex-1" (click)="clear()">
+        Quitar filtros
+      </button>
+      <button type="button" class="btn btn-primary flex-1" (click)="filtersOpen.set(false)">
+        Listo
+      </button>
+    </div>
+  </app-modal>
+
+  <ng-template #moreFilters let-at>
+    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+      <div class="sm:w-60">
+        <label [for]="'act-user-' + at" class="field-label">Persona</label>
+        <select
+          [id]="'act-user-' + at"
+          class="field-input"
+          (change)="setUser($any($event.target).value)"
+        >
+          <option value="" [selected]="!userId()">Todo el equipo</option>
+          @for (u of team(); track u.id) {
+            <option [value]="u.id" [selected]="userId() === u.id">
+              {{ u.fullName }}{{ u.active ? '' : ' (inactivo)' }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="sm:ml-auto">
+        <span class="field-label" [id]="'act-period-' + at">Período</span>
+        <div
+          role="group"
+          [attr.aria-labelledby]="'act-period-' + at"
+          class="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 sm:flex"
+        >
+          @for (p of presets; track p.key) {
+            <button
+              type="button"
+              class="min-h-10 rounded-lg px-1.5 text-sm sm:px-3 font-medium whitespace-nowrap text-slate-600 transition-colors hover:text-slate-900 aria-pressed:bg-white aria-pressed:font-semibold aria-pressed:text-slate-900 aria-pressed:shadow-sm"
+              [attr.aria-pressed]="preset() === p.key"
+              (click)="setPreset(p.key)"
+            >
+              {{ p.label }}
+            </button>
+          }
+        </div>
+      </div>
+      @if (preset() === 'custom') {
+        <div class="grid grid-cols-2 gap-3 sm:basis-full lg:basis-auto lg:w-80">
+          <div>
+            <label [for]="'act-from-' + at" class="field-label">Desde</label>
+            <input
+              [id]="'act-from-' + at"
+              type="date"
+              class="field-input"
+              [max]="today"
+              [value]="from()"
+              [class.!border-amber-400]="reversed()"
+              (change)="setDate('from', $any($event.target).value)"
+            />
+          </div>
+          <div>
+            <label [for]="'act-to-' + at" class="field-label">Hasta</label>
+            <input
+              [id]="'act-to-' + at"
+              type="date"
+              class="field-input"
+              [max]="today"
+              [value]="to()"
+              [class.!border-amber-400]="reversed()"
+              (change)="setDate('to', $any($event.target).value)"
+            />
+          </div>
+        </div>
+        @if (reversed()) {
+          <div
+            role="alert"
+            class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:basis-full"
+          >
+            La fecha inicial va después de la final: se muestran ordenadas.
+            <button type="button" class="ml-1 font-semibold underline" (click)="swap()">
+              Intercambiar fechas
+            </button>
+          </div>
+        }
+      }
+    </div>
+  </ng-template>
 
   @if (list.isLoading() && !items().length) {
     <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando actividad">
       @for (i of [1, 2, 3, 4]; track i) {
         <div class="flex items-center gap-4 p-5">
           <div class="h-4 w-12 animate-pulse rounded bg-slate-100"></div>
+          <div class="size-9 animate-pulse rounded-xl bg-slate-100"></div>
           <div class="h-4 w-64 animate-pulse rounded bg-slate-100"></div>
         </div>
       }
@@ -74,14 +266,27 @@
         {{ filtered() ? 'Nada con esos filtros' : 'Todavía no hay actividad registrada' }}
       </p>
       @if (filtered()) {
+        <p class="mt-1 text-sm text-slate-600">Prueba con otra área o más días.</p>
         <button type="button" class="btn btn-secondary mt-5" (click)="clear()">
           Quitar filtros
         </button>
       }
     </div>
   } @else {
-    <p class="text-sm text-slate-600" aria-live="polite">
-      {{ total() }} {{ total() === 1 ? 'registro' : 'registros' }}
+    <p
+      class="text-sm text-slate-600 transition-opacity"
+      [class.opacity-60]="list.isLoading()"
+      aria-live="polite"
+    >
+      @if (capped()) {
+        Más de {{ total().toLocaleString('es-PE') }} registros: elige un período para ver los más
+        antiguos
+      } @else {
+        {{ total().toLocaleString('es-PE') }} {{ total() === 1 ? 'registro' : 'registros' }}
+      }
+      @if (periodText()) {
+        · {{ periodText() }}
+      }
       @if (filtered()) {
         ·
         <button type="button" class="font-medium text-anil-700 hover:underline" (click)="clear()">
@@ -89,49 +294,92 @@
         </button>
       }
     </p>
-
-    @for (g of groups(); track g.day) {
-      <div>
-        <h2 class="mb-2 text-sm font-semibold text-slate-700">{{ g.label }}</h2>
-        <ol class="card divide-y divide-slate-100">
-          @for (item of g.items; track item.id) {
-            <li class="flex gap-4 px-5 py-3.5">
-              <time
-                class="w-11 shrink-0 pt-0.5 text-sm text-slate-500 tabular-nums"
-                [attr.datetime]="item.at"
-                >{{ item.at | fecha: 'time' }}</time
-              >
-              <div class="min-w-0 flex-1">
-                <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-900">
-                  <span class="font-medium">{{ actionLabel(item.action) }}</span>
-                  @if (item.important) {
-                    <app-badge tone="warning">Revisar</app-badge>
-                  }
-                </p>
-                <p class="text-sm text-slate-600">
-                  {{ who(item) }}
-                  @if (item.ip && item.action.startsWith('auth.')) {
-                    <span class="text-slate-500">· conexión {{ item.ip }}</span>
-                  }
-                </p>
-                @for (line of describe(item.data); track $index) {
-                  <p class="text-sm break-words text-slate-600">{{ line }}</p>
-                }
-              </div>
-              @if (link(item); as route) {
-                <a
-                  [routerLink]="route"
-                  class="inline-flex min-h-11 shrink-0 items-center self-start text-sm font-medium text-anil-700 hover:text-anil-900"
-                  [attr.aria-label]="'Ver ' + actionLabel(item.action).toLowerCase()"
-                  >Ver</a
-                >
+    <div class="space-y-5 transition-opacity" [class.opacity-60]="list.isLoading()">
+      @for (g of groups(); track g.day) {
+        <div>
+          <h2 class="mb-2 text-sm font-semibold text-slate-700">{{ g.label }}</h2>
+          <ol class="card divide-y divide-slate-100">
+            @for (e of g.entries; track e.key) {
+              @if (!e.run) {
+                <ng-container *ngTemplateOutlet="row; context: { $implicit: e.item }" />
+              } @else {
+                @let first = e.items[0];
+                @let last = e.items[e.items.length - 1];
+                @let ic = icon(first);
+                <li class="flex gap-3 px-4 py-3.5 sm:gap-4 sm:px-5">
+                  <time
+                    class="hidden w-11 shrink-0 pt-2 text-sm text-slate-500 tabular-nums sm:block"
+                    [attr.datetime]="first.at"
+                    >{{ first.at | fecha: 'time' }}</time
+                  >
+                  <span
+                    class="grid size-9 shrink-0 place-items-center rounded-xl"
+                    [class]="ic.tone"
+                    aria-hidden="true"
+                    ><app-icon [name]="ic.icon" class="size-[18px]"
+                  /></span>
+                  <div class="min-w-0 flex-1">
+                    <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-900">
+                      <span class="font-medium"
+                        >{{ title(first) }} · {{ e.items.length }} veces</span
+                      >
+                      @if (first.important) {
+                        <app-badge tone="warning">Revisar</app-badge>
+                      }
+                    </p>
+                    <p class="text-sm text-slate-600">
+                      {{ who(first) }} · de {{ last.at | fecha: 'time' }} a
+                      {{ first.at | fecha: 'time' }}
+                    </p>
+                    <button
+                      type="button"
+                      class="mt-0.5 inline-flex min-h-9 items-center gap-1 text-sm font-medium text-anil-700 hover:underline"
+                      [attr.aria-expanded]="isOpen(e.key)"
+                      [attr.aria-controls]="'run-' + e.key"
+                      (click)="toggle(e.key)"
+                    >
+                      {{ isOpen(e.key) ? 'Ocultar' : 'Ver las ' + e.items.length }}
+                      <app-icon
+                        [name]="isOpen(e.key) ? 'chevron-up' : 'chevron-down'"
+                        class="size-4"
+                      />
+                    </button>
+                    @if (isOpen(e.key)) {
+                      <ol
+                        [id]="'run-' + e.key"
+                        class="mt-1 space-y-1.5 border-l-2 border-slate-200 pl-3"
+                      >
+                        @for (it of e.items; track it.id) {
+                          <li class="text-sm text-slate-600">
+                            <time class="text-slate-500 tabular-nums" [attr.datetime]="it.at">{{
+                              it.at | fecha: 'time'
+                            }}</time>
+                            @if (ip(it); as addr) {
+                              · conexión {{ addr }}
+                            }
+                            @for (line of lines(it); track $index) {
+                              · {{ line }}
+                            }
+                            @if (link(it); as route) {
+                              ·
+                              <a
+                                [routerLink]="route"
+                                class="font-medium text-anil-700 hover:underline"
+                                >Ver</a
+                              >
+                            }
+                          </li>
+                        }
+                      </ol>
+                    }
+                  </div>
+                </li>
               }
-            </li>
-          }
-        </ol>
-      </div>
-    }
-
+            }
+          </ol>
+        </div>
+      }
+    </div>
     @if (pages() > 1) {
       <nav class="flex items-center justify-between" aria-label="Páginas">
         <button
@@ -157,3 +405,55 @@
     }
   }
 </section>
+
+<ng-template #row let-item>
+  @let ic = icon(item);
+  <li class="flex gap-3 px-4 py-3.5 sm:gap-4 sm:px-5">
+    <time
+      class="hidden w-11 shrink-0 pt-2 text-sm text-slate-500 tabular-nums sm:block"
+      [attr.datetime]="item.at"
+      >{{ item.at | fecha: 'time' }}</time
+    >
+    <span
+      class="grid size-9 shrink-0 place-items-center rounded-xl"
+      [class]="ic.tone"
+      aria-hidden="true"
+      ><app-icon [name]="ic.icon" class="size-[18px]"
+    /></span>
+    <div class="min-w-0 flex-1">
+      <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-900">
+        <span class="font-medium">{{ title(item) }}</span>
+        @if (item.important) {
+          <app-badge tone="warning">Revisar</app-badge>
+        }
+      </p>
+      <p class="flex flex-wrap items-center gap-x-1.5 text-sm text-slate-600">
+        <time class="text-slate-500 tabular-nums sm:hidden" [attr.datetime]="item.at"
+          >{{ item.at | fecha: 'time' }} ·</time
+        >
+        @if (item.user?.support) {
+          <span
+            class="inline-flex items-center gap-1 rounded-full bg-anil-50 px-2 py-0.5 text-xs font-semibold text-anil-800"
+            ><app-icon name="shield-check" class="size-3" /> Soporte Uywa</span
+          >
+        } @else {
+          <span>{{ who(item) }}</span>
+        }
+        @if (ip(item); as addr) {
+          <span class="text-slate-500">· conexión {{ addr }}</span>
+        }
+      </p>
+      @for (line of lines(item); track $index) {
+        <p class="text-sm break-words text-slate-600">{{ line }}</p>
+      }
+    </div>
+    @if (link(item); as route) {
+      <a
+        [routerLink]="route"
+        class="inline-flex min-h-11 shrink-0 items-center gap-0.5 self-start text-sm font-medium text-anil-700 hover:text-anil-900"
+        [attr.aria-label]="'Ver: ' + title(item)"
+        >Ver <app-icon name="chevron-right" class="size-4"
+      /></a>
+    }
+  </li>
+</ng-template>

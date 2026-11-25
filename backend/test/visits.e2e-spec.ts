@@ -203,9 +203,10 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
       price: 180,
       supplies: [{ productId: ids.ketamine, quantity: 2 }],
     });
+    // Baño terapéutico que hace el veterinario: categoría "Otros", no grooming
     ids.sBath = await service({
       name: 'Baño medicado',
-      category: 'GROOMING',
+      category: 'OTHER',
       price: 45,
       supplies: [{ productId: ids.shampoo, quantity: 30 }],
     });
@@ -280,9 +281,16 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
   });
 
   it('no abre dos atenciones a la vez ni deja mover la cola por fuera de la atención', async () => {
-    const twice = await http()
+    // Recepción no abre consultas (quedarían a su nombre)
+    const desk = await http()
       .post('/api/visits')
       .set('Cookie', cookies.reception)
+      .send({ petId: ids.pet })
+      .expect(403);
+    expect(desk.body.message).toContain('veterinario');
+    const twice = await http()
+      .post('/api/visits')
+      .set('Cookie', cookies.vet)
       .send({ petId: ids.pet })
       .expect(409);
     expect(twice.body.details).toEqual({ visitId: ids.visit });
@@ -327,6 +335,31 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
       [60],
     );
     expect(account.body.pendingTotal).toBe(60);
+    // La atención sigue abierta: la ficha avisa que se cobra al cerrarla
+    expect(account.body.inProgress).toEqual([
+      { visitId: ids.visit, petName: expect.any(String) },
+    ]);
+  });
+
+  it('baño y corte (grooming) no se cargan en una consulta ni en mostrador', async () => {
+    const haircut = await service({
+      name: 'Corte de pelo',
+      category: 'GROOMING',
+      price: 35,
+    });
+    const inVisit = await charge(cookies.vet, {
+      visitId: ids.visit,
+      items: [{ careServiceId: haircut, quantity: 1 }],
+    }).expect(400);
+    expect(inVisit.body.message).toContain('Grooming → Ingreso');
+    const visit = await http()
+      .get(`/api/visits/${ids.visit}`)
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    await charge(cookies.reception, {
+      clientId: visit.body.client.id,
+      items: [{ careServiceId: haircut, quantity: 1 }],
+    }).expect(400);
   });
 
   it('un servicio con un insumo sin stock se cobra igual y deja la alerta al administrador', async () => {
@@ -515,6 +548,22 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
   });
 
   it('el peso actualiza la ficha; cerrada, la atención solo admite adendas', async () => {
+    // Consulta: recepción registra motivo y triaje; lo clínico y el cierre son del veterinario
+    await http()
+      .patch(`/api/visits/${ids.visit}`)
+      .set('Cookie', cookies.reception)
+      .send({ reason: 'Control anual', weightKg: 12.3, temperatureC: 38.5 })
+      .expect(200);
+    const denied = await http()
+      .patch(`/api/visits/${ids.visit}`)
+      .set('Cookie', cookies.reception)
+      .send({ diagnosis: 'Sano' })
+      .expect(403);
+    expect(denied.body.message).toContain('lo demás lo escribe el veterinario');
+    await http()
+      .post(`/api/visits/${ids.visit}/close`)
+      .set('Cookie', cookies.reception)
+      .expect(403);
     await http()
       .patch(`/api/visits/${ids.visit}`)
       .set('Cookie', cookies.vet)
@@ -594,7 +643,7 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
     const visit = (
       await http()
         .post('/api/visits')
-        .set('Cookie', cookies.reception)
+        .set('Cookie', cookies.vet)
         .send({ petId: ids.pet, queueEntryId: queue })
         .expect(201)
     ).body.id;
@@ -635,7 +684,7 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
   it('historial de atenciones de la mascota con su total', async () => {
     const res = await http()
       .get(`/api/visits?petId=${ids.pet}`)
-      .set('Cookie', cookies.groomer)
+      .set('Cookie', cookies.reception)
       .expect(200);
     expect(res.body.items.map((v: { status: string }) => v.status)).toEqual([
       'CANCELLED',
@@ -650,7 +699,7 @@ describe('Atenciones, cargos y cuenta del cliente (e2e)', () => {
       [1, 2].map(() =>
         http()
           .post('/api/visits')
-          .set('Cookie', cookies.reception)
+          .set('Cookie', cookies.vet)
           .send({ petId: ids.pet }),
       ),
     );

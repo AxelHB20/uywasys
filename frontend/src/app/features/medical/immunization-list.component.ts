@@ -65,7 +65,7 @@ const DUE_TONE: Record<'overdue' | 'soon' | 'ok', BadgeTone> = {
               <p class="mt-0.5 text-sm text-slate-600">
                 {{ calendar(i.appliedAt) }}
                 @if (i.nextDueAt) {
-                  <span class="text-slate-400"> · próxima </span>{{ calendar(i.nextDueAt) }}
+                  <span class="text-slate-500"> · próxima </span>{{ calendar(i.nextDueAt) }}
                 }
               </p>
               <p class="mt-0.5 text-xs text-slate-500">
@@ -98,7 +98,7 @@ const DUE_TONE: Record<'overdue' | 'soon' | 'ok', BadgeTone> = {
             @if (canVoid()) {
               <button
                 type="button"
-                class="grid size-11 shrink-0 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                class="grid size-11 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-600"
                 [attr.aria-label]="'Anular ' + i.name"
                 (click)="askVoid(i)"
               >
@@ -108,7 +108,7 @@ const DUE_TONE: Record<'overdue' | 'soon' | 'ok', BadgeTone> = {
           </li>
         }
       </ul>
-    } @else {
+    } @else if (empty()) {
       <p class="py-4 text-sm text-slate-500">{{ empty() }}</p>
     }
 

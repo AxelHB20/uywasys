@@ -69,12 +69,11 @@
                 </div>
               </td>
               <td class="px-5 py-4">
-                <p class="text-slate-800">{{ roleLabels[member.role] }}</p>
+                <p class="text-slate-800">
+                  {{ member.support ? 'Soporte técnico' : roleLabels[member.role] }}
+                </p>
                 @if (member.licenseNumber) {
                   <p class="text-xs text-slate-500">CMVP {{ member.licenseNumber }}</p>
-                }
-                @if (member.commissionPercent !== null) {
-                  <p class="text-xs text-slate-500">Comisión {{ member.commissionPercent }} %</p>
                 }
               </td>
               <td class="px-5 py-4">
@@ -115,7 +114,7 @@
               </p>
               <p class="truncate text-sm text-slate-500">{{ member.email }}</p>
               <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-700">
-                <span>{{ roleLabels[member.role] }}</span>
+                <span>{{ member.support ? 'Soporte técnico' : roleLabels[member.role] }}</span>
                 @let st = status(member);
                 <app-badge [tone]="st.tone">{{ st.label }}</app-badge>
               </div>
@@ -135,41 +134,47 @@
 </section>
 
 <ng-template #actions let-member>
-  <button
-    type="button"
-    class="btn btn-ghost size-11 px-0 lg:size-10"
-    (click)="openEdit(member)"
-    [attr.aria-label]="'Editar a ' + member.fullName"
-    title="Editar"
-  >
-    <app-icon name="pencil" class="size-4" />
-  </button>
-  @if (member.id !== myId()) {
-    @if (member.active) {
-      <button
-        type="button"
-        class="btn btn-ghost size-11 px-0 lg:size-10"
-        (click)="ask('reset', member)"
-        [attr.aria-label]="'Restablecer la contraseña de ' + member.fullName"
-        title="Restablecer contraseña"
-      >
-        <app-icon name="key-round" class="size-4" />
-      </button>
-      <button
-        type="button"
-        class="btn btn-ghost h-11 px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 lg:h-10"
-        (click)="ask('deactivate', member)"
-      >
-        Desactivar
-      </button>
-    } @else {
-      <button
-        type="button"
-        class="btn btn-ghost h-11 px-3 text-anil-700 lg:h-10"
-        (click)="ask('activate', member)"
-      >
-        Activar
-      </button>
+  @if (member.support && !isSupport()) {
+    <span class="inline-flex h-10 items-center gap-1.5 px-2 text-xs text-slate-500">
+      <app-icon name="lock" class="size-3.5" /> Cuenta del sistema
+    </span>
+  } @else {
+    <button
+      type="button"
+      class="btn btn-ghost size-11 px-0 lg:size-10"
+      (click)="openEdit(member)"
+      [attr.aria-label]="'Editar a ' + member.fullName"
+      title="Editar"
+    >
+      <app-icon name="pencil" class="size-4" />
+    </button>
+    @if (member.id !== myId()) {
+      @if (member.active) {
+        <button
+          type="button"
+          class="btn btn-ghost size-11 px-0 lg:size-10"
+          (click)="ask('reset', member)"
+          [attr.aria-label]="'Restablecer la contraseña de ' + member.fullName"
+          title="Restablecer contraseña"
+        >
+          <app-icon name="key-round" class="size-4" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-ghost h-11 px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 lg:h-10"
+          (click)="ask('deactivate', member)"
+        >
+          Desactivar
+        </button>
+      } @else {
+        <button
+          type="button"
+          class="btn btn-ghost h-11 px-3 text-anil-700 lg:h-10"
+          (click)="ask('activate', member)"
+        >
+          Activar
+        </button>
+      }
     }
   }
 </ng-template>
@@ -226,7 +231,9 @@
       </select>
       <p id="u-role-hint" class="field-hint">{{ roleDescriptions[selectedRole()] }}</p>
     </div>
-    @if (selectedRole() === 'VET' || form.controls.licenseNumber.value) {
+    @if (
+      selectedRole() === 'VET' || selectedRole() === 'ADMIN' || form.controls.licenseNumber.value
+    ) {
       <div>
         <label for="u-license" class="field-label">
           N.º de colegiatura (CMVP)
@@ -247,35 +254,9 @@
           {{
             invalid('licenseNumber')
               ? 'La colegiatura es obligatoria para veterinarios'
-              : 'Sale en recetas y certificados'
-          }}
-        </p>
-      </div>
-    }
-    @if (selectedRole() === 'GROOMER' || form.controls.commissionPercent.value !== null) {
-      <div>
-        <label for="u-commission" class="field-label">Comisión de grooming (%)</label>
-        <input
-          id="u-commission"
-          type="number"
-          inputmode="decimal"
-          min="0"
-          max="100"
-          step="0.5"
-          formControlName="commissionPercent"
-          class="field-input max-w-40 tabular-nums"
-          placeholder="Ej.: 30"
-          aria-describedby="u-commission-hint"
-          [attr.aria-invalid]="invalid('commissionPercent')"
-        />
-        <p
-          id="u-commission-hint"
-          [class]="invalid('commissionPercent') ? 'field-error' : 'field-hint'"
-        >
-          {{
-            invalid('commissionPercent')
-              ? 'Entre 0 y 100, con hasta 2 decimales'
-              : 'Sobre lo cobrado de sus servicios entregados. Vacío: sin comisión.'
+              : selectedRole() === 'ADMIN'
+                ? 'Solo si también atiendes como veterinario: la necesitas para emitir recetas'
+                : 'Sale en recetas y certificados'
           }}
         </p>
       </div>

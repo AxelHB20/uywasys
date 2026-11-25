@@ -2,6 +2,7 @@ import type { SheetColumn, SheetRow } from '../../common/excel/sheet.js';
 import { normalizeSearch } from '../../common/text/search.js';
 import type {
   BaseUnit,
+  IgvAffectation,
   ProductCategory,
 } from '../../generated/prisma/enums.js';
 
@@ -12,7 +13,9 @@ export type ProductField =
   | 'baseUnit'
   | 'presentation'
   | 'factor'
+  | 'barcode'
   | 'price'
+  | 'igv'
   | 'minStock'
   | 'requiresPrescription'
   | 'controlled'
@@ -34,7 +37,9 @@ export const PRODUCT_COLUMNS: SheetColumn<ProductField>[] = [
     required: true,
     width: 16,
   },
+  { field: 'barcode', header: 'Código de barras', width: 16 },
   { field: 'price', header: 'Precio con IGV', width: 12 },
+  { field: 'igv', header: 'IGV (Gravado/Exonerado/Inafecto)', width: 16 },
   { field: 'minStock', header: 'Stock mínimo', width: 12 },
   { field: 'requiresPrescription', header: 'Con receta (Sí/No)', width: 12 },
   { field: 'controlled', header: 'Controlado (Sí/No)', width: 12 },
@@ -56,14 +61,28 @@ const ALIASES: Record<string, ProductField> = {
   cantidad: 'quantity',
   stock: 'quantity',
   costo: 'cost',
+  barras: 'barcode',
+  'codigo barras': 'barcode',
+  'cod barras': 'barcode',
+  ean: 'barcode',
+  igv: 'igv',
+  'afectacion igv': 'igv',
+  'tipo igv': 'igv',
 };
+
+/** De más largo a más corto: "Código de barras" no debe caer en "Código" */
+const BY_LENGTH = [...PRODUCT_COLUMNS].sort(
+  (a, b) => b.header.length - a.header.length,
+);
 
 export function productFieldFor(header: string): ProductField | null {
   const h = normalizeSearch(header);
   if (!h) return null;
   // Primero los nombres cortos exactos: "Stock" a secas es la cantidad, no el stock mínimo
   if (ALIASES[h]) return ALIASES[h];
-  for (const column of PRODUCT_COLUMNS) {
+  const exact = PRODUCT_COLUMNS.find((c) => normalizeSearch(c.header) === h);
+  if (exact) return exact.field;
+  for (const column of BY_LENGTH) {
     const expected = normalizeSearch(column.header);
     const base = expected.split(' ').slice(0, 2).join(' ');
     if (
@@ -78,26 +97,62 @@ export function productFieldFor(header: string): ProductField | null {
 
 const CATEGORIES: Record<string, ProductCategory> = {
   medicamento: 'MEDICINE',
+  medicina: 'MEDICINE',
+  farmaco: 'MEDICINE',
   vacuna: 'VACCINE',
+  biologico: 'VACCINE',
   antiparasitario: 'ANTIPARASITIC',
+  desparasitante: 'ANTIPARASITIC',
   alimento: 'FOOD',
+  comida: 'FOOD',
   accesorio: 'ACCESSORY',
   higiene: 'HYGIENE',
   insumo: 'SUPPLY',
+  material: 'SUPPLY',
 };
 
 const UNITS: Record<string, BaseUnit> = {
   unidad: 'UNIT',
   und: 'UNIT',
+  unid: 'UNIT',
+  un: 'UNIT',
+  u: 'UNIT',
+  pieza: 'UNIT',
   tableta: 'TABLET',
   tab: 'TABLET',
   pastilla: 'TABLET',
+  comprimido: 'TABLET',
+  capsula: 'TABLET',
   ml: 'ML',
   mililitro: 'ML',
+  cc: 'ML',
   g: 'G',
   gr: 'G',
   gramo: 'G',
 };
+
+const IGV: Record<string, IgvAffectation> = {
+  gravado: 'TAXED',
+  '10': 'TAXED',
+  exonerado: 'EXEMPT',
+  '20': 'EXEMPT',
+  inafecto: 'UNAFFECTED',
+  '30': 'UNAFFECTED',
+};
+
+/** Busca en un diccionario aceptando plurales y puntos: "Medicamentos", "Unid.", "Tabs" */
+function lookup<T>(dict: Record<string, T>, v: string): T | undefined {
+  const k = normalizeSearch(v);
+  if (!k) return undefined;
+  if (dict[k] !== undefined) return dict[k];
+  if (k.endsWith('es') && dict[k.slice(0, -2)] !== undefined)
+    return dict[k.slice(0, -2)];
+  if (k.endsWith('s')) return dict[k.slice(0, -1)];
+  return undefined;
+}
+
+/** Vencimiento cercano: avisa (no bloquea) */
+const SOON_DAYS = 30;
 
 export interface ProductImportRow {
   row: number;
@@ -111,8 +166,16 @@ export interface ProductImportRow {
     minStock: number;
     requiresPrescription: boolean;
     controlled: boolean;
+    igv: IgvAffectation;
   };
-  presentation: { name: string; factor: number; price: number | null };
+  presentation: {
+    name: string;
+    factor: number;
+    price: number | null;
+    barcode: string | null;
+  };
+  /** Otra fila de la misma presentación que solo suma un lote: no crea la presentación de nuevo */
+  extraLot: boolean;
   stock: {
     quantity: number;
     lotNumber: string | null;
@@ -122,6 +185,8 @@ export interface ProductImportRow {
   } | null;
   status: 'ok' | 'exists' | 'error';
   errors: string[];
+  /** Avisos que no impiden importar (sin precio, sin costo, vence pronto) */
+  warnings: string[];
 }
 
 const text = (v: string | Date | undefined) =>
@@ -139,6 +204,10 @@ function number(v: string | Date | undefined): number | null | 'invalid' {
 }
 
 type ParsedDate = { value: string | null; invalid: boolean };
+
+/** Días entre dos fechas AAAA-MM-DD */
+const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
 
 /** Acepta fecha de Excel, AAAA-MM-DD o DD/MM/AAAA. */
 function date(v: string | Date | undefined): ParsedDate {
@@ -196,8 +265,14 @@ function validateEach(
       category: string;
       baseUnit: string;
       controlled: boolean;
-      presentations: Set<string>;
+      igv: string;
+      /** presentación → equivalencia y precio, para aceptar otra fila con otro lote */
+      presentations: Map<string, { factor: number; price: number | null }>;
     }
+  >();
+  const barcodes = new Map<
+    string,
+    { key: string; pres: string; row: number }
   >();
 
   return rows.map(({ row, values }) => {
@@ -208,10 +283,10 @@ function validateEach(
     if (code && !/^[\w.-]{1,30}$/.test(code))
       errors.push('El código admite letras, números, punto y guion');
 
-    const category = CATEGORIES[normalizeSearch(text(values.category))];
+    const category = lookup(CATEGORIES, text(values.category));
     if (!category)
       errors.push(`Categoría «${text(values.category)}» no reconocida`);
-    const baseUnit = UNITS[normalizeSearch(text(values.baseUnit))];
+    const baseUnit = lookup(UNITS, text(values.baseUnit));
     if (!baseUnit)
       errors.push(
         `Unidad mínima «${text(values.baseUnit)}» no reconocida (Unidad, Tableta, ml o g)`,
@@ -225,6 +300,16 @@ function validateEach(
     const price = number(values.price);
     if (price === 'invalid' || (typeof price === 'number' && price < 0))
       errors.push('El precio no es válido');
+    const igvText = text(values.igv);
+    const igv = igvText ? lookup(IGV, igvText) : 'TAXED';
+    if (!igv)
+      errors.push(
+        `IGV «${igvText}» no reconocido (Gravado, Exonerado o Inafecto)`,
+      );
+    const barcode =
+      text(values.barcode).replace(/\s+/g, '').slice(0, 30) || null;
+    if (barcode && !/^[\w-]{3,30}$/.test(barcode))
+      errors.push('El código de barras admite solo letras, números y guion');
     const minStock = number(values.minStock);
     if (
       minStock === 'invalid' ||
@@ -232,7 +317,9 @@ function validateEach(
     )
       errors.push('El stock mínimo no es válido');
 
+    const controlled = yes(values.controlled);
     let stock: ProductImportRow['stock'] = null;
+    const warnings: string[] = [];
     const qty = number(values.quantity);
     if (qty === 'invalid' || (typeof qty === 'number' && qty < 0))
       errors.push('La cantidad inicial no es válida');
@@ -240,14 +327,22 @@ function validateEach(
       const lot = text(values.lotNumber).slice(0, 40) || null;
       const { value: exp, invalid: badDate } = date(values.expiresAt);
       const cost = number(values.cost);
-      if (badDate)
-        errors.push('El vencimiento no es válido (usa AAAA-MM-DD)');
+      if (badDate) errors.push('El vencimiento no es válido (usa AAAA-MM-DD)');
       else if (exp && exp < today)
         errors.push('Ese lote ya está vencido: no se puede ingresar');
-      if (category && category !== 'ACCESSORY' && (!lot || !exp))
-        errors.push('Con cantidad inicial, indica el lote y el vencimiento');
+      else if (exp && daysBetween(today, exp) <= SOON_DAYS)
+        warnings.push(`Vence en ${daysBetween(today, exp)} días`);
+      // Vacunas y controlados: lote obligatorio (trazabilidad). Lo demás que vence: basta la fecha
+      if ((category === 'VACCINE' || controlled) && !lot)
+        errors.push(
+          'Con cantidad inicial, indica el lote (vacunas y controlados)',
+        );
+      if (category && category !== 'ACCESSORY' && !exp && !badDate)
+        errors.push('Con cantidad inicial, indica el vencimiento');
       if (cost === 'invalid' || (typeof cost === 'number' && cost < 0))
         errors.push('El costo no es válido');
+      else if (cost === null)
+        warnings.push('Sin costo: el margen de este lote saldrá incompleto');
       stock = {
         quantity: qty,
         lotNumber: lot,
@@ -260,31 +355,67 @@ function validateEach(
     const key = code
       ? `code:${code.toUpperCase()}`
       : `name:${normalizeSearch(name)}`;
-    const controlled = yes(values.controlled);
     const group = groups.get(key);
+    const presKey = normalizeSearch(presName);
+    const numFactor = typeof factor === 'number' ? factor : 0;
+    const numPrice =
+      typeof price === 'number' ? Math.round(price * 100) / 100 : null;
+    let extraLot = false;
     if (group) {
       if (
         group.category !== category ||
         group.baseUnit !== baseUnit ||
-        group.controlled !== controlled
+        group.controlled !== controlled ||
+        group.igv !== igv
       )
         errors.push(
-          `El producto está en la fila ${group.row} con otra categoría, unidad o marca de controlado`,
+          `El producto está en la fila ${group.row} con otra categoría, unidad, IGV o marca de controlado`,
         );
-      if (group.presentations.has(normalizeSearch(presName)))
-        errors.push(`La presentación «${presName}» está repetida`);
+      const same = group.presentations.get(presKey);
+      if (same) {
+        // Otra fila de la misma presentación vale solo para sumar otro lote
+        if (!stock)
+          errors.push(
+            `La presentación «${presName}» está repetida (para otro lote, pon su cantidad)`,
+          );
+        else if (
+          same.factor !== numFactor ||
+          (numPrice !== null && same.price !== null && same.price !== numPrice)
+        )
+          errors.push(
+            `La presentación «${presName}» está repetida con otra equivalencia o precio`,
+          );
+        else extraLot = true;
+      }
+    }
+    if (barcode && !extraLot) {
+      const seen = barcodes.get(barcode);
+      if (seen && (seen.key !== key || seen.pres !== presKey))
+        errors.push(`El código de barras ya está en la fila ${seen.row}`);
     }
     if (!errors.length) {
-      if (group) group.presentations.add(normalizeSearch(presName));
-      else
+      if (barcode && !barcodes.has(barcode))
+        barcodes.set(barcode, { key, pres: presKey, row });
+      if (group) {
+        if (!extraLot)
+          group.presentations.set(presKey, {
+            factor: numFactor,
+            price: numPrice,
+          });
+      } else
         groups.set(key, {
           row,
-          category: category,
-          baseUnit: baseUnit,
+          category: category!,
+          baseUnit: baseUnit!,
           controlled,
-          presentations: new Set([normalizeSearch(presName)]),
+          igv: igv!,
+          presentations: new Map([
+            [presKey, { factor: numFactor, price: numPrice }],
+          ]),
         });
     }
+    if (numPrice === null && !extraLot)
+      warnings.push('Sin precio: no se podrá cobrar hasta ponérselo');
 
     return {
       row,
@@ -297,15 +428,19 @@ function validateEach(
         minStock: typeof minStock === 'number' ? minStock : 0,
         requiresPrescription: yes(values.requiresPrescription) || controlled,
         controlled,
+        igv: igv ?? 'TAXED',
       },
       presentation: {
         name: presName,
-        factor: typeof factor === 'number' ? factor : 0,
-        price: typeof price === 'number' ? Math.round(price * 100) / 100 : null,
+        factor: numFactor,
+        price: numPrice,
+        barcode,
       },
+      extraLot,
       stock,
       status: errors.length ? 'error' : 'ok',
       errors,
+      warnings: errors.length ? [] : warnings,
     };
   });
 }

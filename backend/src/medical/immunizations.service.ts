@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -13,6 +14,8 @@ import { clinicLogoUrl } from '../auth/session-user.js';
 import { PET_SELECT, toPetView } from '../pets/pet.mapper.js';
 import type { PetView } from '../pets/pet.mapper.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { clientsWithPush, reminderMarks } from '../reminders/reminder-marks.js';
+import type { ReminderMark } from '../reminders/reminder-marks.js';
 import { lockVisit } from '../visits/visit.views.js';
 import type {
   CreateImmunizationDto,
@@ -36,6 +39,10 @@ export interface DueImmunization {
   daysLeft: number;
   pet: { id: number; number: number; name: string; species: Species };
   client: { id: number; name: string; phone: string };
+  /** A quién ya se avisó de este refuerzo y por dónde */
+  reminded: ReminderMark[];
+  /** El dueño activó los avisos en su portal: le llega solo al celular */
+  autoNotice: boolean;
 }
 
 /** Carnet imprimible: datos de la clínica y de la mascota, y las aplicaciones vigentes */
@@ -46,7 +53,23 @@ export interface ImmunizationCard {
     phone: string | null;
     logoUrl: string | null;
   };
-  pet: PetView & { client: { id: number; name: string; phone: string } };
+  pet: PetView & {
+    client: {
+      id: number;
+      name: string;
+      phone: string;
+      address: string | null;
+      district: string | null;
+    };
+  };
+  /** Próxima cita que sigue en pie (para el encabezado de la historia) */
+  nextAppointment: {
+    id: number;
+    startsAt: Date;
+    type: string;
+    reason: string | null;
+    vet: string | null;
+  } | null;
   items: ImmunizationView[];
 }
 
@@ -76,7 +99,7 @@ export class ImmunizationsService {
   }
 
   async card(clinicId: number, petId: number): Promise<ImmunizationCard> {
-    const [clinic, pet, rows] = await Promise.all([
+    const [clinic, pet, rows, next] = await Promise.all([
       this.prisma.clinic.findUniqueOrThrow({
         where: { id: clinicId },
         select: {
@@ -91,13 +114,37 @@ export class ImmunizationsService {
         where: { id: petId, clinicId },
         select: {
           ...PET_SELECT,
-          client: { select: { id: true, name: true, phone: true } },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              address: true,
+              district: true,
+            },
+          },
         },
       }),
       this.prisma.immunization.findMany({
         where: { clinicId, petId, voidedAt: null },
         select: IMMUNIZATION_SELECT,
         orderBy: [{ appliedAt: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.appointment.findFirst({
+        where: {
+          clinicId,
+          petId,
+          status: { in: ['SCHEDULED', 'CONFIRMED'] },
+          startsAt: { gte: new Date() },
+        },
+        select: {
+          id: true,
+          startsAt: true,
+          type: true,
+          reason: true,
+          vet: { select: { fullName: true } },
+        },
+        orderBy: { startsAt: 'asc' },
       }),
     ]);
     if (!pet) throw new NotFoundException('La mascota no existe');
@@ -111,6 +158,15 @@ export class ImmunizationsService {
       },
       pet: { ...toPetView(petRow), client },
       items: rows.map(toImmunizationView),
+      nextAppointment: next
+        ? {
+            id: next.id,
+            startsAt: next.startsAt,
+            type: next.type,
+            reason: next.reason,
+            vet: next.vet?.fullName ?? null,
+          }
+        : null,
     };
   }
 
@@ -124,6 +180,13 @@ export class ImmunizationsService {
       select: { timezone: true },
     });
     const today = clinicDay(timezone);
+    // Una vacuna aplicada aquí la firma un veterinario (sale en el carnet con su CMVP);
+    // recepción solo registra antecedentes de otra clínica
+    const vet = actor.role === 'ADMIN' || actor.role === 'VET';
+    if (!vet && (dto.visitId || dto.external === false))
+      throw new ForbiddenException(
+        'Solo un veterinario registra una vacuna aplicada en la clínica; tú puedes registrarla como antecedente de otra clínica',
+      );
 
     const id = await this.prisma.$transaction(async (tx) => {
       const pet = await this.findPet(actor.clinicId, dto.petId, tx);
@@ -261,24 +324,41 @@ export class ImmunizationsService {
         phone: string;
       }[]
     >(Prisma.sql`
-      SELECT l.*, p.number AS pet_number, p.name AS pet_name, p.species::text AS species,
+      SELECT i.id, i.kind::text AS kind, i.name, i.applied_at, i.next_due_at, i.pet_id,
+             p.number AS pet_number, p.name AS pet_name, p.species::text AS species,
              c.id AS client_id, c.name AS client_name, c.phone
-      FROM (
-        SELECT DISTINCT ON (i.pet_id, i.kind, lower(i.name))
-               i.id, i.kind::text AS kind, i.name, i.applied_at, i.next_due_at, i.pet_id
-        FROM immunizations i
-        WHERE i.clinic_id = ${clinicId} AND i.voided_at IS NULL
-        ORDER BY i.pet_id, i.kind, lower(i.name), i.applied_at DESC, i.id DESC
-      ) l
-      JOIN pets p ON p.id = l.pet_id
+      FROM immunizations i
+      JOIN pets p ON p.id = i.pet_id
       JOIN clients c ON c.id = p.client_id
-      WHERE l.next_due_at BETWEEN ${from} AND ${to}
+      WHERE i.clinic_id = ${clinicId} AND i.voided_at IS NULL
+        AND i.next_due_at BETWEEN ${from} AND ${to}
+        -- Solo la última aplicación de esa vacuna para la mascota (un refuerzo ya puesto no se avisa).
+        -- Se busca por fila con immunizations_latest_idx: no recorre todo el historial de la clínica.
+        AND i.id = (
+          SELECT n.id FROM immunizations n
+          WHERE n.pet_id = i.pet_id AND n.kind = i.kind AND lower(n.name) = lower(i.name)
+            AND n.voided_at IS NULL
+          ORDER BY n.applied_at DESC, n.id DESC
+          LIMIT 1)
         AND p.active AND p.deceased_at IS NULL
         AND c.active AND c.anonymized_at IS NULL
-      ORDER BY l.next_due_at ${overdue ? Prisma.sql`DESC` : Prisma.sql`ASC`}, p.name
+      ORDER BY i.next_due_at ${overdue ? Prisma.sql`DESC` : Prisma.sql`ASC`}, p.name
       LIMIT 500`);
 
+    const [marks, withPush] = await Promise.all([
+      reminderMarks(
+        this.prisma,
+        clinicId,
+        'VACCINE',
+        rows.map((r) => r.id),
+      ),
+      clientsWithPush(this.prisma, clinicId, [
+        ...new Set(rows.map((r) => r.client_id)),
+      ]),
+    ]);
     return rows.map((r) => ({
+      reminded: marks.get(r.id) ?? [],
+      autoNotice: withPush.has(r.client_id),
       id: r.id,
       kind: r.kind,
       name: r.name,

@@ -8,7 +8,6 @@ import {
   Post,
   Query,
   Req,
-  StreamableFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { AuthUser } from '../common/auth/auth-user.js';
@@ -20,12 +19,10 @@ import {
   BoardQuery,
   CancelGroomingDto,
   CheckInDto,
-  CommissionsQuery,
   DeliverDto,
   MoveDto,
+  TransportDto,
 } from './dto/grooming.dto.js';
-import { GroomingCommissionsService } from './grooming-commissions.service.js';
-import type { CommissionReport } from './grooming-commissions.service.js';
 import { GroomingService } from './grooming.service.js';
 import type { Groomer } from './grooming.service.js';
 import type { GroomingCard, GroomingDetail } from './grooming.views.js';
@@ -36,10 +33,7 @@ import type { GroomingCard, GroomingDetail } from './grooming.views.js';
  */
 @Controller()
 export class GroomingController {
-  constructor(
-    private readonly grooming: GroomingService,
-    private readonly commissions: GroomingCommissionsService,
-  ) {}
+  constructor(private readonly grooming: GroomingService) {}
 
   @Get('grooming')
   board(
@@ -52,30 +46,6 @@ export class GroomingController {
   @Get('grooming/groomers')
   groomers(@CurrentUser() user: AuthUser): Promise<Groomer[]> {
     return this.grooming.groomers(user.clinicId);
-  }
-
-  /** Comisiones del período: el administrador ve a todos; el groomer, lo suyo */
-  @Roles('ADMIN', 'GROOMER')
-  @Get('grooming/commissions')
-  commissionReport(
-    @CurrentUser() user: AuthUser,
-    @Query() query: CommissionsQuery,
-  ): Promise<CommissionReport> {
-    return this.commissions.report(user, query);
-  }
-
-  @Roles('ADMIN', 'GROOMER')
-  @Get('grooming/commissions/excel')
-  async commissionExcel(
-    @CurrentUser() user: AuthUser,
-    @Query() query: CommissionsQuery,
-  ): Promise<StreamableFile> {
-    const file = await this.commissions.excel(user, query);
-    return new StreamableFile(file, {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: `attachment; filename="comisiones-${query.from}-a-${query.to}.xlsx"`,
-      length: file.length,
-    });
   }
 
   @Get('grooming/:id')
@@ -113,6 +83,18 @@ export class GroomingController {
     @Req() req: Request,
   ): Promise<GroomingCard> {
     return this.grooming.move(user, id, dto, req.ip);
+  }
+
+  /** El dueño ya no puede volver: se lo llevamos (o se quita la movilidad) */
+  @Roles('ADMIN', 'RECEPTION')
+  @Patch('grooming/:id/transport')
+  transport(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: TransportDto,
+    @Req() req: Request,
+  ): Promise<GroomingDetail> {
+    return this.grooming.changeTransport(user, id, dto, req.ip);
   }
 
   @Roles(...GROOMING_ROLES)

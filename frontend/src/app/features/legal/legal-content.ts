@@ -58,6 +58,14 @@ export const PRIVACY: LegalDocument = {
       ],
     },
     {
+      title: 'Portal del dueño',
+      paragraphs: [
+        'Si la clínica lo activa, el dueño recibe un enlace personal para ver las próximas vacunas y citas de sus mascotas (y, si la clínica lo permite, el carnet y las recetas recientes). Muestra solo su primer nombre: no incluye su documento, celular, dirección ni cuentas.',
+        'Desde ese enlace el dueño puede activar avisos en su celular o agregar las fechas a su calendario. Para los avisos se guarda solo la dirección técnica que entrega su navegador; se borra al desactivarlos, al quitar el permiso o al revocar el enlace.',
+        'El enlace vence a los 6 meses, la clínica puede desactivarlo en cualquier momento y crear uno nuevo deja sin efecto el anterior. No se indexa en buscadores. Quien tenga el enlace puede ver esa información, por eso no debe compartirse.',
+      ],
+    },
+    {
       title: 'Dónde se guardan y cómo se protegen',
       paragraphs: [
         'Los datos se guardan en servidores de proveedores de nube que pueden estar fuera del Perú. Por eso el consentimiento que firma cada cliente informa ese envío al extranjero.',

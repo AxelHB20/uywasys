@@ -1,0 +1,677 @@
+<section class="space-y-5">
+  <app-back-link fallback="/presupuestos" fallbackLabel="Presupuestos" />
+
+  @if (loading() && !estimate()) {
+    <div class="space-y-5" aria-busy="true" aria-label="Cargando presupuesto">
+      <div class="h-20 animate-pulse rounded-2xl bg-slate-100"></div>
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div class="card h-[32rem] animate-pulse"></div>
+        <div class="card h-72 animate-pulse max-xl:hidden"></div>
+      </div>
+    </div>
+  } @else if (loadError(); as error) {
+    <div class="card flex flex-col items-center px-6 py-12 text-center">
+      <app-icon name="alert" class="size-8 text-rose-600" />
+      <p class="mt-3 font-medium text-slate-900">{{ error }}</p>
+    </div>
+  } @else if (estimate(); as e) {
+    <!-- Encabezado y acciones -->
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between print:hidden">
+      <div class="min-w-0">
+        <p class="flex flex-wrap items-center gap-2">
+          <span class="font-mono text-sm font-semibold text-slate-500">{{ e.code }}</span>
+          <app-badge [tone]="tone[e.status]">{{ labels[e.status] }}</app-badge>
+          @if (validity()?.text; as text) {
+            <span
+              class="text-xs font-medium"
+              [class]="
+                validity()?.tone === 'urgent'
+                  ? 'text-rose-700'
+                  : validity()?.tone === 'soon'
+                    ? 'text-amber-800'
+                    : 'text-slate-500'
+              "
+              >· {{ text }}</span
+            >
+          }
+        </p>
+        <h1 class="mt-1 font-display text-2xl font-semibold break-words text-slate-900">
+          {{ e.title }}
+        </h1>
+        <p class="mt-1 text-sm text-slate-600">
+          @if (canSeeRecord()) {
+            <a
+              [routerLink]="['/mascotas', e.pet.id]"
+              class="font-medium text-slate-900 underline-offset-2 hover:underline"
+              >{{ e.pet.name }}</a
+            >
+          } @else {
+            <span class="font-medium text-slate-900">{{ e.pet.name }}</span>
+          }
+          · {{ species[e.pet.species] }} ·
+          <a
+            [routerLink]="['/clientes', e.client.id]"
+            class="underline-offset-2 hover:text-slate-900 hover:underline"
+            >{{ e.client.name }}</a
+          >
+        </p>
+      </div>
+      <div class="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+        <button type="button" class="btn btn-ghost" (click)="print()">
+          <app-icon name="printer" class="size-4" /> Imprimir
+        </button>
+        <button
+          type="button"
+          class="btn btn-ghost"
+          [disabled]="downloading()"
+          (click)="download()"
+        >
+          <app-icon name="download" class="size-4" />
+          {{ downloading() ? 'Generando…' : 'PDF' }}
+        </button>
+        @if (e.status === 'PENDING' || e.status === 'ACCEPTED') {
+          @if (whatsapp(); as url) {
+            <a class="btn btn-secondary" [href]="url" target="_blank" rel="noopener">
+              <app-icon name="message-circle" class="size-4" /> Enviar por WhatsApp
+            </a>
+          } @else {
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled
+              title="El dueño no tiene celular registrado: agrégalo en su ficha"
+            >
+              <app-icon name="message-circle" class="size-4" /> Sin celular
+            </button>
+          }
+        }
+        @if (canEdit() && e.status === 'PENDING') {
+          <button type="button" class="btn btn-secondary" (click)="open('reject')">
+            No aceptó
+          </button>
+          <button type="button" class="btn btn-primary" (click)="open('accept')">
+            <app-icon name="check" class="size-4" /> Aceptó
+          </button>
+        }
+        @if (canEdit() && e.status === 'ACCEPTED') {
+          <button type="button" class="btn btn-ghost text-slate-600" (click)="open('reject')">
+            El dueño desistió
+          </button>
+          <button type="button" class="btn btn-primary" (click)="openConvert()">
+            <app-icon name="stethoscope" class="size-4" /> Cargar a la atención
+          </button>
+        }
+        @if (e.status === 'CONVERTED' && e.visitId) {
+          <a [routerLink]="['/atenciones', e.visitId]" class="btn btn-primary">
+            <app-icon name="stethoscope" class="size-4" /> Ver atención
+          </a>
+        }
+        @if ((e.status === 'EXPIRED' || e.status === 'REJECTED') && canEdit()) {
+          <a
+            routerLink="/presupuestos/nuevo"
+            [queryParams]="{ petId: e.pet.id, mascota: e.pet.name, cliente: e.client.name }"
+            class="btn btn-primary"
+          >
+            <app-icon name="plus" class="size-4" /> Emitir uno nuevo
+          </a>
+        }
+      </div>
+    </header>
+
+    <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <!-- Documento A4 -->
+      <div class="min-w-0 overflow-x-auto">
+        <article
+          #sheet
+          class="print-sheet relative mx-auto max-w-[210mm] overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900 shadow-card ring-1 ring-slate-200"
+          [attr.aria-label]="'Presupuesto ' + e.code"
+        >
+          <div class="h-1.5 bg-anil-600 print:bg-black" aria-hidden="true"></div>
+
+          @if (watermark(); as w) {
+            <p
+              class="pointer-events-none absolute inset-0 grid place-items-center select-none"
+              aria-hidden="true"
+            >
+              <span
+                class="-rotate-[24deg] rounded-xl border-4 px-6 py-2 font-display text-6xl font-bold tracking-widest uppercase print:border-black/20 print:text-black/15"
+                [class]="
+                  e.status === 'EXPIRED'
+                    ? 'border-rose-600/25 text-rose-600/20'
+                    : 'border-slate-500/25 text-slate-500/20'
+                "
+                >{{ w }}</span
+              >
+            </p>
+          }
+
+          <div class="p-7 sm:p-10">
+            <header class="flex flex-wrap items-start justify-between gap-6">
+              <div class="flex min-w-0 items-start gap-4">
+                @if (logoUrl(); as logo) {
+                  <img
+                    [src]="logo"
+                    alt=""
+                    class="h-16 w-auto max-w-[44mm] object-contain"
+                    (error)="logoFailed.set(true)"
+                  />
+                }
+                <div class="min-w-0">
+                  <p class="font-display text-lg font-bold break-words">{{ e.clinic.name }}</p>
+                  @if (e.clinic.ruc) {
+                    <p class="text-slate-600">RUC {{ e.clinic.ruc }}</p>
+                  }
+                  @if (e.clinic.address) {
+                    <p class="text-slate-600">{{ e.clinic.address }}</p>
+                  }
+                  @if (e.clinic.phone) {
+                    <p class="text-slate-600">Tel. {{ e.clinic.phone }}</p>
+                  }
+                </div>
+              </div>
+              <div
+                class="min-w-[52mm] overflow-hidden rounded-xl text-right ring-1 ring-anil-200 print:ring-black"
+              >
+                <p
+                  class="bg-anil-600 px-4 py-1.5 text-[10.5px] font-semibold tracking-[0.18em] text-white uppercase print:bg-white print:text-black"
+                >
+                  Presupuesto
+                </p>
+                <div class="px-4 py-2.5">
+                  <p class="font-display text-xl font-bold tabular-nums">{{ e.code }}</p>
+                  <dl class="mt-1 space-y-0.5 text-slate-600">
+                    <div class="flex justify-end gap-1.5">
+                      <dt>Emitido:</dt>
+                      <dd class="font-medium text-slate-900">{{ e.createdAt | fecha }}</dd>
+                    </div>
+                    <div class="flex justify-end gap-1.5">
+                      <dt>Válido hasta:</dt>
+                      <dd class="font-medium text-slate-900">
+                        {{ e.validUntil | fecha: 'calendar' }}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </header>
+
+            <!-- Paciente y propietario -->
+            <div class="mt-7 grid gap-3 sm:grid-cols-2 print:grid-cols-2">
+              <div class="rounded-xl p-3.5 ring-1 ring-slate-200 print:ring-black/40">
+                <p class="text-[10.5px] font-semibold tracking-wider text-slate-500 uppercase">
+                  Paciente
+                </p>
+                <p class="mt-1 text-[13.5px] font-semibold">
+                  {{ e.pet.name }}
+                  <span class="font-normal text-slate-500">· {{ petCode(e.pet.number) }}</span>
+                </p>
+                <p class="text-slate-600">
+                  {{ species[e.pet.species] }}{{ e.pet.breed ? ', ' + e.pet.breed : ''
+                  }}{{ e.pet.weightKg ? ' · ' + e.pet.weightKg + ' kg' : '' }}
+                </p>
+              </div>
+              <div class="rounded-xl p-3.5 ring-1 ring-slate-200 print:ring-black/40">
+                <p class="text-[10.5px] font-semibold tracking-wider text-slate-500 uppercase">
+                  Propietario
+                </p>
+                <p class="mt-1 text-[13.5px] font-semibold">{{ e.client.name }}</p>
+                <p class="text-slate-600">
+                  @if (e.client.docNumber) {
+                    {{ docLabel[e.client.docType ?? ''] ?? 'Doc.' }} {{ e.client.docNumber }} ·
+                  }
+                  Tel. {{ formatPhone(e.client.phone) }}
+                </p>
+              </div>
+            </div>
+
+            <p class="mt-7 text-[10.5px] font-semibold tracking-wider text-slate-500 uppercase">
+              Concepto
+            </p>
+            <h2 class="mt-0.5 font-display text-lg font-semibold break-words">{{ e.title }}</h2>
+
+            <!-- Detalle -->
+            <table class="mt-4 w-full text-left">
+              <thead>
+                <tr
+                  class="bg-slate-50 text-[10.5px] tracking-wider text-slate-600 uppercase print:bg-white"
+                >
+                  <th scope="col" class="w-8 rounded-l-lg py-2 pl-3 font-semibold">#</th>
+                  <th scope="col" class="py-2 pr-3 font-semibold">Descripción</th>
+                  <th scope="col" class="w-14 py-2 pr-3 text-right font-semibold">Cant.</th>
+                  <th
+                    scope="col"
+                    class="w-24 py-2 pr-3 text-right font-semibold max-sm:hidden print:table-cell"
+                  >
+                    P. unit.
+                  </th>
+                  <th
+                    scope="col"
+                    class="w-24 py-2 pr-3 text-right font-semibold max-sm:hidden print:table-cell"
+                  >
+                    Dscto.
+                  </th>
+                  <th scope="col" class="w-28 rounded-r-lg py-2 pr-3 text-right font-semibold">
+                    Importe
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (i of e.items; track i.id; let n = $index) {
+                  <tr class="border-b border-slate-200 align-top">
+                    <td class="py-2.5 pl-3 text-slate-500 tabular-nums">{{ n + 1 }}</td>
+                    <td class="py-2.5 pr-3">
+                      {{ i.description }}
+                      @if (i.igvAffectation !== 'TAXED') {
+                        <span class="ml-1 text-[10.5px] text-slate-500">(exonerado)</span>
+                      }
+                    </td>
+                    <td class="py-2.5 pr-3 text-right tabular-nums">{{ formatQty(i.quantity) }}</td>
+                    <td
+                      class="py-2.5 pr-3 text-right whitespace-nowrap tabular-nums max-sm:hidden print:table-cell"
+                    >
+                      {{ money(i.unitPrice) }}
+                    </td>
+                    <td
+                      class="py-2.5 pr-3 text-right whitespace-nowrap tabular-nums max-sm:hidden print:table-cell"
+                      [class.text-emerald-700]="i.discount"
+                    >
+                      {{ i.discount ? '− ' + money(i.discount) : '—' }}
+                    </td>
+                    <td class="py-2.5 pr-3 text-right font-medium whitespace-nowrap tabular-nums">
+                      {{ money(i.total) }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+
+            <!-- Notas y totales -->
+            <div
+              class="mt-5 grid gap-5 sm:grid-cols-[minmax(0,1fr)_17rem] print:grid-cols-[1fr_17rem]"
+            >
+              <div>
+                @if (e.notes) {
+                  <div
+                    class="rounded-xl bg-slate-50 p-3.5 print:bg-white print:ring-1 print:ring-black/40"
+                  >
+                    <p class="text-[10.5px] font-semibold tracking-wider text-slate-500 uppercase">
+                      Indicaciones
+                    </p>
+                    <p class="mt-1 whitespace-pre-line">{{ e.notes }}</p>
+                  </div>
+                }
+              </div>
+              <dl class="space-y-1.5 sm:col-start-2">
+                @if (amounts().discount) {
+                  <div class="flex justify-between text-slate-600">
+                    <dt>Subtotal</dt>
+                    <dd class="tabular-nums">{{ money(amounts().gross) }}</dd>
+                  </div>
+                  <div class="flex justify-between text-emerald-700">
+                    <dt>Descuentos</dt>
+                    <dd class="tabular-nums">− {{ money(amounts().discount) }}</dd>
+                  </div>
+                }
+                <div class="flex justify-between text-slate-600">
+                  <dt>Op. gravada</dt>
+                  <dd class="tabular-nums">{{ money(e.taxable) }}</dd>
+                </div>
+                @if (amounts().exempt) {
+                  <div class="flex justify-between text-slate-600">
+                    <dt>Op. exonerada</dt>
+                    <dd class="tabular-nums">{{ money(amounts().exempt) }}</dd>
+                  </div>
+                }
+                <div class="flex justify-between text-slate-600">
+                  <dt>IGV 18 %</dt>
+                  <dd class="tabular-nums">{{ money(e.igv) }}</dd>
+                </div>
+                <div
+                  class="!mt-3 flex items-baseline justify-between rounded-xl bg-anil-50 px-3.5 py-3 ring-1 ring-anil-100 print:bg-white print:ring-black"
+                >
+                  <dt class="font-semibold text-anil-900 print:text-black">Total</dt>
+                  <dd class="font-display text-[22px] font-bold tabular-nums">
+                    {{ money(e.total) }}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- Condiciones -->
+            <div class="mt-7 border-t border-slate-200 pt-4">
+              <p class="text-[10.5px] font-semibold tracking-wider text-slate-500 uppercase">
+                Condiciones
+              </p>
+              <ul class="mt-1.5 list-disc space-y-0.5 pl-4 text-[11.5px] text-slate-600">
+                <li>
+                  Precios en soles, IGV incluido. Válido hasta el
+                  {{ e.validUntil | fecha: 'calendar' }}.
+                </li>
+                <li>
+                  Puede variar si durante el procedimiento se requieren servicios adicionales; se
+                  informarán y consultarán antes de realizarse.
+                </li>
+                <li>Este documento no es un comprobante de pago.</li>
+              </ul>
+            </div>
+
+            <footer class="mt-12 grid gap-10 sm:grid-cols-2 print:grid-cols-2">
+              <div class="border-t border-slate-400 pt-1.5 text-center">
+                <p class="font-medium">{{ e.createdBy.fullName }}</p>
+                @if (e.createdBy.licenseNumber) {
+                  <p class="text-slate-600">C.M.V.P. {{ e.createdBy.licenseNumber }}</p>
+                } @else {
+                  <p class="text-slate-600">{{ e.clinic.name }}</p>
+                }
+              </div>
+              <div class="border-t border-slate-400 pt-1.5 text-center">
+                <p class="font-medium">Conformidad del propietario</p>
+                <p class="text-slate-600">{{ e.client.name }}</p>
+              </div>
+            </footer>
+          </div>
+        </article>
+      </div>
+
+      <!-- Seguimiento -->
+      <aside class="space-y-4 print:hidden xl:sticky xl:top-6" aria-label="Seguimiento">
+        <section class="card p-5" aria-labelledby="est-track">
+          <h2 id="est-track" class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Seguimiento
+          </h2>
+          <ol class="mt-4">
+            <!-- Emitido -->
+            <li class="relative flex gap-3 pb-5">
+              <span
+                class="absolute top-7 bottom-0 left-[13px] w-px bg-slate-200"
+                aria-hidden="true"
+              ></span>
+              <span
+                class="relative grid size-7 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+              >
+                <app-icon name="file-text" class="size-3.5" />
+              </span>
+              <div class="min-w-0 pt-0.5">
+                <p class="text-sm font-medium text-slate-900">Emitido</p>
+                <p class="text-xs text-slate-500">
+                  {{ e.createdAt | fecha: 'datetime' }} · {{ e.createdBy.fullName }}
+                </p>
+              </div>
+            </li>
+
+            <!-- Respuesta -->
+            <li class="relative flex gap-3 pb-5">
+              <span
+                class="absolute top-7 bottom-0 left-[13px] w-px bg-slate-200"
+                aria-hidden="true"
+              ></span>
+              @switch (e.status) {
+                @case ('PENDING') {
+                  <span
+                    class="relative grid size-7 shrink-0 place-items-center rounded-full bg-maiz-100 text-amber-800 ring-1 ring-amber-300"
+                  >
+                    <app-icon name="clock" class="size-3.5" />
+                  </span>
+                  <div class="min-w-0 pt-0.5">
+                    <p class="text-sm font-medium text-slate-900">Esperando respuesta</p>
+                    <p class="text-xs text-slate-500">
+                      {{ validity()?.text }} · hasta el {{ e.validUntil | fecha: 'calendar' }}
+                    </p>
+                  </div>
+                }
+                @case ('EXPIRED') {
+                  <span
+                    class="relative grid size-7 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+                  >
+                    <app-icon name="ban" class="size-3.5" />
+                  </span>
+                  <div class="min-w-0 pt-0.5">
+                    <p class="text-sm font-medium text-slate-900">Venció sin respuesta</p>
+                    <p class="text-xs text-slate-500">El {{ e.validUntil | fecha: 'calendar' }}</p>
+                  </div>
+                }
+                @case ('REJECTED') {
+                  <span
+                    class="relative grid size-7 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-300"
+                  >
+                    <app-icon name="x" class="size-3.5" />
+                  </span>
+                  <div class="min-w-0 pt-0.5">
+                    <p class="text-sm font-medium text-slate-900">No aceptado</p>
+                    <p class="text-xs text-slate-500">
+                      {{ e.decidedAt | fecha: 'datetime'
+                      }}{{ e.decidedBy ? ' · ' + e.decidedBy.fullName : '' }}
+                    </p>
+                    @if (e.decisionNote) {
+                      <p class="mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+                        “{{ e.decisionNote }}”
+                      </p>
+                    }
+                  </div>
+                }
+                @default {
+                  <span
+                    class="relative grid size-7 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                  >
+                    <app-icon name="check" class="size-3.5" />
+                  </span>
+                  <div class="min-w-0 pt-0.5">
+                    <p class="text-sm font-medium text-slate-900">Aceptado por el dueño</p>
+                    <p class="text-xs text-slate-500">
+                      {{ e.decidedAt | fecha: 'datetime'
+                      }}{{ e.decidedBy ? ' · ' + e.decidedBy.fullName : '' }}
+                    </p>
+                    @if (e.decisionNote) {
+                      <p class="mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+                        “{{ e.decisionNote }}”
+                      </p>
+                    }
+                  </div>
+                }
+              }
+            </li>
+
+            <!-- Cargado -->
+            <li class="flex gap-3">
+              @if (e.status === 'CONVERTED') {
+                <span
+                  class="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                >
+                  <app-icon name="stethoscope" class="size-3.5" />
+                </span>
+                <div class="min-w-0 pt-0.5">
+                  <p class="text-sm font-medium text-slate-900">Cargado a la atención</p>
+                  <p class="text-xs text-slate-500">{{ e.convertedAt | fecha: 'datetime' }}</p>
+                  @if (e.visitId) {
+                    <a
+                      [routerLink]="['/atenciones', e.visitId]"
+                      class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-anil-700 hover:underline"
+                      >Abrir atención <app-icon name="chevron-right" class="size-3"
+                    /></a>
+                  }
+                </div>
+              } @else {
+                <span
+                  class="grid size-7 shrink-0 place-items-center rounded-full bg-white text-slate-400 ring-1 ring-slate-200 ring-dashed"
+                >
+                  <app-icon name="stethoscope" class="size-3.5" />
+                </span>
+                <div class="min-w-0 pt-0.5">
+                  <p class="text-sm font-medium text-slate-400">Cargar a la atención</p>
+                  <p class="text-xs text-slate-400">
+                    @if (e.status === 'ACCEPTED') {
+                      El día del procedimiento, con el precio presupuestado
+                    } @else if (e.status === 'PENDING') {
+                      Después de que el dueño acepte
+                    } @else {
+                      No corresponde
+                    }
+                  </p>
+                </div>
+              }
+            </li>
+          </ol>
+        </section>
+
+        <section class="card p-5" aria-labelledby="est-money">
+          <h2 id="est-money" class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Importe
+          </h2>
+          <p class="mt-2 font-display text-3xl font-semibold text-slate-900 tabular-nums">
+            {{ money(e.total) }}
+          </p>
+          <p class="mt-1 text-sm text-slate-600">
+            {{ e.items.length }} {{ e.items.length === 1 ? 'ítem' : 'ítems' }}
+            @if (amounts().discount) {
+              · <span class="text-emerald-700">ahorra {{ money(amounts().discount) }}</span>
+            }
+          </p>
+        </section>
+
+        <section class="card p-5" aria-labelledby="est-owner">
+          <h2 id="est-owner" class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Propietario
+          </h2>
+          <a
+            [routerLink]="['/clientes', e.client.id]"
+            class="mt-2 block font-medium text-slate-900 hover:underline"
+            >{{ e.client.name }}</a
+          >
+          <a
+            [href]="'tel:+51' + e.client.phone"
+            class="mt-1 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900"
+          >
+            <app-icon name="phone" class="size-4" /> {{ formatPhone(e.client.phone) }}
+          </a>
+        </section>
+      </aside>
+    </div>
+  }
+</section>
+
+<!-- Aceptar / no aceptar -->
+<app-modal
+  [open]="modal() === 'accept' || modal() === 'reject'"
+  [title]="modal() === 'accept' ? 'El dueño aceptó' : 'El dueño no aceptó'"
+  [description]="
+    modal() === 'accept'
+      ? 'Queda listo para cargarse a la atención el día del procedimiento.'
+      : 'El presupuesto queda cerrado. Puedes anotar el motivo.'
+  "
+  [dismissible]="false"
+  (closed)="close()"
+>
+  <form id="decide-form" (submit)="$event.preventDefault(); decide()" novalidate>
+    <label for="decide-note" class="field-label">
+      {{ modal() === 'accept' ? 'Cómo aceptó (opcional)' : 'Motivo (opcional)' }}
+    </label>
+    <input
+      id="decide-note"
+      [formControl]="note"
+      class="field-input"
+      maxlength="200"
+      autocomplete="off"
+      [placeholder]="
+        modal() === 'accept' ? 'Ej.: firmó en recepción, aceptó por WhatsApp' : 'Ej.: lo pensará'
+      "
+    />
+  </form>
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Volver</button>
+    <button
+      type="submit"
+      form="decide-form"
+      class="btn"
+      [class]="modal() === 'accept' ? 'btn-primary' : 'btn-danger'"
+      [disabled]="busy()"
+    >
+      {{ modal() === 'accept' ? 'Registrar aceptación' : 'Registrar' }}
+    </button>
+  </ng-container>
+</app-modal>
+
+<!-- Cargar a la atención -->
+<app-modal
+  [open]="modal() === 'convert'"
+  title="Cargar a la atención"
+  description="Las líneas entran como cargos con el precio presupuestado y descuentan sus insumos."
+  [dismissible]="false"
+  (closed)="close()"
+>
+  @if (estimate(); as e) {
+    <div class="space-y-4">
+      @if (visitsLoading()) {
+        <div class="h-14 animate-pulse rounded-xl bg-slate-100"></div>
+      } @else if (openVisits().length) {
+        <fieldset>
+          <legend class="field-label">Atención abierta de {{ e.pet.name }}</legend>
+          <div class="mt-1.5 space-y-2">
+            @for (v of openVisits(); track v.id) {
+              <label
+                class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-slate-300 has-[:checked]:bg-anil-50 has-[:checked]:ring-2 has-[:checked]:ring-anil-600"
+              >
+                <input
+                  type="radio"
+                  name="convert-visit"
+                  class="size-4 accent-anil-600"
+                  [checked]="visitId() === v.id"
+                  (change)="visitId.set(v.id)"
+                />
+                <span class="text-sm">
+                  <span class="font-medium text-slate-900">{{
+                    v.openedAt | fecha: 'datetime'
+                  }}</span>
+                  <span class="text-slate-600">
+                    · {{ v.reason ?? 'Sin motivo' }} · {{ v.attendedBy.fullName }}</span
+                  >
+                </span>
+              </label>
+            }
+          </div>
+        </fieldset>
+      } @else {
+        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+          <p class="font-medium text-slate-900">{{ e.pet.name }} aún no está en atención.</p>
+          <p class="mt-1 text-pretty">
+            Mándalo a la <strong class="font-semibold">Cola de hoy</strong>. Cuando el veterinario
+            lo atienda, la atención le mostrará este presupuesto para cargarlo con un clic.
+          </p>
+        </div>
+      }
+      @if (hasControlled() && openVisits().length) {
+        <div>
+          <label for="convert-rx" class="field-label"
+            >N.º de receta <span class="text-rose-600" aria-hidden="true">*</span></label
+          >
+          <input
+            id="convert-rx"
+            [formControl]="rx"
+            class="field-input"
+            maxlength="60"
+            autocomplete="off"
+            placeholder="Ej.: RX-00012"
+            [attr.aria-invalid]="rx.invalid && rx.touched"
+          />
+          <p class="field-hint">Incluye un medicamento controlado: va con su receta retenida.</p>
+        </div>
+      }
+    </div>
+  }
+  <ng-container modal-actions>
+    <button type="button" class="btn btn-secondary" (click)="close()">Volver</button>
+    @if (openVisits().length || visitsLoading()) {
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="busy() || visitsLoading()"
+        (click)="convert()"
+      >
+        Cargar {{ money(estimate()?.total ?? 0) }}
+      </button>
+    } @else {
+      <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="sendToQueue()">
+        <app-icon name="clock" class="size-4" /> Mandar a la cola de hoy
+      </button>
+    }
+  </ng-container>
+</app-modal>

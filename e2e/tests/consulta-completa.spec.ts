@@ -6,14 +6,21 @@ import { expect, test } from '@playwright/test';
  * receta, toma el consentimiento firmado en pantalla y cierra; recepción cobra.
  * Usa el administrador del seed (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD) como recepción.
  */
-const EMAIL = process.env['E2E_EMAIL'] ?? 'admin@uywa.pe';
-const PASSWORD = process.env['E2E_PASSWORD'] ?? 'CambiaEstaClave123';
+const EMAIL = process.env['E2E_EMAIL'] ?? 'e2e@uywa.pe';
+const PASSWORD = process.env['E2E_PASSWORD'] ?? 'Pruebas2026clave';
 const stamp = Date.now().toString().slice(-6);
 const owner = `Dueña E2E ${stamp}`;
 const pet = `Michi${stamp}`;
 const service = `Consulta médica E2E ${stamp}`;
 const vetName = `Dra. Prueba ${stamp}`;
 const vetEmail = `vet${stamp}@uywa.pe`;
+/** La veterinaria de prueba se desactiva al terminar: no se acumulan en la agenda de la demo */
+let vetId: number | null = null;
+
+test.afterEach(async ({ page }) => {
+  if (vetId) await page.request.patch(`/api/users/${vetId}`, { data: { active: false } });
+  vetId = null;
+});
 
 /** Próximo horario de la agenda (cada 15 min, 07:00–21:45) que todavía no pasó, en hora de Lima */
 function nextSlot(): string | null {
@@ -57,7 +64,9 @@ test('consulta completa: cita → llegada → SOAP → vacuna → receta → con
     data: { fullName: vetName, email: vetEmail, role: 'VET', licenseNumber: `CMVP-${stamp}` },
   });
   expect(vet.ok()).toBeTruthy();
-  const { temporaryPassword } = (await vet.json()) as { temporaryPassword: string };
+  const created = (await vet.json()) as { user: { id: number }; temporaryPassword: string };
+  vetId = created.user.id;
+  const { temporaryPassword } = created;
   const client = await page.request.post('/api/clients', {
     data: { name: owner, phone: '987654321', consent: true, pet: { name: pet, species: 'CAT' } },
   });
@@ -116,8 +125,8 @@ test('consulta completa: cita → llegada → SOAP → vacuna → receta → con
   await vp.locator('#v-temp').fill('38.6');
   await vp.locator('#v-exam').fill('Dolor a la palpación de la rodilla derecha, sin edema.');
   await vp.locator('#v-dx').fill('Esguince de rodilla');
-  await vp.getByRole('button', { name: 'Guardar', exact: true }).click();
-  await expect(vp.getByText('Atención guardada.')).toBeVisible();
+  // Se guarda solo al dejar de escribir
+  await expect(vp.getByRole('status').filter({ hasText: /^Guardado/ })).toBeVisible();
 
   // Vacuna con su refuerzo
   await vp.getByRole('button', { name: 'Aplicar' }).click();
@@ -197,6 +206,8 @@ test('consulta completa: cita → llegada → SOAP → vacuna → receta → con
   // ── La historia clínica queda completa ──
   await page.goto(`/mascotas/${petId}`);
   await expect(page.getByText('Esguince de rodilla')).toBeVisible();
-  await expect(page.getByText('Triple felina')).toBeVisible();
+  await expect(page.locator('app-immunization-list').getByText('Triple felina')).toBeVisible();
+  // El resumen del carnet anuncia el próximo refuerzo
+  await expect(page.getByText(/Próximo refuerzo:\s*Triple felina/)).toBeVisible();
   await expect(page.locator('app-pet-documents')).toContainText('Anestesia o sedación');
 });

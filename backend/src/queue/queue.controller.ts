@@ -42,6 +42,15 @@ export class QueueController {
   }
 
   @Roles(...FRONT_DESK_ROLES)
+  @Post(':id/delivered-home')
+  deliveredHome(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<QueueItem> {
+    return this.queue.deliveredHome(user, id);
+  }
+
+  @Roles(...FRONT_DESK_ROLES)
   @Patch(':id')
   update(
     @CurrentUser() user: AuthUser,

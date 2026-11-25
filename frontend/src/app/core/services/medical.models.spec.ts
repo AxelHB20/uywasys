@@ -28,6 +28,8 @@ describe('medical.models', () => {
       daysLeft: 5,
       pet: { id: 3, number: 45, name: 'Toby', species: 'DOG' },
       client: { id: 7, name: 'Rosa', phone: '987654321' },
+      reminded: [],
+      autoNotice: false,
     };
     const url = new URL(reminderLink(item, 'Vet Sol'));
     expect(url.origin + url.pathname).toBe('https://wa.me/51987654321');

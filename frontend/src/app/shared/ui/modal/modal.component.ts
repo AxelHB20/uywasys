@@ -25,6 +25,8 @@ import { IconComponent } from '../icon/icon.component';
       (click)="onBackdrop($event)"
       [attr.aria-labelledby]="titleId"
       [attr.aria-describedby]="description() ? descriptionId : null"
+      [class.lg:max-w-4xl]="size() === 'lg'"
+      [class.lg:max-w-[60rem]]="size() === 'pos'"
       class="m-auto w-[calc(100%-2rem)] max-w-lg overflow-visible rounded-2xl bg-white p-0 text-slate-700 shadow-2xl shadow-anil-950/20
              backdrop:bg-anil-950/45 backdrop:backdrop-blur-[2px]"
     >
@@ -46,11 +48,19 @@ import { IconComponent } from '../icon/icon.component';
           <app-icon name="x" class="size-5" />
         </button>
       </div>
-      <div class="max-h-[70dvh] overflow-y-auto px-6 py-5">
+      <!-- 'pos' (caja): el contenido arma sus zonas (lista + panel) y lleva su propio botón -->
+      <div
+        [class]="
+          size() === 'pos'
+            ? 'h-[min(44rem,calc(100dvh-9rem))] overflow-hidden rounded-b-2xl'
+            : 'max-h-[70dvh] overflow-y-auto px-6 py-5'
+        "
+      >
         <ng-content />
       </div>
       <div
         class="flex flex-col-reverse gap-2 border-t border-slate-100 px-6 py-4 sm:flex-row sm:justify-end"
+        [class.hidden]="size() === 'pos'"
       >
         <ng-content select="[modal-actions]" />
       </div>
@@ -66,6 +76,8 @@ export class ModalComponent {
   readonly description = input('');
   /** Si es false, hacer clic fuera no cierra (útil en formularios). */
   readonly dismissible = input(true);
+  /** 'lg': ancho en laptop/tablet horizontal para formularios en dos columnas (cobro, venta) */
+  readonly size = input<'md' | 'lg' | 'pos'>('md');
   readonly closed = output<void>();
 
   protected readonly titleId = `modal-title-${ModalComponent.nextId}`;

@@ -7,11 +7,15 @@ import {
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { clientSearchText, normalizeSearch } from '../common/text/search.js';
-import { fromDbDate } from '../common/time/clinic-day.js';
+import { clinicDay, fromDbDate } from '../common/time/clinic-day.js';
 import { clinicToday } from '../common/time/clinic-today.js';
 import { documentError, isValidDocument } from '../common/validators/peru.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type { DocumentType, Species } from '../generated/prisma/enums.js';
+import type {
+  DocumentType,
+  PetSex,
+  Species,
+} from '../generated/prisma/enums.js';
 import { PET_SELECT, petCreateData, toPetView } from '../pets/pet.mapper.js';
 import {
   parseRecordCode,
@@ -33,7 +37,13 @@ export interface PetBadge {
   number: number;
   name: string;
   species: Species;
+  /** Para reconocerla de un vistazo al ponerla en la cola: "Perro · Hembra · 2 años · Shih tzu" */
+  sex: PetSex | null;
+  breed: string | null;
+  birthDate: Date | null;
   aggressive: boolean;
+  /** Cómo manejarla ("usar bozal"): solo si es agresiva */
+  aggressiveNote: string | null;
   hasAllergies: boolean;
   active: boolean;
 }
@@ -78,6 +88,11 @@ export interface ClientDetail {
   address: string | null;
   district: string | null;
   notes: string | null;
+  /** Datos de facturación (se llenan solos al facturar desde la caja) */
+  invoiceRuc: string | null;
+  invoiceName: string | null;
+  invoiceAddress: string | null;
+  invoiceEmail: string | null;
   active: boolean;
   consentAt: Date;
   consentVersion: string;
@@ -86,8 +101,20 @@ export interface ClientDetail {
   /** Fecha en que se anonimizó (derecho de cancelación); null si no */
   anonymizedAt: Date | null;
   createdAt: Date;
-  pets: (PetView & { lastVisit: string | null })[];
+  pets: (PetView & {
+    lastVisit: string | null;
+    /** Próxima cita (por confirmar o confirmada) que todavía no pasó */
+    nextAppointment: NextAppointment | null;
+  })[];
   authorized: AuthorizedPersonView[];
+}
+
+export interface NextAppointment {
+  id: number;
+  startsAt: Date;
+  type: string;
+  reason: string | null;
+  vet: string | null;
 }
 
 const DETAIL_SELECT = {
@@ -101,6 +128,10 @@ const DETAIL_SELECT = {
   address: true,
   district: true,
   notes: true,
+  invoiceRuc: true,
+  invoiceName: true,
+  invoiceAddress: true,
+  invoiceEmail: true,
   active: true,
   consentAt: true,
   consentVersion: true,
@@ -174,7 +205,11 @@ export class ClientsService {
               number: true,
               name: true,
               species: true,
+              sex: true,
+              breed: true,
+              birthDate: true,
               aggressive: true,
+              aggressiveNote: true,
               allergies: true,
               active: true,
             },
@@ -186,14 +221,16 @@ export class ClientsService {
     ]);
 
     const visits = await this.lastVisits(
+      clinicId,
       rows.flatMap((r) => r.pets.map((p) => p.id)),
     );
     return {
       items: rows.map((row) => ({
         ...row,
         lastVisit: latest(row.pets.map((p) => visits.get(p.id) ?? null)),
-        pets: row.pets.map(({ allergies, ...pet }) => ({
+        pets: row.pets.map(({ allergies, aggressiveNote, ...pet }) => ({
           ...pet,
+          aggressiveNote: pet.aggressive ? aggressiveNote : null,
           hasAllergies: Boolean(allergies),
         })),
       })),
@@ -220,13 +257,41 @@ export class ClientsService {
     });
   }
 
+  /** Para avisar en el registro que el celular ya es de otro cliente (mismo dueño o un familiar). */
+  async lookupPhone(
+    clinicId: number,
+    phone: string,
+  ): Promise<{
+    id: number;
+    name: string;
+    active: boolean;
+    pets: string[];
+  } | null> {
+    const found = await this.prisma.client.findFirst({
+      where: { clinicId, phone, anonymizedAt: null },
+      select: {
+        id: true,
+        name: true,
+        active: true,
+        pets: {
+          where: { active: true },
+          select: { name: true },
+          orderBy: { name: 'asc' },
+          take: 4,
+        },
+      },
+      orderBy: [{ active: 'desc' }, { id: 'asc' }],
+    });
+    return found ? { ...found, pets: found.pets.map((p) => p.name) } : null;
+  }
+
   async get(clinicId: number, id: number): Promise<ClientDetail> {
     const client = await this.prisma.client.findFirst({
       where: { id, clinicId },
       select: DETAIL_SELECT,
     });
     if (!client) throw new NotFoundException('El cliente no existe');
-    return this.withVisits(toDetail(client));
+    return this.withVisits(clinicId, toDetail(client));
   }
 
   /** Registro rápido: cliente + primera mascota (opcional) en una sola transacción. */
@@ -296,7 +361,7 @@ export class ClientsService {
         pets: client.pets.map((p) => p.id),
       },
     });
-    return this.withVisits(toDetail(client));
+    return this.withVisits(actor.clinicId, toDetail(client));
   }
 
   async update(
@@ -314,6 +379,8 @@ export class ClientsService {
         phone: true,
         walkIn: true,
         anonymizedAt: true,
+        invoiceRuc: true,
+        invoiceName: true,
       },
     });
     if (!current) throw new NotFoundException('El cliente no existe');
@@ -346,11 +413,29 @@ export class ClientsService {
       'address',
       'district',
       'notes',
+      'invoiceRuc',
+      'invoiceName',
+      'invoiceAddress',
+      'invoiceEmail',
       'marketingConsent',
       'active',
     ] as const) {
       if (dto[key] !== undefined) Object.assign(data, { [key]: dto[key] });
     }
+    // Sin RUC de facturación no quedan datos sueltos; con RUC, la razón social es obligatoria
+    if (dto.invoiceRuc === null)
+      Object.assign(data, {
+        invoiceName: null,
+        invoiceAddress: null,
+        invoiceEmail: null,
+      });
+    else if (
+      (dto.invoiceRuc ?? current.invoiceRuc) &&
+      !(dto.invoiceName === undefined ? current.invoiceName : dto.invoiceName)
+    )
+      throw new BadRequestException(
+        'Escribe la razón social de los datos de facturación',
+      );
 
     let client: DetailRow;
     try {
@@ -371,7 +456,7 @@ export class ClientsService {
       ip,
       data: { fields: Object.keys(dto) },
     });
-    return this.withVisits(toDetail(client));
+    return this.withVisits(actor.clinicId, toDetail(client));
   }
 
   async addAuthorized(
@@ -426,30 +511,101 @@ export class ClientsService {
     });
   }
 
-  /** Última atención terminada de cada mascota (cola en estado DONE). */
-  private async lastVisits(petIds: number[]): Promise<Map<number, string>> {
+  /**
+   * Último día que vino cada mascota: su atención más reciente (abierta o cerrada; no las
+   * anuladas) o, si no tiene, el último paso por la cola. Antes solo contaba la cola y una
+   * atención abierta con "Atender" no aparecía.
+   */
+  private async lastVisits(
+    clinicId: number,
+    petIds: number[],
+  ): Promise<Map<number, string>> {
     if (petIds.length === 0) return new Map();
-    const rows = await this.prisma.queueEntry.groupBy({
-      by: ['petId'],
-      where: { petId: { in: petIds }, status: 'DONE' },
-      _max: { day: true },
+    const [clinic, visits, queue] = await Promise.all([
+      this.prisma.clinic.findUniqueOrThrow({
+        where: { id: clinicId },
+        select: { timezone: true },
+      }),
+      this.prisma.visit.groupBy({
+        by: ['petId'],
+        where: {
+          clinicId,
+          petId: { in: petIds },
+          status: { not: 'CANCELLED' },
+        },
+        _max: { openedAt: true },
+      }),
+      this.prisma.queueEntry.groupBy({
+        by: ['petId'],
+        where: { petId: { in: petIds }, status: 'DONE' },
+        _max: { day: true },
+      }),
+    ]);
+    const result = new Map<number, string>();
+    const keep = (petId: number, day: string | null) => {
+      const current = result.get(petId);
+      if (day && (!current || day > current)) result.set(petId, day);
+    };
+    for (const v of visits)
+      keep(
+        v.petId,
+        v._max.openedAt ? clinicDay(clinic.timezone, v._max.openedAt) : null,
+      );
+    for (const q of queue) keep(q.petId, fromDbDate(q._max.day));
+    return result;
+  }
+
+  /** La próxima cita de cada mascota (la primera que no pasó y sigue en pie) */
+  private async nextAppointments(
+    clinicId: number,
+    petIds: number[],
+  ): Promise<Map<number, NextAppointment>> {
+    if (petIds.length === 0) return new Map();
+    const rows = await this.prisma.appointment.findMany({
+      where: {
+        clinicId,
+        petId: { in: petIds },
+        status: { in: ['SCHEDULED', 'CONFIRMED'] },
+        startsAt: { gte: new Date() },
+      },
+      select: {
+        id: true,
+        petId: true,
+        startsAt: true,
+        type: true,
+        reason: true,
+        vet: { select: { fullName: true } },
+      },
+      orderBy: { startsAt: 'asc' },
     });
-    return new Map(
-      rows
-        .filter((r) => r._max.day)
-        .map((r) => [r.petId, fromDbDate(r._max.day) as string]),
-    );
+    const result = new Map<number, NextAppointment>();
+    for (const a of rows)
+      if (!result.has(a.petId))
+        result.set(a.petId, {
+          id: a.id,
+          startsAt: a.startsAt,
+          type: a.type,
+          reason: a.reason,
+          vet: a.vet?.fullName ?? null,
+        });
+    return result;
   }
 
   private async withVisits(
+    clinicId: number,
     detail: Omit<ClientDetail, 'pets'> & { pets: PetView[] },
   ): Promise<ClientDetail> {
-    const visits = await this.lastVisits(detail.pets.map((p) => p.id));
+    const ids = detail.pets.map((p) => p.id);
+    const [visits, next] = await Promise.all([
+      this.lastVisits(clinicId, ids),
+      this.nextAppointments(clinicId, ids),
+    ]);
     return {
       ...detail,
       pets: detail.pets.map((p) => ({
         ...p,
         lastVisit: visits.get(p.id) ?? null,
+        nextAppointment: next.get(p.id) ?? null,
       })),
     };
   }

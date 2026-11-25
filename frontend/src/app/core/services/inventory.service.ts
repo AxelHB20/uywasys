@@ -24,6 +24,8 @@ export interface ProductQuery {
   category?: ProductCategory | null;
   filter?: StockFilter;
   status?: 'active' | 'inactive' | 'all';
+  /** Solo lo que se cobra al cliente (buscadores de cobro) */
+  chargeable?: boolean;
   page?: number;
 }
 
@@ -38,6 +40,7 @@ export class InventoryService {
     if (query.category) params = params.set('category', query.category);
     if (query.filter && query.filter !== 'all') params = params.set('filter', query.filter);
     if (query.status && query.status !== 'active') params = params.set('status', query.status);
+    if (query.chargeable) params = params.set('chargeable', 'true');
     if (query.page && query.page > 1) params = params.set('page', query.page);
     return this.http.get<ProductPage>('/api/inventory/products', { params });
   }

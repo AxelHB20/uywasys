@@ -1,3 +1,4 @@
+import { documentCode } from '../billing/billing.types.js';
 import {
   BadRequestException,
   ConflictException,
@@ -20,7 +21,9 @@ import { ChargesService } from '../visits/charges.service.js';
 import type { CreatedCharges } from '../visits/charges.service.js';
 import {
   METHOD_LABELS,
+  NEEDS_CODE,
   allocate,
+  soles,
   checkPayments,
   expectedCash,
   saleNoteCode,
@@ -41,6 +44,7 @@ type Decimal = Prisma.Decimal;
 const D = Prisma.Decimal;
 
 /** Desde este monto la boleta exige identificar al cliente (SUNAT) */
+/** SUNAT: la boleta que supera S/ 700 identifica al comprador (RCP art. 8) */
 const ANONYMOUS_LIMIT = new D(700);
 const DEFAULT_REGISTER = 'Caja principal';
 const LEGEND = 'Nota de venta interna — no es comprobante de pago';
@@ -84,6 +88,8 @@ export interface ReceiptTicket {
     total: number;
     /** Lo que este cobro pagó de esa línea */
     paid: number;
+    /** Producto vendido en caja: al anular se puede devolver al stock */
+    returnable: boolean;
   }[];
   totals: {
     /** Op. gravada, exonerada e inafecta e IGV de las líneas (montos completos de los cargos) */
@@ -127,6 +133,10 @@ export interface SessionSummary {
     collected: number;
     refunded: number;
     net: number;
+    /** Cuántos pagos entraron por este medio */
+    payments: number;
+    /** Yape, Plin o transferencia sin código de operación: revisar en la app al cerrar */
+    withoutCode: number;
   }[];
   expenses: number;
   totals: {
@@ -137,12 +147,26 @@ export interface SessionSummary {
   };
   receipts: {
     id: number;
+    /** Nota de venta interna (NV-000123) */
     code: string;
+    /** El comprobante electrónico real, si se emitió (B001-00000123) */
+    document: {
+      type: 'BOLETA' | 'FACTURA' | 'CREDIT_NOTE';
+      code: string;
+      status: string;
+    } | null;
     client: string;
     total: number;
     status: 'ACTIVE' | 'VOID';
     createdAt: Date;
     createdBy: string;
+    /** Cómo se pagó (dos o más medios en un pago dividido) */
+    payments: {
+      method: PaymentMethod;
+      label: string;
+      amount: number;
+      hasCode: boolean;
+    }[];
   }[];
   movements: {
     id: number;
@@ -161,6 +185,9 @@ export interface SessionSummary {
  * Caja: sesiones con arqueo, cobros (ticket NV), venta de mostrador, egresos y devoluciones.
  * Regla de oro: no se mueve dinero sin una caja abierta, y todo queda en la sesión.
  */
+export type PendingSource =
+  'CONSULTATION' | 'GROOMING' | 'HOSPITALIZATION' | 'COUNTER';
+
 @Injectable()
 export class CashService {
   constructor(
@@ -322,11 +349,21 @@ export class CashService {
     });
     if (!session) throw new NotFoundException('La sesión de caja no existe');
 
-    const [payments, movements, receipts] = await Promise.all([
+    const [payments, uncoded, movements, receipts] = await Promise.all([
       db.payment.groupBy({
         by: ['method'],
         where: { receipt: { sessionId: id } },
         _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      db.payment.groupBy({
+        by: ['method'],
+        where: {
+          receipt: { sessionId: id },
+          method: { in: NEEDS_CODE },
+          operationCode: null,
+        },
+        _count: { _all: true },
       }),
       db.cashMovement.findMany({
         where: { sessionId: id },
@@ -338,7 +375,17 @@ export class CashService {
           reason: true,
           createdAt: true,
           voidedAt: true,
-          receipt: { select: { number: true } },
+          receipt: {
+            select: {
+              number: true,
+              documents: {
+                where: { type: { in: ['BOLETA', 'FACTURA'] } },
+                select: { series: true, number: true },
+                orderBy: { id: 'desc' },
+                take: 1,
+              },
+            },
+          },
           createdBy: { select: { fullName: true } },
         },
         orderBy: { id: 'asc' },
@@ -353,6 +400,17 @@ export class CashService {
           createdAt: true,
           client: { select: { name: true } },
           createdBy: { select: { fullName: true } },
+          payments: {
+            select: { method: true, amount: true, operationCode: true },
+            orderBy: { id: 'asc' },
+          },
+          // La boleta o factura de este cobro (la nota de crédito no reemplaza su número)
+          documents: {
+            where: { type: { in: ['BOLETA', 'FACTURA'] } },
+            select: { type: true, series: true, number: true, status: true },
+            orderBy: { id: 'desc' },
+            take: 1,
+          },
         },
         orderBy: { id: 'asc' },
       }),
@@ -384,6 +442,8 @@ export class CashService {
         collected: inn.toNumber(),
         refunded: out.toNumber(),
         net: inn.minus(out).toNumber(),
+        payments: payments.find((p) => p.method === method)?._count._all ?? 0,
+        withoutCode: uncoded.find((p) => p.method === method)?._count._all ?? 0,
       };
     });
     const expenses = sumBy('EXPENSE', 'CASH');
@@ -425,19 +485,41 @@ export class CashService {
       receipts: receipts.map((r) => ({
         id: r.id,
         code: saleNoteCode(r.number),
+        document: r.documents[0]
+          ? {
+              type: r.documents[0].type,
+              code: documentCode(r.documents[0].series, r.documents[0].number),
+              status: r.documents[0].status,
+            }
+          : null,
         client: r.client.name,
         total: Number(r.total),
         status: r.status,
         createdAt: r.createdAt,
         createdBy: r.createdBy.fullName,
+        payments: r.payments.map((p) => ({
+          method: p.method,
+          label: METHOD_LABELS[p.method],
+          amount: Number(p.amount),
+          hasCode: p.operationCode !== null,
+        })),
       })),
       movements: movements.map((m) => ({
         id: m.id,
         kind: m.kind,
         method: m.method,
         amount: Number(m.amount),
-        reason: m.reason,
-        receiptCode: m.receipt ? saleNoteCode(m.receipt.number) : null,
+        // El motivo sin el prefijo "Devolución NV-…:" que se guarda para la auditoría
+        reason: m.reason.replace(/^Devolución NV-\d+:\s*/, ''),
+        // El comprobante que se devolvió (la boleta o factura; si no hubo, la nota de venta)
+        receiptCode: m.receipt
+          ? m.receipt.documents[0]
+            ? documentCode(
+                m.receipt.documents[0].series,
+                m.receipt.documents[0].number,
+              )
+            : saleNoteCode(m.receipt.number)
+          : null,
         createdAt: m.createdAt,
         createdBy: m.createdBy.fullName,
         voided: m.voidedAt !== null,
@@ -511,31 +593,55 @@ export class CashService {
   ): Promise<ReceiptTicket> {
     const existing = await this.byRequestKey(actor.clinicId, dto.requestKey);
     if (existing) return existing;
+    const extra = dto.items?.length ? dto.items : null;
+    const prep = extra ? await this.charges.prepare(actor) : null;
     let receiptId: number;
+    let added: CreatedCharges | null;
     try {
-      receiptId = await this.prisma.$transaction(
+      ({ id: receiptId, added } = await this.prisma.$transaction(
         async (tx) => {
+          // Lo agregado en caja se registra aquí mismo: si el cobro falla, no queda nada
+          const added =
+            extra && prep
+              ? await this.charges.createInTx(
+                  tx,
+                  actor,
+                  { clientId: dto.clientId, items: extra },
+                  prep,
+                )
+              : null;
+          const newIds = added?.charges.map((c) => c.id) ?? [];
           const id = await this.collectInTx(tx, actor, {
             requestKey: dto.requestKey,
             clientId: dto.clientId,
-            chargeIds: dto.chargeIds ?? null,
+            chargeIds: dto.chargeIds ? [...dto.chargeIds, ...newIds] : null,
+            firstIds: newIds,
             amount: dto.amount ?? null,
             registerId: dto.registerId,
             payments: dto.payments,
+            identified:
+              !!dto.buyer && !!dto.document && dto.document !== 'NOTE',
           });
           // El comprobante se numera en la misma transacción: si algo falla, no queda cobro sin él
           if (dto.document && dto.document !== 'NOTE')
-            await this.billing.issueInTx(tx, actor, id, dto.document);
-          return id;
+            await this.billing.issueInTx(
+              tx,
+              actor,
+              id,
+              dto.document,
+              dto.buyer,
+            );
+          return { id, added };
         },
         { timeout: 20_000 },
-      );
+      ));
     } catch (error) {
       // Dos envíos simultáneos del mismo cobro: el segundo devuelve el primero
       const retry = await this.duplicate(error, actor.clinicId, dto.requestKey);
       if (retry) return retry;
       throw error;
     }
+    if (added) await this.charges.logCreated(actor, null, added, ip);
     if (dto.document && dto.document !== 'NOTE') this.sender.dispatch();
     const ticket = await this.ticket(actor.clinicId, receiptId);
     await this.logCollect(actor, ticket, ip);
@@ -582,9 +688,17 @@ export class CashService {
             amount: total.toNumber(),
             registerId: dto.registerId,
             payments: dto.payments,
+            identified:
+              !!dto.buyer && !!dto.document && dto.document !== 'NOTE',
           });
           if (dto.document && dto.document !== 'NOTE')
-            await this.billing.issueInTx(tx, actor, receiptId, dto.document);
+            await this.billing.issueInTx(
+              tx,
+              actor,
+              receiptId,
+              dto.document,
+              dto.buyer,
+            );
           return { receiptId, charges, clientId };
         },
         { timeout: 20_000 },
@@ -641,6 +755,27 @@ export class CashService {
           where: { id: a.chargeId },
           data: { paidAmount: { decrement: a.amount }, status: 'PENDING' },
         });
+      // Devolvió lo vendido en caja: se quita de su cuenta y el stock vuelve a sus lotes
+      if (dto.returnProducts) {
+        const sold = await tx.charge.findMany({
+          where: {
+            id: { in: allocations.map((x) => x.chargeId) },
+            kind: 'PRODUCT',
+            visitId: null,
+            status: 'PENDING',
+            paidAmount: 0,
+          },
+          select: { id: true },
+        });
+        for (const c of sold)
+          await this.charges.voidInTx(
+            tx,
+            actor,
+            c.id,
+            `Devuelto al anular ${saleNoteCode(receipt.number)}: ${dto.reason}`,
+            true,
+          );
+      }
 
       const payments = await tx.payment.findMany({
         where: { receiptId: id },
@@ -698,6 +833,13 @@ export class CashService {
         actor.clinicId,
         dto.registerId,
       );
+      // No puede salir más efectivo del que hay: el esperado quedaría negativo y el arqueo
+      // ya no serviría (la sesión está bloqueada, así dos egresos a la vez no se cruzan)
+      const onHand = await this.cashOnHand(tx, session.id);
+      if (new D(dto.amount).gt(onHand))
+        throw new BadRequestException(
+          `Solo hay S/ ${onHand.toFixed(2)} en efectivo en caja: el egreso no puede ser mayor`,
+        );
       return tx.cashMovement.create({
         data: {
           clinicId: actor.clinicId,
@@ -827,6 +969,8 @@ export class CashService {
                 igvAffectation: true,
                 taxableAmount: true,
                 igvAmount: true,
+                kind: true,
+                visitId: true,
               },
             },
           },
@@ -878,6 +1022,8 @@ export class CashService {
         discount: Number(a.charge.discount),
         total: Number(a.charge.total),
         paid: Number(a.amount),
+        // Producto vendido en caja (mostrador o agregado al cobro): se puede devolver al anular
+        returnable: a.charge.kind === 'PRODUCT' && a.charge.visitId === null,
       })),
       totals: {
         taxed: sum((c) =>
@@ -978,17 +1124,38 @@ export class CashService {
     };
   }
 
-  /** Clientes con algo por cobrar, del que espera hace más tiempo al más reciente. */
+  /**
+   * Clientes con saldo, con sus mascotas y de dónde viene lo que deben (consulta, grooming,
+   * hospitalización o mostrador): recepción reconoce al cliente por la mascota o el servicio.
+   */
   async pending(clinicId: number) {
     const rows = await this.prisma.$queryRaw<
-      { client_id: number; balance: Decimal; charges: bigint; since: Date }[]
+      {
+        client_id: number;
+        balance: Decimal;
+        charges: bigint;
+        since: Date;
+        last: Date;
+        pets: string[] | null;
+        grooming: boolean;
+        hospital: boolean;
+        consult: boolean;
+        counter: boolean;
+      }[]
     >`
-      SELECT client_id, SUM(total - paid_amount) AS balance, COUNT(*) AS charges,
-             MIN(created_at) AS since
-      FROM charges
-      WHERE clinic_id = ${clinicId} AND status = 'PENDING'
-      GROUP BY client_id
-      HAVING SUM(total - paid_amount) > 0
+      SELECT c.client_id, SUM(c.total - c.paid_amount) AS balance, COUNT(*) AS charges,
+             MIN(c.created_at) AS since, MAX(c.created_at) AS last,
+             array_remove(array_agg(DISTINCT p.name), NULL) AS pets,
+             bool_or(v.type = 'GROOMING') AS grooming,
+             bool_or(v.type = 'HOSPITALIZATION') AS hospital,
+             bool_or(v.type = 'CONSULTATION') AS consult,
+             bool_or(c.visit_id IS NULL) AS counter
+      FROM charges c
+      LEFT JOIN visits v ON v.id = c.visit_id
+      LEFT JOIN pets p ON p.id = v.pet_id
+      WHERE c.clinic_id = ${clinicId} AND c.status = 'PENDING'
+      GROUP BY c.client_id
+      HAVING SUM(c.total - c.paid_amount) > 0
       ORDER BY since
       LIMIT 100`;
     const clients = rows.length
@@ -1002,6 +1169,14 @@ export class CashService {
       balance: Number(r.balance),
       charges: Number(r.charges),
       since: r.since,
+      last: r.last,
+      pets: r.pets ?? [],
+      sources: [
+        r.consult && 'CONSULTATION',
+        r.grooming && 'GROOMING',
+        r.hospital && 'HOSPITALIZATION',
+        r.counter && 'COUNTER',
+      ].filter((x): x is PendingSource => Boolean(x)),
     }));
   }
 
@@ -1010,32 +1185,65 @@ export class CashService {
     const day = clinicDay(timezone);
     const start = startOfDayIn(timezone, day);
     const end = startOfDayIn(timezone, addDays(day, 1));
-    const [collected, refunded, receipts] = await Promise.all([
-      this.prisma.payment.aggregate({
-        where: { clinicId, receipt: { createdAt: { gte: start, lt: end } } },
-        _sum: { amount: true },
-      }),
-      this.prisma.cashMovement.aggregate({
-        where: {
-          clinicId,
-          kind: 'REFUND',
-          voidedAt: null,
-          createdAt: { gte: start, lt: end },
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.receipt.count({
-        where: {
-          clinicId,
-          status: 'ACTIVE',
-          createdAt: { gte: start, lt: end },
-        },
-      }),
-    ]);
+    const [all, active, refunds, refundsOfEarlier, receipts] =
+      await Promise.all([
+        // Todo lo que entró hoy (también lo de cobros anulados después)
+        this.prisma.payment.aggregate({
+          where: {
+            clinicId,
+            receipt: { clinicId, createdAt: { gte: start, lt: end } },
+          },
+          _sum: { amount: true },
+        }),
+        // Lo cobrado hoy que sigue vigente: un cobro anulado el mismo día no cuenta
+        this.prisma.payment.aggregate({
+          where: {
+            clinicId,
+            receipt: {
+              clinicId,
+              status: 'ACTIVE',
+              createdAt: { gte: start, lt: end },
+            },
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.cashMovement.aggregate({
+          where: {
+            clinicId,
+            kind: 'REFUND',
+            voidedAt: null,
+            createdAt: { gte: start, lt: end },
+          },
+          _sum: { amount: true },
+        }),
+        // Devoluciones de hoy por cobros de días anteriores (las de hoy ya se restaron arriba)
+        this.prisma.cashMovement.aggregate({
+          where: {
+            clinicId,
+            kind: 'REFUND',
+            voidedAt: null,
+            createdAt: { gte: start, lt: end },
+            receipt: { createdAt: { lt: start } },
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.receipt.count({
+          where: {
+            clinicId,
+            status: 'ACTIVE',
+            createdAt: { gte: start, lt: end },
+          },
+        }),
+      ]);
     return {
-      total: new D(collected._sum.amount ?? 0)
-        .minus(refunded._sum.amount ?? 0)
+      /** Neto (todo lo que entró menos lo devuelto): lo mismo que caja y reportes */
+      total: new D(all._sum.amount ?? 0)
+        .minus(refunds._sum.amount ?? 0)
         .toNumber(),
+      /** Lo cobrado hoy que sigue vigente */
+      collected: new D(active._sum.amount ?? 0).toNumber(),
+      /** Lo devuelto hoy por cobros de días anteriores (anular uno de hoy ya lo saca de "cobrado") */
+      refunded: new D(refundsOfEarlier._sum.amount ?? 0).toNumber(),
       receipts,
     };
   }
@@ -1053,9 +1261,13 @@ export class CashService {
       requestKey: string;
       clientId: number;
       chargeIds: number[] | null;
+      /** Se pagan primero (lo agregado en caja: no se va sin pagar con un abono) */
+      firstIds?: number[];
       amount: number | null;
       registerId?: number;
       payments: PaymentInput[];
+      /** El comprador se identificó en el cobro (DNI o RUC escrito para la boleta o factura) */
+      identified?: boolean;
     },
   ): Promise<number> {
     const session = await this.lockOpenSession(
@@ -1098,10 +1310,14 @@ export class CashService {
             : 'Algún cargo fue quitado',
         );
     }
-    // Del más antiguo al más nuevo, en el orden en que se registraron
+    // Lo agregado en caja primero; después, del más antiguo al más nuevo
+    const first = new Set(input.firstIds ?? []);
     const charges = ids
       .map((id) => rows.find((r) => r.id === id)!)
-      .sort((a, b) => a.id - b.id)
+      .sort(
+        (a, b) =>
+          Number(first.has(b.id)) - Number(first.has(a.id)) || a.id - b.id,
+      )
       .map((r) => ({
         id: r.id,
         total: new D(r.total),
@@ -1109,15 +1325,22 @@ export class CashService {
       }));
     const owed = charges.reduce((acc, c) => acc.plus(c.balance), new D(0));
     const amount = input.amount === null ? owed : new D(input.amount);
+    const mustPay = charges
+      .filter((c) => first.has(c.id))
+      .reduce((acc, c) => acc.plus(c.balance), new D(0));
+    if (amount.lt(mustPay))
+      throw new ConflictException(
+        `El abono debe cubrir al menos lo agregado en caja (${soles(mustPay)})`,
+      );
 
     if (client.walkIn) {
       if (!amount.equals(owed))
         throw new BadRequestException(
           'A "Cliente varios" no se le deja deuda: cobra el total o registra al cliente',
         );
-      if (owed.gte(ANONYMOUS_LIMIT))
+      if (owed.gt(ANONYMOUS_LIMIT) && !input.identified)
         throw new BadRequestException(
-          'Desde S/ 700 el comprobante exige identificar al cliente: regístralo',
+          'Más de S/ 700 el comprobante lleva el DNI del comprador: escríbelo en el cobro',
         );
     }
 
@@ -1165,6 +1388,33 @@ export class CashService {
       });
     }
     return receipt.id;
+  }
+
+  /** Efectivo que debería haber en el cajón ahora (inicial + cobros − egresos − devoluciones) */
+  private async cashOnHand(tx: Tx, sessionId: number): Promise<Decimal> {
+    const [session, cashIn, out] = await Promise.all([
+      tx.cashSession.findUniqueOrThrow({
+        where: { id: sessionId },
+        select: { openingAmount: true },
+      }),
+      tx.payment.aggregate({
+        where: { method: 'CASH', receipt: { sessionId } },
+        _sum: { amount: true },
+      }),
+      tx.cashMovement.groupBy({
+        by: ['kind'],
+        where: { sessionId, method: 'CASH', voidedAt: null },
+        _sum: { amount: true },
+      }),
+    ]);
+    const sum = (kind: 'EXPENSE' | 'REFUND') =>
+      new D(out.find((o) => o.kind === kind)?._sum.amount ?? 0);
+    return expectedCash({
+      opening: session.openingAmount,
+      cashIn: new D(cashIn._sum.amount ?? 0),
+      expenses: sum('EXPENSE'),
+      cashRefunds: sum('REFUND'),
+    });
   }
 
   /** La sesión abierta de la caja indicada, o la única abierta de la clínica. Queda bloqueada. */

@@ -64,7 +64,7 @@ export class ChangePasswordPage {
     this.auth.changePassword(current, next).subscribe({
       next: () => {
         this.toast.success('Contraseña actualizada');
-        void this.router.navigateByUrl('/dashboard');
+        void this.router.navigateByUrl('/dashboard', { replaceUrl: true });
       },
       error: (error: unknown) => {
         this.saving.set(false);

@@ -1,20 +1,28 @@
 <section class="space-y-6">
-  <div class="flex flex-wrap items-start justify-between gap-4">
+  <!-- Encabezado -->
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <h1 class="font-display text-2xl font-semibold text-slate-900">Comprobantes</h1>
-      <p class="mt-1 max-w-3xl text-slate-600">
-        Boletas, facturas y notas de crédito electrónicas, y su estado ante SUNAT. Si el PSE no
-        responde, el sistema reintenta solo; la caja nunca se detiene.
+      <p class="mt-1 max-w-2xl text-sm text-slate-600">
+        Boletas, facturas y notas de crédito, y su estado ante SUNAT. Si el PSE no responde, el
+        sistema reintenta solo y la caja sigue cobrando.
       </p>
     </div>
     @if (isAdmin()) {
-      <a routerLink="/comprobantes/configuracion" class="btn btn-secondary">
-        <app-icon name="settings" class="size-4" /> Configurar
-      </a>
+      <div class="flex shrink-0 flex-wrap gap-2">
+        <button type="button" class="btn btn-secondary" (click)="openExport()">
+          <app-icon name="download" class="size-4" /> Excel para el contador
+        </button>
+        @if (isSupport()) {
+          <a routerLink="/comprobantes/configuracion" class="btn btn-ghost">
+            <app-icon name="settings" class="size-4" /> Configurar
+          </a>
+        }
+      </div>
     }
   </div>
 
-  @if (status.value(); as s) {
+  @if (sunat(); as s) {
     @if (!s.enabled) {
       <div class="card flex flex-wrap items-center gap-4 p-5">
         <span class="grid size-11 place-items-center rounded-xl bg-anil-50 text-anil-700"
@@ -27,75 +35,230 @@
             pago.
           </p>
         </div>
-        @if (isAdmin()) {
+        @if (isSupport()) {
           <a routerLink="/comprobantes/configuracion" class="btn btn-primary">Activar</a>
+        } @else if (isAdmin()) {
+          <p class="text-sm text-slate-500">La activa soporte técnico.</p>
         }
       </div>
     } @else if (s.simulated) {
-      <p class="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
-        <strong class="font-semibold">Modo simulación:</strong> los comprobantes se numeran y se
-        imprimen, pero no se envían a SUNAT ni tienen valor tributario. Sirve para mostrar el
-        sistema hasta conectar el PSE.
+      <p
+        class="flex gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+      >
+        <app-icon name="info" class="mt-0.5 size-4 shrink-0 text-amber-600" />
+        <span
+          ><strong class="font-semibold">Modo simulación.</strong> Los comprobantes se numeran e
+          imprimen, pero no van a SUNAT ni tienen valor tributario hasta conectar el PSE.</span
+        >
       </p>
     }
   }
 
-  @if (list.value()?.problems; as problems) {
-    <button
-      type="button"
-      class="flex w-full items-center gap-3 rounded-xl bg-rose-50 px-4 py-3 text-left text-sm text-rose-900 ring-1 ring-rose-200 hover:bg-rose-100"
-      (click)="filters.controls.status.setValue('PROBLEMS')"
+  @if (data()?.problems; as problems) {
+    <div
+      class="flex flex-wrap items-center gap-2 rounded-xl bg-rose-50 p-1.5 text-sm text-rose-900 ring-1 ring-rose-200"
     >
-      <app-icon name="alert" class="size-5 shrink-0 text-rose-600" />
-      <span
-        ><strong class="font-semibold"
-          >{{ problems }} {{ problems === 1 ? 'comprobante' : 'comprobantes' }} con
-          problemas.</strong
-        >
-        Revisa el motivo de cada uno.</span
+      <button
+        type="button"
+        class="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2.5 py-1.5 text-left hover:bg-rose-100"
+        (click)="filters.patchValue({ status: 'PROBLEMS', period: 'all' })"
       >
-    </button>
+        <app-icon name="alert" class="size-5 shrink-0 text-rose-600" />
+        <span class="flex-1"
+          ><strong class="font-semibold"
+            >{{ problems }} {{ problems === 1 ? 'comprobante' : 'comprobantes' }} con
+            problemas.</strong
+          >
+          {{
+            isAdmin()
+              ? 'Revisa el motivo de cada uno.'
+              : 'Corrige los rechazados; si es un error de envío, avisa al administrador.'
+          }}</span
+        >
+        <app-icon name="chevron-right" class="size-4 shrink-0" />
+      </button>
+      @if (isAdmin()) {
+        <!-- Tras actualizar el token o pagar el PSE: reenvía los que no se pudieron enviar -->
+        <button
+          type="button"
+          class="btn btn-secondary h-9 px-3 text-sm"
+          [disabled]="retryingAll()"
+          (click)="retryAll()"
+        >
+          <app-icon name="refresh" class="size-4" [class.animate-spin]="retryingAll()" />
+          Reintentar todos
+        </button>
+      }
+    </div>
   }
 
+  <!-- Resumen del periodo -->
+  <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Resumen del periodo">
+    @if (summary(); as sm) {
+      <li class="card p-4 sm:p-5">
+        <p
+          class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+        >
+          <span class="size-2 rounded-full bg-anil-500" aria-hidden="true"></span> Boletas
+        </p>
+        <p class="mt-2 font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl">
+          {{ money(sm.boletas.amount) }}
+        </p>
+        <p class="mt-0.5 text-sm text-slate-600 tabular-nums">{{ sm.boletas.count }} emitidas</p>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p
+          class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+        >
+          <span class="size-2 rounded-full bg-violet-500" aria-hidden="true"></span> Facturas
+        </p>
+        <p class="mt-2 font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl">
+          {{ money(sm.facturas.amount) }}
+        </p>
+        <p class="mt-0.5 text-sm text-slate-600 tabular-nums">{{ sm.facturas.count }} emitidas</p>
+      </li>
+      <li class="card p-4 sm:p-5">
+        <p
+          class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+        >
+          <span class="size-2 rounded-full bg-rose-500" aria-hidden="true"></span> Notas de crédito
+        </p>
+        <p
+          class="mt-2 font-display text-xl font-semibold tabular-nums sm:text-2xl"
+          [class]="sm.creditNotes.amount ? 'text-rose-700' : 'text-slate-900'"
+        >
+          {{ sm.creditNotes.amount ? '−' : '' }}{{ money(sm.creditNotes.amount) }}
+        </p>
+        <p class="mt-0.5 text-sm text-slate-600 tabular-nums">
+          {{ sm.annulled }}
+          {{ sm.annulled === 1 ? 'comprobante anulado' : 'comprobantes anulados' }}
+        </p>
+      </li>
+      <li class="card bg-slate-900 p-4 ring-slate-900 sm:p-5">
+        <p class="text-xs font-semibold tracking-wide text-slate-300 uppercase">Ventas netas</p>
+        <p class="mt-2 font-display text-xl font-semibold text-white tabular-nums sm:text-2xl">
+          {{ money(sm.net) }}
+        </p>
+        <p class="mt-0.5 text-sm text-slate-300">{{ periodLabel() }}</p>
+      </li>
+    } @else {
+      @for (i of [1, 2, 3, 4]; track i) {
+        <li class="card h-[106px] animate-pulse bg-slate-50 sm:h-[118px]"></li>
+      }
+    }
+  </ul>
+
+  <!-- Filtros -->
   <form
     [formGroup]="filters"
-    class="card grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
+    class="card space-y-4 p-4 sm:p-5"
     aria-label="Filtrar comprobantes"
     (submit)="$event.preventDefault()"
   >
-    <div>
-      <label for="doc-type" class="field-label">Tipo</label>
-      <select id="doc-type" formControlName="type" class="field-input">
-        <option [ngValue]="null">Todos</option>
-        @for (t of types; track t[0]) {
-          <option [ngValue]="t[0]">{{ t[1] }}</option>
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <!-- Celular: el periodo en una lista (los 6 botones no entran) -->
+      <div class="sm:hidden">
+        <label for="doc-period" class="sr-only">Periodo</label>
+        <select id="doc-period" formControlName="period" class="field-input mt-0 h-11">
+          @for (p of periods; track p.value) {
+            <option [ngValue]="p.value">Periodo: {{ p.label }}</option>
+          }
+        </select>
+      </div>
+      <div
+        role="radiogroup"
+        aria-label="Periodo"
+        class="-mx-1 hidden gap-1 overflow-x-auto px-1 sm:flex lg:mx-0 lg:px-0"
+      >
+        <div class="flex shrink-0 gap-1 rounded-xl bg-slate-100 p-1">
+          @for (p of periods; track p.value) {
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="filters.controls.period.value === p.value"
+              class="min-h-10 rounded-lg px-3 text-sm font-medium whitespace-nowrap transition-colors"
+              [class]="
+                filters.controls.period.value === p.value
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              "
+              (click)="setPeriod(p.value)"
+            >
+              {{ p.label }}
+            </button>
+          }
+        </div>
+      </div>
+      <div class="relative lg:ml-auto lg:w-80">
+        <label for="doc-q" class="sr-only">Buscar comprobante</label>
+        <app-icon
+          name="search"
+          class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          id="doc-q"
+          type="search"
+          formControlName="q"
+          class="field-input mt-0 pl-10"
+          placeholder="Número, cliente o DNI/RUC"
+          autocomplete="off"
+        />
+      </div>
+    </div>
+
+    @if (filters.controls.period.value === 'custom') {
+      <div class="grid grid-cols-2 gap-3 sm:max-w-md">
+        <div>
+          <label for="doc-from" class="field-label">Desde</label>
+          <input id="doc-from" type="date" formControlName="from" class="field-input" />
+        </div>
+        <div>
+          <label for="doc-to" class="field-label">Hasta</label>
+          <input id="doc-to" type="date" formControlName="to" class="field-input" />
+        </div>
+      </div>
+    }
+
+    <div class="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center">
+      <div role="group" aria-label="Tipo de comprobante" class="flex flex-wrap gap-1.5">
+        @for (t of typeTabs; track t.label) {
+          <button
+            type="button"
+            [attr.aria-pressed]="filters.controls.type.value === t.value"
+            class="min-h-10 rounded-full px-3.5 text-sm font-medium ring-1 transition-colors pointer-coarse:min-h-11"
+            [class]="
+              filters.controls.type.value === t.value
+                ? 'bg-anil-600 text-white ring-anil-600'
+                : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'
+            "
+            (click)="setType(t.value)"
+          >
+            {{ t.label }}
+          </button>
         }
-      </select>
-    </div>
-    <div>
-      <label for="doc-status" class="field-label">Estado</label>
-      <select id="doc-status" formControlName="status" class="field-input">
-        <option [ngValue]="null">Todos</option>
-        @for (s of statuses; track s[0]) {
-          <option [ngValue]="s[0]">{{ s[1] }}</option>
+      </div>
+      <div class="flex items-center gap-2 sm:ml-auto">
+        <label for="doc-status" class="text-sm text-slate-600">Estado</label>
+        <select id="doc-status" formControlName="status" class="field-input mt-0 h-10 w-auto py-0">
+          <option [ngValue]="null">Todos</option>
+          @for (s of statuses; track s[0]) {
+            <option [ngValue]="s[0]">{{ s[1] }}</option>
+          }
+        </select>
+        @if (filtered()) {
+          <button type="button" class="btn btn-ghost h-10 px-3" (click)="clear()">Limpiar</button>
         }
-      </select>
-    </div>
-    <div>
-      <label for="doc-from" class="field-label">Desde</label>
-      <input id="doc-from" type="date" formControlName="from" class="field-input" />
-    </div>
-    <div>
-      <label for="doc-to" class="field-label">Hasta</label>
-      <input id="doc-to" type="date" formControlName="to" class="field-input" />
+      </div>
     </div>
   </form>
 
+  <!-- Lista -->
   @if (list.isLoading() && !items().length) {
     <div class="card divide-y divide-slate-100" aria-busy="true" aria-label="Cargando comprobantes">
-      @for (i of [1, 2, 3]; track i) {
+      @for (i of [1, 2, 3, 4]; track i) {
         <div class="flex items-center gap-4 p-5">
-          <div class="h-4 w-40 animate-pulse rounded bg-slate-100"></div>
+          <div class="h-4 w-24 animate-pulse rounded bg-slate-100"></div>
+          <div class="h-4 w-48 animate-pulse rounded bg-slate-100"></div>
           <div class="ml-auto h-4 w-20 animate-pulse rounded bg-slate-100"></div>
         </div>
       }
@@ -114,122 +277,397 @@
         ><app-icon name="file-text" class="size-7"
       /></span>
       <p class="mt-4 font-medium text-slate-900">No hay comprobantes con esos filtros</p>
-      <button type="button" class="btn btn-secondary mt-5" (click)="clear()">Quitar filtros</button>
+      <p class="mt-1 text-sm text-slate-600">Prueba con otro periodo o quita la búsqueda.</p>
+      @if (filtered()) {
+        <button type="button" class="btn btn-secondary mt-5" (click)="clear()">
+          Quitar filtros
+        </button>
+      }
     </div>
   } @else {
-    <ul class="card divide-y divide-slate-100">
-      @for (d of items(); track d.id) {
-        <li class="flex flex-wrap items-start gap-x-4 gap-y-2 px-5 py-4">
-          <div class="min-w-0 flex-1">
-            <p class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-slate-900 tabular-nums">{{ d.code }}</span>
-              <span class="text-sm text-slate-500">{{ typeLabels[d.type] }}</span>
-              <app-badge [tone]="statusTone[d.status]">{{
-                statusLabel(d.status, d.provider)
-              }}</app-badge>
-            </p>
-            <p class="mt-0.5 text-sm text-slate-600">
-              {{ d.issueDate | fecha: 'calendar' }} · {{ d.customerName }}
-              @if (customerDoc[d.customerDocType]; as label) {
-                · {{ label }} {{ d.customerDocNumber }}
-              }
-              @if (d.related) {
-                · anula {{ d.related }}
-              }
-            </p>
-            @if (detail(d); as text) {
-              <p
-                class="mt-1 text-sm"
-                [class]="
-                  d.status === 'REJECTED' || d.status === 'ERROR'
-                    ? 'text-rose-700'
-                    : 'text-slate-500'
-                "
-              >
-                {{ text }}
-              </p>
-            }
-          </div>
-          <div class="flex shrink-0 flex-wrap items-center gap-2">
-            <span class="w-24 text-right font-semibold text-slate-900 tabular-nums">
-              {{ d.type === 'CREDIT_NOTE' ? '−' : '' }}{{ money(d.total) }}
-            </span>
-            @if (d.pdfUrl) {
-              <a [href]="d.pdfUrl" target="_blank" rel="noopener" class="btn btn-ghost h-10">PDF</a>
-            }
-            @if (d.receiptId) {
-              <a [routerLink]="['/caja/tickets', d.receiptId]" class="btn btn-ghost h-10">Ticket</a>
-            }
-            @if (canRetry(d)) {
-              <button
-                type="button"
-                class="btn btn-secondary h-10"
-                [disabled]="retrying() === d.id"
-                (click)="retry(d)"
-              >
-                <app-icon name="refresh" class="size-4" /> Reintentar
-              </button>
-            }
-          </div>
-        </li>
-      }
-    </ul>
+    <div class="card overflow-hidden" [class.opacity-60]="list.isLoading()">
+      <table class="w-full text-sm">
+        <caption class="sr-only">
+          Comprobantes
+        </caption>
+        <thead class="hidden border-b border-slate-200 bg-slate-50/80 md:table-header-group">
+          <tr class="text-left text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <th scope="col" class="px-5 py-3 font-semibold">Comprobante</th>
+            <th scope="col" class="px-3 py-3 font-semibold">Cliente</th>
+            <th scope="col" class="px-3 py-3 font-semibold">Estado</th>
+            <th scope="col" class="px-3 py-3 text-right font-semibold">Importe</th>
+            <th scope="col" class="px-5 py-3"><span class="sr-only">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          @for (d of items(); track d.id) {
+            @let st = state(d);
+            <tr
+              class="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 px-4 py-4 align-top hover:bg-slate-50/70 md:table-row md:p-0"
+              [class.bg-slate-50/40]="st === 'annulled'"
+            >
+              <!-- Comprobante -->
+              <td class="md:px-5 md:py-4">
+                <p class="flex flex-wrap items-center gap-2">
+                  <span
+                    class="font-semibold whitespace-nowrap tabular-nums"
+                    [class]="st === 'annulled' ? 'text-slate-500' : 'text-slate-900'"
+                    >{{ d.code }}</span
+                  >
+                  <span
+                    class="hidden rounded-md px-1.5 py-0.5 text-[11px] font-semibold md:inline"
+                    [class]="typeStyle[d.type]"
+                    >{{ typeLabels[d.type] }}</span
+                  >
+                </p>
+                <p class="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                  {{ d.issueDate | fecha: 'calendar' }}
+                  <!-- Celular: el tipo junto a la fecha, así el número no se parte -->
+                  <span
+                    class="rounded-md px-1.5 py-0.5 text-[11px] font-semibold md:hidden"
+                    [class]="typeStyle[d.type]"
+                    >{{ typeLabels[d.type] }}</span
+                  >
+                </p>
+              </td>
+              <!-- Importe (móvil: arriba a la derecha) -->
+              <td class="text-right md:hidden">
+                <span
+                  class="font-semibold tabular-nums"
+                  [class]="
+                    d.type === 'CREDIT_NOTE'
+                      ? 'text-rose-700'
+                      : st === 'annulled'
+                        ? 'text-slate-500 line-through'
+                        : 'text-slate-900'
+                  "
+                  >{{ d.type === 'CREDIT_NOTE' ? '−' : '' }}{{ money(d.total) }}</span
+                >
+              </td>
+              <!-- Cliente -->
+              <td class="col-span-2 min-w-0 md:max-w-xs md:px-3 md:py-4">
+                <p class="truncate text-slate-900">{{ d.customerName }}</p>
+                @if (customerDoc[d.customerDocType]; as label) {
+                  <p class="text-xs text-slate-500 tabular-nums">
+                    {{ label }} {{ d.customerDocNumber }}
+                  </p>
+                }
+              </td>
+              <!-- Estado -->
+              <td class="min-w-0 md:px-3 md:py-4">
+                <span
+                  class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1"
+                  [class]="stateStyle[st].chip"
+                >
+                  <span
+                    class="size-1.5 rounded-full"
+                    [class]="stateStyle[st].dot"
+                    aria-hidden="true"
+                  ></span>
+                  {{ stateLabel(d) }}
+                </span>
+                @if (d.annulledBy; as a) {
+                  <p class="mt-1 text-xs text-slate-600">
+                    Con
+                    <button
+                      type="button"
+                      class="font-medium text-anil-700 tabular-nums hover:underline"
+                      (click)="find(a.code)"
+                      [attr.aria-label]="'Ver la nota de crédito ' + a.code"
+                    >
+                      {{ a.code }}
+                    </button>
+                    · {{ a.date | fecha: 'calendar' }}
+                  </p>
+                }
+                @if (d.related) {
+                  <p class="mt-1 text-xs text-slate-600">
+                    Anula
+                    <button
+                      type="button"
+                      class="font-medium text-anil-700 tabular-nums hover:underline"
+                      (click)="find(d.related)"
+                      [attr.aria-label]="'Ver el comprobante ' + d.related"
+                    >
+                      {{ d.related }}
+                    </button>
+                  </p>
+                }
+                @if (detail(d); as text) {
+                  <p
+                    class="mt-1 max-w-xs text-xs"
+                    [class]="
+                      d.status === 'REJECTED' || d.status === 'ERROR'
+                        ? 'text-rose-700'
+                        : 'text-slate-500'
+                    "
+                  >
+                    {{ text }}
+                  </p>
+                }
+              </td>
+              <!-- Importe (escritorio) -->
+              <td class="hidden px-3 py-4 text-right whitespace-nowrap md:table-cell">
+                <span
+                  class="font-semibold tabular-nums"
+                  [class]="
+                    d.type === 'CREDIT_NOTE'
+                      ? 'text-rose-700'
+                      : st === 'annulled'
+                        ? 'text-slate-500 line-through'
+                        : 'text-slate-900'
+                  "
+                  >{{ d.type === 'CREDIT_NOTE' ? '−' : '' }}{{ money(d.total) }}</span
+                >
+              </td>
+              <!-- Acciones: A4 y Ticket a la vista; lo que falta arreglar, visible; el resto en ⋯ -->
+              <td class="md:px-5 md:py-4">
+                <div
+                  class="relative -mr-2 flex flex-wrap items-center justify-end gap-1 md:mr-0 md:flex-nowrap"
+                  data-doc-menu
+                >
+                  @if (canReissue(d)) {
+                    <button
+                      type="button"
+                      class="btn btn-secondary h-10 px-3 text-xs"
+                      (click)="openReissue(d)"
+                      [attr.aria-label]="'Corregir y emitir de nuevo ' + d.code"
+                    >
+                      <app-icon name="pencil" class="size-4" /> Corregir
+                    </button>
+                  }
+                  @if (canRetry(d)) {
+                    <button
+                      type="button"
+                      class="btn btn-secondary h-10 px-3 text-xs"
+                      [disabled]="retrying() === d.id"
+                      (click)="retry(d)"
+                    >
+                      <app-icon
+                        name="refresh"
+                        class="size-4"
+                        [class.animate-spin]="retrying() === d.id"
+                      />
+                      Reintentar
+                    </button>
+                  }
+                  <a
+                    [routerLink]="['/comprobantes', d.id, 'a4']"
+                    class="btn btn-ghost h-10 px-2.5 text-xs"
+                    [attr.aria-label]="'Ver ' + d.code + ' en A4, PDF o WhatsApp'"
+                  >
+                    <app-icon name="download" class="size-4" /> A4
+                  </a>
+                  @if (d.receiptId) {
+                    <a
+                      [routerLink]="['/caja/tickets', d.receiptId]"
+                      class="btn btn-ghost h-10 px-2.5 text-xs"
+                      [attr.aria-label]="'Ver ticket de ' + d.code"
+                    >
+                      <app-icon name="receipt" class="size-4" /> Ticket
+                    </a>
+                  }
+                  @if (menuItems(d).length) {
+                    <button
+                      type="button"
+                      class="btn btn-ghost size-10 shrink-0 px-0"
+                      [attr.aria-expanded]="menuFor() === d.id"
+                      [attr.aria-controls]="'doc-menu-' + d.id"
+                      [attr.aria-label]="'Más acciones de ' + d.code"
+                      (click)="toggleMenu(d.id, $event)"
+                    >
+                      <app-icon name="more-horizontal" class="size-4" />
+                    </button>
+                    @if (menuFor() === d.id) {
+                      <div
+                        [id]="'doc-menu-' + d.id"
+                        class="panel-in absolute right-0 z-30 w-64 rounded-xl bg-white p-1.5 text-left shadow-xl ring-1 ring-slate-900/5"
+                        [class]="
+                          menuUp()
+                            ? 'bottom-full mb-1.5 origin-bottom-right'
+                            : 'top-full mt-1.5 origin-top-right'
+                        "
+                        role="menu"
+                      >
+                        @for (m of menuItems(d); track m) {
+                          @switch (m) {
+                            @case ('pdf') {
+                              <a
+                                role="menuitem"
+                                [href]="d.pdfUrl"
+                                target="_blank"
+                                rel="noopener"
+                                class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-slate-800 hover:bg-slate-50"
+                                (click)="menuFor.set(null)"
+                              >
+                                <app-icon name="file-text" class="size-4 text-slate-500" /> PDF del
+                                PSE
+                              </a>
+                            }
+                            @case ('factura') {
+                              @if (sameMonth(d)) {
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm text-slate-800 hover:bg-slate-50"
+                                  (click)="menuFor.set(null); openChange(d)"
+                                >
+                                  <app-icon name="building" class="size-4 text-slate-500" /> Cambiar
+                                  a factura
+                                </button>
+                              } @else {
+                                <p
+                                  role="menuitem"
+                                  aria-disabled="true"
+                                  class="flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-sm text-slate-400"
+                                >
+                                  <app-icon name="building" class="mt-0.5 size-4 shrink-0" />
+                                  <span
+                                    >Cambiar a factura
+                                    <span class="block text-xs text-slate-500"
+                                      >Solo dentro del mes de la boleta: ese mes ya se
+                                      declaró.</span
+                                    ></span
+                                  >
+                                </p>
+                              }
+                            }
+                            @case ('void') {
+                              <a
+                                role="menuitem"
+                                [routerLink]="['/caja/tickets', d.receiptId]"
+                                class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-rose-700 hover:bg-rose-50"
+                              >
+                                <app-icon name="ban" class="size-4 text-rose-600" /> Anular cobro…
+                              </a>
+                            }
+                          }
+                        }
+                      </div>
+                    }
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
 
-    @if (pages() > 1) {
-      <nav class="flex items-center justify-between" aria-label="Páginas">
-        <button
-          type="button"
-          class="btn btn-secondary"
-          [disabled]="page() === 1"
-          (click)="page.set(page() - 1)"
-        >
-          Anterior
-        </button>
-        <span class="text-sm text-slate-600 tabular-nums"
-          >Página {{ page() }} de {{ pages() }}</span
-        >
-        <button
-          type="button"
-          class="btn btn-secondary"
-          [disabled]="page() === pages()"
-          (click)="page.set(page() + 1)"
-        >
-          Siguiente
-        </button>
-      </nav>
-    }
-  }
-
-  @if (isAdmin()) {
-    <section class="card p-5" aria-labelledby="report-title">
-      <h2 id="report-title" class="text-sm font-semibold text-slate-900">Excel para el contador</h2>
-      <p class="mt-1 text-sm text-slate-600">
-        Registro de ventas del periodo: cada comprobante con su base, IGV y total. Las notas de
-        crédito restan.
-      </p>
-      <div class="mt-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label for="rep-from" class="field-label">Desde</label>
-          <input id="rep-from" type="date" [formControl]="reportFrom" class="field-input" />
-        </div>
-        <div>
-          <label for="rep-to" class="field-label">Hasta</label>
-          <input id="rep-to" type="date" [formControl]="reportTo" class="field-input" />
-        </div>
-        <button
-          type="button"
-          class="btn btn-primary"
-          [disabled]="downloading()"
-          (click)="download()"
-        >
-          <app-icon
-            [name]="downloading() ? 'loader' : 'download'"
-            class="size-4"
-            [class.animate-spin]="downloading()"
-          />
-          Descargar Excel
-        </button>
+      <div
+        class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-sm text-slate-600"
+      >
+        <span class="tabular-nums">
+          {{ data()?.total }}
+          {{ data()?.total === 1 ? 'comprobante' : 'comprobantes' }}
+        </span>
+        @if (pages() > 1) {
+          <nav class="flex items-center gap-2" aria-label="Páginas">
+            <button
+              type="button"
+              class="btn btn-secondary h-9 px-3"
+              [disabled]="page() === 1"
+              (click)="page.set(page() - 1)"
+              aria-label="Página anterior"
+            >
+              <app-icon name="chevron-left" class="size-4" />
+            </button>
+            <span class="tabular-nums">{{ page() }} de {{ pages() }}</span>
+            <button
+              type="button"
+              class="btn btn-secondary h-9 px-3"
+              [disabled]="page() === pages()"
+              (click)="page.set(page() + 1)"
+              aria-label="Página siguiente"
+            >
+              <app-icon name="chevron-right" class="size-4" />
+            </button>
+          </nav>
+        }
       </div>
-    </section>
+    </div>
   }
 </section>
+
+<!-- Cambiar boleta por factura -->
+<app-modal
+  [open]="!!changing()"
+  title="Cambiar boleta por factura"
+  [description]="
+    'Se anula ' +
+    (changing()?.code ?? '') +
+    ' con una nota de crédito y se emite una factura por el mismo importe. El pago y la caja no cambian.'
+  "
+  (closed)="changing.set(null)"
+>
+  @if (changing()) {
+    <app-buyer-fields [form]="buyer" mode="RUC" />
+  }
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" (click)="changing.set(null)">Cancelar</button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      [disabled]="changeSaving()"
+      (click)="confirmChange()"
+    >
+      Emitir factura
+    </button>
+  </div>
+</app-modal>
+
+<!-- Corregir un rechazado -->
+<app-modal
+  [open]="!!reissuing()"
+  title="Corregir y emitir de nuevo"
+  [description]="reissueText()"
+  (closed)="reissuing.set(null)"
+>
+  @if (reissuing(); as d) {
+    <app-buyer-fields [form]="buyer" [mode]="d.type === 'FACTURA' ? 'RUC' : 'DNI'" />
+  }
+  <div modal-actions class="contents">
+    <button type="button" class="btn btn-secondary" (click)="reissuing.set(null)">Cancelar</button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      [disabled]="changeSaving()"
+      (click)="confirmReissue()"
+    >
+      Emitir de nuevo
+    </button>
+  </div>
+</app-modal>
+
+<!-- Excel para el contador -->
+@if (isAdmin()) {
+  <app-modal
+    [open]="exporting()"
+    title="Excel para el contador"
+    description="Registro de ventas del periodo: cada comprobante con su base, IGV y total. Las notas de crédito restan."
+    (closed)="exporting.set(false)"
+  >
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label for="rep-from" class="field-label">Desde</label>
+        <input id="rep-from" type="date" [formControl]="reportFrom" class="field-input" />
+      </div>
+      <div>
+        <label for="rep-to" class="field-label">Hasta</label>
+        <input id="rep-to" type="date" [formControl]="reportTo" class="field-input" />
+      </div>
+    </div>
+    <div modal-actions class="contents">
+      <button type="button" class="btn btn-secondary" (click)="exporting.set(false)">
+        Cancelar
+      </button>
+      <button type="button" class="btn btn-primary" [disabled]="downloading()" (click)="download()">
+        <app-icon
+          [name]="downloading() ? 'loader' : 'download'"
+          class="size-4"
+          [class.animate-spin]="downloading()"
+        />
+        Descargar Excel
+      </button>
+    </div>
+  </app-modal>
+}

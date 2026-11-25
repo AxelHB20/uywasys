@@ -14,7 +14,7 @@ const DETAILS: Record<DocumentChoice, { icon: IconName; caption: string }> = {
 /**
  * Qué comprobante se emite en un cobro: boleta, factura o nota de venta.
  * Tarjetas con rol de radio (flechas para moverse, Espacio/Enter para elegir). Si la opción
- * elegida deja de estar disponible (p. ej. boleta de S/ 700 sin DNI), pasa a la primera libre.
+ * elegida deja de estar disponible (p. ej. boleta de más de S/ 700 sin DNI), pasa a la primera libre.
  * Sin facturación electrónica activa solo se emite nota de venta, y se dice cómo activarla.
  */
 @Component({
@@ -35,72 +35,106 @@ const DETAILS: Record<DocumentChoice, { icon: IconName; caption: string }> = {
             </span>
           }
         </div>
-        <div
-          class="mt-2 grid grid-cols-3 gap-2"
-          role="radiogroup"
-          aria-labelledby="document-choice-label"
-          (keydown)="onKey($event)"
-        >
-          @for (o of items(); track o.value) {
-            <button
-              type="button"
-              role="radio"
-              [attr.aria-checked]="o.value === selected()"
-              [attr.aria-disabled]="o.disabled || null"
-              [attr.aria-describedby]="o.hint ? 'doc-hint-' + o.value : null"
-              [attr.data-value]="o.value"
-              [tabindex]="o.value === focusable() ? 0 : -1"
-              (click)="choose(o)"
-              class="group relative flex min-h-[4.5rem] flex-col items-start justify-center gap-0.5 rounded-xl px-3 py-2.5 text-left ring-1 transition-[background-color,box-shadow,color] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600 motion-reduce:transition-none"
-              [class]="
-                o.disabled
-                  ? 'cursor-not-allowed bg-slate-50 text-slate-400 ring-slate-200'
-                  : o.value === selected()
-                    ? 'cursor-pointer bg-anil-50 text-anil-900 ring-2 ring-anil-600 shadow-sm'
-                    : 'cursor-pointer bg-white text-slate-700 ring-slate-300 hover:bg-slate-50 hover:ring-slate-400 active:bg-slate-100'
-              "
-            >
-              <span class="flex w-full items-center justify-between">
-                <app-icon
-                  [name]="o.disabled ? 'lock' : o.icon"
-                  class="size-[18px]"
+        @if (variant() === 'tabs') {
+          <!-- Pestañas compactas (panel de cobro de la caja) -->
+          <div
+            class="mt-2 flex gap-0.5 rounded-xl bg-slate-200/70 p-1"
+            role="radiogroup"
+            aria-labelledby="document-choice-label"
+            (keydown)="onKey($event)"
+          >
+            @for (o of items(); track o.value) {
+              <button
+                type="button"
+                role="radio"
+                [attr.aria-checked]="o.value === selected()"
+                [attr.aria-disabled]="o.disabled || null"
+                [attr.aria-describedby]="o.hint ? 'doc-hint-' + o.value : null"
+                [attr.data-value]="o.value"
+                [tabindex]="o.value === focusable() ? 0 : -1"
+                [title]="o.caption"
+                (click)="choose(o)"
+                class="h-10 min-w-0 flex-1 rounded-lg px-1 text-[13px] whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-anil-600 motion-reduce:transition-none pointer-coarse:h-11"
+                [class]="
+                  o.disabled
+                    ? 'cursor-not-allowed text-slate-400'
+                    : o.value === selected()
+                      ? 'bg-white font-semibold text-slate-900 shadow-sm'
+                      : 'cursor-pointer font-medium text-slate-600 hover:text-slate-900'
+                "
+              >
+                {{ o.value === 'NOTE' ? 'Nota de venta' : o.label }}
+              </button>
+            }
+          </div>
+        } @else {
+          <div
+            class="mt-2 grid grid-cols-3 gap-2"
+            role="radiogroup"
+            aria-labelledby="document-choice-label"
+            (keydown)="onKey($event)"
+          >
+            @for (o of items(); track o.value) {
+              <button
+                type="button"
+                role="radio"
+                [attr.aria-checked]="o.value === selected()"
+                [attr.aria-disabled]="o.disabled || null"
+                [attr.aria-describedby]="o.hint ? 'doc-hint-' + o.value : null"
+                [attr.data-value]="o.value"
+                [tabindex]="o.value === focusable() ? 0 : -1"
+                (click)="choose(o)"
+                class="group relative flex min-h-[4.5rem] flex-col items-start justify-center gap-0.5 rounded-xl px-3 py-2.5 text-left ring-1 transition-[background-color,box-shadow,color] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600 motion-reduce:transition-none"
+                [class]="
+                  o.disabled
+                    ? 'cursor-not-allowed bg-slate-50 text-slate-400 ring-slate-200'
+                    : o.value === selected()
+                      ? 'cursor-pointer bg-anil-50 text-anil-900 ring-2 ring-anil-600 shadow-sm'
+                      : 'cursor-pointer bg-white text-slate-700 ring-slate-300 hover:bg-slate-50 hover:ring-slate-400 active:bg-slate-100'
+                "
+              >
+                <span class="flex w-full items-center justify-between">
+                  <app-icon
+                    [name]="o.disabled ? 'lock' : o.icon"
+                    class="size-[18px]"
+                    [class]="
+                      o.disabled
+                        ? 'text-slate-400'
+                        : o.value === selected()
+                          ? 'text-anil-600'
+                          : 'text-slate-500'
+                    "
+                  />
+                  <span
+                    class="grid size-4 place-items-center rounded-full ring-1 transition-colors duration-150"
+                    [class]="
+                      o.value === selected()
+                        ? 'bg-anil-600 text-white ring-anil-600'
+                        : 'bg-white ring-slate-300'
+                    "
+                    aria-hidden="true"
+                  >
+                    @if (o.value === selected()) {
+                      <app-icon name="check" [strokeWidth]="3" class="size-2.5" />
+                    }
+                  </span>
+                </span>
+                <span class="mt-1 text-sm font-semibold leading-tight">{{ o.label }}</span>
+                <span
+                  class="text-xs leading-tight"
                   [class]="
                     o.disabled
                       ? 'text-slate-400'
                       : o.value === selected()
-                        ? 'text-anil-600'
+                        ? 'text-anil-700'
                         : 'text-slate-500'
                   "
-                />
-                <span
-                  class="grid size-4 place-items-center rounded-full ring-1 transition-colors duration-150"
-                  [class]="
-                    o.value === selected()
-                      ? 'bg-anil-600 text-white ring-anil-600'
-                      : 'bg-white ring-slate-300'
-                  "
-                  aria-hidden="true"
+                  >{{ o.caption }}</span
                 >
-                  @if (o.value === selected()) {
-                    <app-icon name="check" [strokeWidth]="3" class="size-2.5" />
-                  }
-                </span>
-              </span>
-              <span class="mt-1 text-sm font-semibold leading-tight">{{ o.label }}</span>
-              <span
-                class="text-xs leading-tight"
-                [class]="
-                  o.disabled
-                    ? 'text-slate-400'
-                    : o.value === selected()
-                      ? 'text-anil-700'
-                      : 'text-slate-500'
-                "
-                >{{ o.caption }}</span
-              >
-            </button>
-          }
-        </div>
+              </button>
+            }
+          </div>
+        }
         @for (o of hints(); track o.value) {
           <p
             [id]="'doc-hint-' + o.value"
@@ -138,6 +172,8 @@ export class DocumentChoiceComponent {
   readonly options = input.required<DocumentOption[]>();
   readonly control = input.required<FormControl<DocumentChoice>>();
   readonly simulated = input(false);
+  /** 'tabs': pestañas compactas para el panel de cobro; 'cards': tarjetas con descripción */
+  readonly variant = input<'cards' | 'tabs'>('cards');
   /** Enlace a la configuración (solo para quien puede activarla) */
   readonly setupLink = input<string | null>(null);
 
@@ -147,7 +183,10 @@ export class DocumentChoiceComponent {
   protected readonly items = computed(() =>
     this.options().map((o) => ({ ...o, ...DETAILS[o.value] })),
   );
-  protected readonly hints = computed(() => this.options().filter((o) => o.disabled && o.hint));
+  /** Avisos: de las opciones bloqueadas y de la elegida (p. ej. boleta de más de S/ 700 lleva DNI) */
+  protected readonly hints = computed(() =>
+    this.options().filter((o) => o.hint && (o.disabled || o.value === this.selected())),
+  );
   /** La opción que recibe el Tab: la elegida, o la primera disponible */
   protected readonly focusable = computed(() => {
     const enabled = this.options().filter((o) => !o.disabled);

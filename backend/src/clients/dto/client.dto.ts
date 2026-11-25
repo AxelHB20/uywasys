@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import type { DocumentType } from '../../generated/prisma/enums.js';
+import { IsRuc } from '../../common/validators/ruc.js';
 import {
   DNI_REGEX,
   DOCUMENT_TYPES,
@@ -137,6 +138,36 @@ export class UpdateClientDto {
   @MaxLength(60, { message: 'El distrito admite hasta 60 caracteres' })
   district?: string | null;
 
+  /** Datos de facturación (RUC al que factura, p. ej. su empresa). null en el RUC = borrarlos */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.replace(/\D/g, '') || null : value,
+  )
+  @ValidateIf(notNull)
+  @IsRuc()
+  invoiceRuc?: string | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(150, { message: 'La razón social admite hasta 150 caracteres' })
+  invoiceName?: string | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(200, {
+    message: 'La dirección fiscal admite hasta 200 caracteres',
+  })
+  invoiceAddress?: string | null;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() || null : value,
+  )
+  @ValidateIf(notNull)
+  @IsEmail({}, { message: 'Ingresa un correo válido' })
+  @MaxLength(120, { message: 'El correo es demasiado largo' })
+  invoiceEmail?: string | null;
+
   @Transform(emptyToNull)
   @ValidateIf(notNull)
   @IsString()
@@ -185,6 +216,16 @@ export class LookupClientQuery {
   @IsString()
   @MaxLength(12)
   docNumber: string;
+}
+
+export class LookupPhoneQuery {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.replace(/\D/g, '') : value,
+  )
+  @Matches(/^9\d{8}$/, {
+    message: 'El celular debe tener 9 dígitos y empezar con 9',
+  })
+  phone: string;
 }
 
 export class CreateAuthorizedPersonDto {

@@ -7,6 +7,7 @@ import {
   inject,
   input,
   signal,
+  Signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -19,6 +20,7 @@ import {
   of,
   startWith,
   switchMap,
+  Observable,
 } from 'rxjs';
 import { SessionService } from '../../core/auth/session.service';
 import {
@@ -86,10 +88,10 @@ export class ClientsPage {
     retry: this.retry(),
   }));
 
-  protected readonly state = toSignal(
+  protected readonly state: Signal<LoadState> = toSignal(
     toObservable(this.query).pipe(
-      switchMap((query) =>
-        this.clients.list(query).pipe(
+      switchMap((query): Observable<LoadState> => {
+        const request = this.clients.list(query).pipe(
           map((data): LoadState => ({ kind: 'ready', data })),
           catchError((error: unknown) =>
             of<LoadState>({
@@ -97,9 +99,13 @@ export class ClientsPage {
               message: apiErrorMessage(error, 'No se pudo cargar la lista de clientes.'),
             }),
           ),
-          startWith<LoadState>({ kind: 'loading' }),
-        ),
-      ),
+        );
+        // Solo la primera vez se muestra "cargando": al filtrar, la lista anterior se queda hasta
+        // que llega la nueva (la página no se achica ni salta arriba)
+        return this.state?.().kind === 'ready'
+          ? request
+          : request.pipe(startWith<LoadState>({ kind: 'loading' }));
+      }),
     ),
     { initialValue: { kind: 'loading' } as LoadState },
   );

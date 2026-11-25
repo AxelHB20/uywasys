@@ -37,6 +37,7 @@ import {
 import { GroomingService } from '../../core/services/grooming.service';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
+import { IconName } from '../../shared/ui/icon/icons';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { addDays } from '../../core/services/medical.models';
@@ -45,15 +46,62 @@ import { SPECIES_ICONS } from '../../shared/utils/records';
 import { money } from '../../shared/utils/stock';
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { clockTime, durationLabel, minutesBetween } from '../queue/queue-time';
+import { ImmunizationsService } from '../../core/services/immunizations.service';
+import { VisitsService } from '../../core/services/visits.service';
+import {
+  TransportFieldsComponent,
+  transportGroup,
+  transportInvalid,
+  transportValue,
+} from '../../shared/ui/transport-fields/transport-fields.component';
 
 const REFRESH_MS = 30_000;
 const GROOMING_ROLES = ['ADMIN', 'VET', 'RECEPTION', 'GROOMER'];
 
-const COLUMN_STYLE: Record<BoardStatus, { dot: string; ring: string; empty: string }> = {
-  WAITING: { dot: 'bg-slate-400', ring: 'ring-slate-200', empty: 'Nadie esperando' },
-  BATHING: { dot: 'bg-sky-500', ring: 'ring-sky-200', empty: 'Nadie en el baño' },
-  CUTTING: { dot: 'bg-violet-500', ring: 'ring-violet-200', empty: 'Nadie en corte' },
-  READY: { dot: 'bg-emerald-500', ring: 'ring-emerald-200', empty: 'Nadie listo todavía' },
+const COLUMN_STYLE: Record<
+  BoardStatus,
+  { dot: string; ring: string; empty: string; icon: IconName; tile: string; accent: string }
+> = {
+  WAITING: {
+    dot: 'bg-slate-400',
+    ring: 'ring-slate-200',
+    empty: 'Nadie esperando',
+    icon: 'clock',
+    tile: 'bg-slate-100 text-slate-600',
+    accent: 'border-l-slate-300',
+  },
+  BATHING: {
+    dot: 'bg-sky-500',
+    ring: 'ring-sky-200',
+    empty: 'Nadie en el baño',
+    icon: 'droplets',
+    tile: 'bg-sky-50 text-sky-700',
+    accent: 'border-l-sky-400',
+  },
+  CUTTING: {
+    dot: 'bg-violet-500',
+    ring: 'ring-violet-200',
+    empty: 'Nadie en corte',
+    icon: 'scissors',
+    tile: 'bg-violet-50 text-violet-700',
+    accent: 'border-l-violet-400',
+  },
+  READY: {
+    dot: 'bg-emerald-500',
+    ring: 'ring-emerald-200',
+    empty: 'Nadie listo todavía',
+    icon: 'check',
+    tile: 'bg-emerald-50 text-emerald-700',
+    accent: 'border-l-emerald-500',
+  },
+};
+
+export type PickupTone = 'late' | 'soon' | 'ok' | 'waiting';
+const PICKUP_CLASS: Record<PickupTone, string> = {
+  late: 'bg-rose-50 text-rose-800 ring-rose-600/20',
+  soon: 'bg-maiz-100 text-amber-900 ring-amber-600/25',
+  ok: 'bg-slate-50 text-slate-600 ring-slate-500/15',
+  waiting: 'bg-emerald-50 text-emerald-800 ring-emerald-600/20',
 };
 
 interface Pickup {
@@ -79,6 +127,7 @@ interface Pickup {
     FechaPipe,
     IconComponent,
     ModalComponent,
+    TransportFieldsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './board.page.html',
@@ -89,6 +138,8 @@ export class GroomingBoardPage {
   private readonly session = inject(SessionService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly cardsApi = inject(ImmunizationsService);
+  private readonly visitsApi = inject(VisitsService);
 
   /** ?dia=AAAA-MM-DD (historial de otro día) */
   readonly dia = input<string>();
@@ -96,6 +147,7 @@ export class GroomingBoardPage {
   protected readonly statuses = BOARD_STATUSES;
   protected readonly statusLabels = GROOMING_STATUS_LABELS;
   protected readonly columnStyle = COLUMN_STYLE;
+  protected readonly pickupClass = PICKUP_CLASS;
   protected readonly sizeLabels = PET_SIZE_LABELS;
   protected readonly transportLabels = TRANSPORT_LABELS;
   protected readonly speciesIcons = SPECIES_ICONS;
@@ -108,9 +160,6 @@ export class GroomingBoardPage {
   protected readonly canEdit = computed(() => GROOMING_ROLES.includes(this.session.role() ?? ''));
   protected readonly canCancel = computed(() =>
     ['ADMIN', 'RECEPTION'].includes(this.session.role() ?? ''),
-  );
-  protected readonly canSeeCommissions = computed(() =>
-    ['ADMIN', 'GROOMER'].includes(this.session.role() ?? ''),
   );
   protected readonly canCollect = computed(() =>
     CASH_ROLES.includes(this.session.role() ?? 'GROOMER'),
@@ -147,10 +196,24 @@ export class GroomingBoardPage {
   );
   protected readonly counts = computed(() => {
     const cards = this.cards();
+    const now = this.now();
+    const active = cards.filter((c) => BOARD_STATUSES.includes(c.status as BoardStatus));
+    const ready = active.filter((c) => c.status === 'READY');
+    const delivered = cards.filter((c) => c.status === 'DELIVERED');
+    const round = (n: number) => Math.round(n * 100) / 100;
     return {
-      active: cards.filter((c) => BOARD_STATUSES.includes(c.status as BoardStatus)).length,
-      delivered: cards.filter((c) => c.status === 'DELIVERED').length,
-      revenue: cards.filter((c) => c.status !== 'CANCELLED').reduce((sum, c) => sum + c.total, 0),
+      active: active.length,
+      inProgress: active.filter((c) => c.status === 'BATHING' || c.status === 'CUTTING').length,
+      ready: ready.length,
+      notified: ready.filter((c) => c.notifiedAt).length,
+      late: active.filter(
+        (c) => c.status !== 'READY' && !!c.promisedAt && new Date(c.promisedAt) < now,
+      ).length,
+      delivered: delivered.length,
+      revenue: round(
+        cards.filter((c) => c.status !== 'CANCELLED').reduce((sum, c) => sum + c.total, 0),
+      ),
+      pending: round(delivered.reduce((sum, c) => sum + c.pending, 0)),
     };
   });
 
@@ -161,6 +224,62 @@ export class GroomingBoardPage {
   );
   protected readonly detail = signal<GroomingDetail | null>(null);
   protected readonly groomerControl = new FormControl<number | null>(null);
+
+  // ── Movilidad después del ingreso: "ya no puede volver, llévenlo" ──
+  protected readonly editingMove = signal(false);
+  protected readonly moveSaving = signal(false);
+  protected readonly moveSubmitted = signal(false);
+  protected readonly moveForm = transportGroup();
+  protected readonly moveAddress = signal('');
+  protected readonly moveLastPrice = signal<number | null>(null);
+
+  protected startMove(d: GroomingDetail): void {
+    this.moveForm.reset({
+      transport: d.transport,
+      transportAddress: d.transportAddress ?? '',
+      transportPrice: d.transportPrice,
+    });
+    this.moveSubmitted.set(false);
+    this.moveAddress.set('');
+    this.moveLastPrice.set(null);
+    this.editingMove.set(true);
+    this.cardsApi.card(d.pet.id).subscribe({
+      next: (card) => {
+        const c = card.pet.client;
+        this.moveAddress.set([c.address, c.district].filter(Boolean).join(', '));
+      },
+      error: () => undefined,
+    });
+    this.visitsApi.lastTransportPrice(d.client.id).subscribe({
+      next: ({ price }) => this.moveLastPrice.set(price),
+      error: () => undefined,
+    });
+  }
+
+  protected saveMove(d: GroomingDetail): void {
+    this.moveSubmitted.set(true);
+    if (this.moveSaving() || transportInvalid(this.moveForm)) return;
+    this.moveSaving.set(true);
+    this.api.changeTransport(d.id, transportValue(this.moveForm)).subscribe({
+      next: (updated) => {
+        this.moveSaving.set(false);
+        this.editingMove.set(false);
+        this.detail.set(updated);
+        this.patch(updated);
+        this.toast.success(
+          updated.transport === 'NONE'
+            ? 'Sin movilidad.'
+            : `${TRANSPORT_LABELS[updated.transport]}${
+                updated.transportPrice ? ` · ${money(updated.transportPrice)}` : ''
+              }: queda en la cuenta.`,
+        );
+      },
+      error: (error: unknown) => {
+        this.moveSaving.set(false);
+        this.toast.error(apiErrorMessage(error));
+      },
+    });
+  }
 
   // ── Entrega ──
   protected readonly delivering = signal<GroomingCard | null>(null);
@@ -183,6 +302,8 @@ export class GroomingBoardPage {
 
   // ── Cancelar ──
   protected readonly cancelling = signal<GroomingCard | null>(null);
+  /** Ya fueron a recogerlo: la movilidad se cobra igual */
+  protected readonly chargeTransport = new FormControl(false, { nonNullable: true });
   protected readonly cancelReason = new FormControl('', {
     nonNullable: true,
     validators: [Validators.required, Validators.minLength(3), Validators.maxLength(200)],
@@ -246,6 +367,38 @@ export class GroomingBoardPage {
     );
   }
 
+  /** Hora de recojo con su urgencia: "Atrasado 12 min", "en 20 min", "Recojo 17:30" */
+  protected pickup(c: GroomingCard): { text: string; tone: PickupTone } | null {
+    if (!c.promisedAt) return null;
+    const minutes = Math.round((new Date(c.promisedAt).getTime() - this.now().getTime()) / 60_000);
+    const at = clockTime(c.promisedAt);
+    if (c.status === 'READY')
+      return minutes < 0
+        ? { text: `Espera recojo · ${at}`, tone: 'waiting' }
+        : { text: `Recojo ${at}`, tone: 'ok' };
+    if (minutes < 0) return { text: `Atrasado ${durationLabel(-minutes)}`, tone: 'late' };
+    if (minutes <= 30) return { text: `En ${durationLabel(minutes)} · ${at}`, tone: 'soon' };
+    return { text: `Recojo ${at}`, tone: 'ok' };
+  }
+
+  /** Servicios en chips cortos: sin el tamaño entre paréntesis (ya está en la tarjeta) */
+  protected serviceChips(c: GroomingCard): { shown: string[]; more: number } {
+    const names = c.services.map(
+      (s) =>
+        (s.quantity > 1 ? `${s.quantity} × ` : '') + s.description.replace(/\s*\([^)]*\)\s*$/, ''),
+    );
+    return { shown: names.slice(0, 3), more: Math.max(0, names.length - 3) };
+  }
+
+  protected initials(name: string): string {
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]!.toUpperCase())
+      .join('');
+  }
+
   protected canMoveTo(c: GroomingCard, status: BoardStatus): boolean {
     return canMove(c.status, status);
   }
@@ -290,6 +443,7 @@ export class GroomingBoardPage {
   protected open(card: GroomingCard): void {
     this.selectedId.set(card.id);
     this.detail.set(null);
+    this.editingMove.set(false);
     this.groomerControl.setValue(card.groomer?.id ?? null, { emitEvent: false });
     this.api.get(card.id).subscribe({
       next: (d) => this.detail.set(d),
@@ -379,6 +533,7 @@ export class GroomingBoardPage {
   protected openCancel(c: GroomingCard): void {
     this.selectedId.set(null);
     this.cancelReason.reset('');
+    this.chargeTransport.setValue(false);
     this.cancelling.set(c);
   }
 
@@ -390,12 +545,17 @@ export class GroomingBoardPage {
       return;
     }
     this.busyId.set(c.id);
-    this.api.cancel(c.id, this.cancelReason.value.trim()).subscribe({
+    const charge = !!c.transportPrice && this.chargeTransport.value;
+    this.api.cancel(c.id, this.cancelReason.value.trim(), charge).subscribe({
       next: () => {
         this.busyId.set(null);
         this.cancelling.set(null);
         this.load(true);
-        this.toast.success('Servicio cancelado y sus cargos quitados.');
+        this.toast.success(
+          charge
+            ? 'Servicio cancelado. La movilidad queda por cobrar en Caja.'
+            : 'Servicio cancelado y sus cargos quitados.',
+        );
       },
       error: (error: unknown) => {
         this.busyId.set(null);

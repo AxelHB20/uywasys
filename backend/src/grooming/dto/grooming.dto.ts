@@ -135,6 +135,19 @@ export class CheckInDto {
   @Length(5, 200, { message: 'Indica la dirección de recojo o entrega' })
   transportAddress?: string | null;
 
+  /** Precio con IGV que pone recepción según su criterio; vacío o 0 = sin cobro */
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'El precio de la movilidad admite hasta 2 decimales' },
+  )
+  @Min(0, { message: 'El precio de la movilidad no puede ser negativo' })
+  @Max(500, {
+    message: 'La movilidad no puede pasar de S/ 500: revisa el monto',
+  })
+  transportPrice?: number | null;
+
   /** Firma del dueño al dejar la mascota (opcional) */
   @Transform(emptyToNull)
   @ValidateIf((o: CheckInDto) => Boolean(o.signature))
@@ -157,21 +170,6 @@ export class BoardQuery {
   @IsOptional()
   @Matches(DAY, { message: 'Fecha no válida' })
   day?: string;
-}
-
-export class CommissionsQuery {
-  @Matches(DAY, { message: 'Indica desde qué fecha' })
-  from: string;
-
-  @Matches(DAY, { message: 'Indica hasta qué fecha' })
-  to: string;
-
-  /** Solo el administrador: un groomer en particular */
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  groomerId?: number;
 }
 
 export class MoveDto {
@@ -205,9 +203,38 @@ export class DeliverDto {
   pickedUpRelation: string;
 }
 
+/** Cambiar la movilidad después del ingreso (el dueño ya no puede volver: se lo llevamos) */
+export class TransportDto {
+  @IsIn(TRANSPORTS, { message: 'Movilidad no válida' })
+  transport: GroomingTransport;
+
+  @Transform(emptyToNull)
+  @ValidateIf((o: TransportDto) => o.transport !== 'NONE')
+  @IsString({ message: 'Indica la dirección de recojo o entrega' })
+  @Length(5, 200, { message: 'Indica la dirección de recojo o entrega' })
+  transportAddress?: string | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'El precio de la movilidad admite hasta 2 decimales' },
+  )
+  @Min(0, { message: 'El precio de la movilidad no puede ser negativo' })
+  @Max(500, {
+    message: 'La movilidad no puede pasar de S/ 500: revisa el monto',
+  })
+  transportPrice?: number | null;
+}
+
 export class CancelGroomingDto {
   @Transform(trim)
   @IsString({ message: 'Indica el motivo' })
   @Length(3, 200, { message: 'El motivo debe tener entre 3 y 200 caracteres' })
   reason: string;
+
+  /** Ya fueron a recogerlo: la movilidad se cobra igual (queda en la cuenta del cliente) */
+  @IsOptional()
+  @IsBoolean()
+  chargeTransport?: boolean;
 }

@@ -47,6 +47,15 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-anil-500;
   }
+  /* Barras de desplazamiento finas y discretas (en Windows salían las clásicas con flechas) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) transparent;
+  }
+  /* Un fieldset mide por defecto lo que su contenido más ancho: en el celular se salía de la pantalla */
+  fieldset {
+    min-width: 0;
+  }
 }
 
 /* Patrón escalonado inspirado en la chakana, para la banda de bienvenida y la marca */
@@ -85,7 +94,7 @@
   @apply block text-sm font-medium text-slate-800;
 }
 @utility field-input {
-  @apply mt-1.5 h-11 w-full rounded-xl bg-white px-3.5 text-[15px] text-slate-900 ring-1 ring-slate-300 placeholder:text-slate-400
+  @apply mt-1.5 h-11 w-full rounded-xl bg-white px-3.5 text-[15px] text-slate-900 ring-1 ring-slate-300 placeholder:text-slate-500
     focus:outline-none focus:ring-2 focus:ring-anil-500 disabled:bg-slate-50 disabled:text-slate-500
     aria-invalid:ring-rose-400;
 }
@@ -164,6 +173,14 @@
   }
 }
 
+/* Hoja que se imprime desde una pantalla larga (indicaciones en la atención): se quita lo demás
+   del flujo para que no salgan páginas en blanco detrás */
+@media print {
+  body:has(.print-solo) *:not(:has(.print-solo), .print-solo, .print-solo *) {
+    display: none !important;
+  }
+}
+
 /* Tablero de grooming (Angular CDK drag & drop) */
 .cdk-drag-preview {
   @apply rounded-xl bg-white shadow-xl ring-2 ring-anil-400;
@@ -177,5 +194,147 @@
   .cdk-drag-animating,
   .cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-placeholder) {
     transition: none;
+  }
+}
+
+/* Avisos emergentes: entran y salen solo con transform y opacidad (sin mover el resto de la página) */
+@keyframes notif-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+@keyframes notif-out {
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes notif-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes notif-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@keyframes badge-pop {
+  50% {
+    transform: scale(1.25);
+  }
+}
+.notif-in {
+  animation: notif-in 200ms ease-out;
+}
+.notif-out {
+  animation: notif-out 140ms ease-in forwards;
+}
+.notif-timer {
+  animation-name: notif-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+/* Un solo pulso cuando llega algo nuevo: nada que parpadee sin parar */
+.badge-pop {
+  animation: badge-pop 400ms ease-out 1;
+}
+/*
+ * Panel de la campana y banners del sistema: solo transform y opacidad (los hace la tarjeta de
+ * video, sin recalcular la página), una sola vez y cortos. La salida es más rápida que la entrada.
+ */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+@keyframes panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes banner-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+/* La campana se balancea una vez cuando llega algo urgente: nunca en bucle */
+@keyframes bell-ring {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  15% {
+    transform: rotate(14deg);
+  }
+  30% {
+    transform: rotate(-12deg);
+  }
+  45% {
+    transform: rotate(8deg);
+  }
+  60% {
+    transform: rotate(-5deg);
+  }
+  75% {
+    transform: rotate(2deg);
+  }
+}
+.panel-in {
+  animation: panel-in 170ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.panel-out {
+  animation: panel-out 110ms ease-in forwards;
+}
+.banner-in {
+  animation: banner-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.banner-out {
+  animation: banner-out 130ms ease-in forwards;
+}
+.bell-ring {
+  transform-origin: 50% 10%;
+  animation: bell-ring 500ms ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notif-in {
+    animation: notif-fade 150ms ease-out;
+  }
+  .notif-out {
+    animation: notif-fade 100ms ease-in reverse forwards;
+  }
+  .badge-pop {
+    animation: none;
+  }
+  .panel-in,
+  .banner-in {
+    animation: notif-fade 120ms ease-out;
+  }
+  .panel-out,
+  .banner-out {
+    animation: notif-fade 90ms ease-in reverse forwards;
+  }
+  .bell-ring {
+    animation: none;
+  }
+}
+
+/* Tablet y celular (pantalla táctil): botones de al menos 44 px de alto, el mínimo cómodo para el dedo */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 2.75rem;
   }
 }

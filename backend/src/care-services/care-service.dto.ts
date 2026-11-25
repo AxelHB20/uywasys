@@ -29,6 +29,7 @@ export const SERVICE_CATEGORIES: CareServiceCategory[] = [
   'SURGERY',
   'LAB',
   'GROOMING',
+  'HOSPITALIZATION',
   'OTHER',
 ];
 

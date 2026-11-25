@@ -179,6 +179,114 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     expect(res.body.message).toContain('vencido');
   });
 
+  it('los accesorios no vencen: la compra no pide lote ni guarda fecha, y no salen en alertas', async () => {
+    const res = await http()
+      .post('/api/inventory/products')
+      .set('Cookie', cookies.vet)
+      .send({
+        name: `Cama ortopédica M ${stamp}`,
+        category: 'ACCESSORY',
+        baseUnit: 'UNIT',
+        presentations: [{ name: 'Unidad', factor: 1, price: 120 }],
+      })
+      .expect(201);
+    expect(res.body.tracksExpiry).toBe(false);
+    const id = res.body.id;
+    const url = `/api/inventory/products/${id}/purchases`;
+    // Aunque llegue una fecha (vieja pantalla, import), no se guarda: la cama no caduca
+    await http()
+      .post(url)
+      .set('Cookie', cookies.vet)
+      .send({
+        presentationId: res.body.presentations[0].id,
+        quantity: 2,
+        expiresAt: addDays(today, 5),
+      })
+      .expect(201);
+    const detail = await http()
+      .get(`/api/inventory/products/${id}`)
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(detail.body.tracksExpiry).toBe(false);
+    expect(detail.body.batches[0].expiresAt).toBeNull();
+    expect(detail.body.batches[0].expiry).toBeNull();
+    const list = await http()
+      .get('/api/inventory/products')
+      .query({ q: `Cama ortopédica M ${stamp}` })
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(list.body.items[0].tracksExpiry).toBe(false);
+    expect(list.body.items[0].nextExpiry).toBeNull();
+  });
+
+  it('un producto marcado como "no vence" deja de tener fecha en sus lotes; uno que sí vence la pide', async () => {
+    const res = await http()
+      .post('/api/inventory/products')
+      .set('Cookie', cookies.vet)
+      .send({
+        name: `Shampoo avena ${stamp}`,
+        category: 'ACCESSORY',
+        baseUnit: 'UNIT',
+        tracksExpiry: true,
+        presentations: [{ name: 'Frasco', factor: 1, price: 35 }],
+      })
+      .expect(201);
+    expect(res.body.tracksExpiry).toBe(true);
+    const id = res.body.id;
+    const presentationId = res.body.presentations[0].id;
+    const url = `/api/inventory/products/${id}/purchases`;
+    await http()
+      .post(url)
+      .set('Cookie', cookies.vet)
+      .send({ presentationId, quantity: 1 })
+      .expect(400);
+    await http()
+      .post(url)
+      .set('Cookie', cookies.vet)
+      .send({
+        presentationId,
+        quantity: 1,
+        lotNumber: 'SH-1',
+        expiresAt: addDays(today, 10),
+      })
+      .expect(201);
+    await http()
+      .patch(`/api/inventory/products/${id}`)
+      .set('Cookie', cookies.vet)
+      .send({ tracksExpiry: false })
+      .expect(200);
+    const batches = await prisma.productBatch.findMany({
+      where: { productId: id },
+    });
+    expect(batches.every((b) => b.expiresAt === null)).toBe(true);
+  });
+
+  it('el IGV del producto solo lo cambia el administrador', async () => {
+    const url = `/api/inventory/products/${productId}`;
+    const denied = await http()
+      .patch(url)
+      .set('Cookie', cookies.vet)
+      .send({ igv: 'EXEMPT' })
+      .expect(403);
+    expect(denied.body.message).toContain('administrador');
+    // Mandar el mismo valor no es un cambio
+    await http()
+      .patch(url)
+      .set('Cookie', cookies.vet)
+      .send({ igv: 'TAXED' })
+      .expect(200);
+    await http()
+      .patch(url)
+      .set('Cookie', cookies.admin)
+      .send({ igv: 'EXEMPT' })
+      .expect(200);
+    await http()
+      .patch(url)
+      .set('Cookie', cookies.admin)
+      .send({ igv: 'TAXED' })
+      .expect(200);
+  });
+
   it('convierte la compra a unidades mínimas y guarda proveedor, comprobante y costo', async () => {
     const url = `/api/inventory/products/${productId}/purchases`;
     const a = await http()
@@ -366,6 +474,74 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     ]);
   });
 
+  it('cada tarjeta de vencimiento filtra su rango y ordena por el que vence antes', async () => {
+    const make = async (name: string, days: number) => {
+      const p = await http()
+        .post('/api/inventory/products')
+        .set('Cookie', cookies.vet)
+        .send({
+          name,
+          category: 'MEDICINE',
+          baseUnit: 'UNIT',
+          presentations: [{ name: 'Unidad', factor: 1, price: 5 }],
+        })
+        .expect(201);
+      await http()
+        .post(`/api/inventory/products/${p.body.id}/purchases`)
+        .set('Cookie', cookies.vet)
+        .send({
+          presentationId: p.body.presentations[0].id,
+          quantity: 2,
+          lotNumber: `V-${days}`,
+          expiresAt: addDays(today, Math.max(days, 0)),
+        })
+        .expect(201);
+      // Uno "ya vencido": la compra no acepta fechas pasadas, se ajusta el lote
+      if (days < 0)
+        await prisma.productBatch.updateMany({
+          where: { productId: p.body.id },
+          data: { expiresAt: new Date(`${addDays(today, days)}T00:00:00Z`) },
+        });
+      return p.body.id as number;
+    };
+    const in20 = await make('Filtro 20 días', 20);
+    const in8 = await make('Filtro 8 días', 8);
+    const in45 = await make('Filtro 45 días', 45);
+    const late = await make('Filtro vencido', -3);
+    const ids = async (filter: string) =>
+      (
+        await http()
+          .get(`/api/inventory/products?filter=${filter}&q=filtro`)
+          .set('Cookie', cookies.reception)
+          .expect(200)
+      ).body.items.map((p: { id: number }) => p.id);
+    expect(await ids('exp30')).toEqual([in8, in20]);
+    expect(await ids('exp60')).toEqual([in45]);
+    expect(await ids('expired')).toEqual([late]);
+    expect(await ids('expiring')).toEqual([late, in8, in20, in45]);
+    await http()
+      .get('/api/inventory/products?filter=pronto')
+      .set('Cookie', cookies.reception)
+      .expect(400);
+    // Inactivos: solo con status=inactive
+    await prisma.product.update({
+      where: { id: in45 },
+      data: { active: false },
+    });
+    expect(await ids('exp60')).toEqual([]);
+    const inactive = await http()
+      .get('/api/inventory/products?status=inactive&q=filtro')
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(inactive.body.items.map((p: { id: number }) => p.id)).toEqual([
+      in45,
+    ]); // Que no cuenten en las alertas de las pruebas siguientes
+    await prisma.product.updateMany({
+      where: { id: { in: [in20, in8, late] } },
+      data: { active: false },
+    });
+  });
+
   it('controlados: exigen paciente, receta y un veterinario colegiado; quedan en el libro', async () => {
     const created = await http()
       .post('/api/inventory/products')
@@ -458,7 +634,16 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
       name: 'Meloxicam 1 mg',
       quantity: 1,
       baseUnit: 'TABLET',
+      // Último costo con valor (el lote L-B entró sin costo y no cuenta)
+      unitCost: 0.9,
     });
+    // Un insumo en uso no se desactiva: el servicio seguiría descontando de un producto oculto
+    const blocked = await http()
+      .patch(`/api/inventory/products/${productId}`)
+      .set('Cookie', cookies.admin)
+      .send({ active: false })
+      .expect(400);
+    expect(blocked.body.message).toContain('Vacunación séxtuple');
     await http()
       .post('/api/care-services')
       .set('Cookie', cookies.admin)

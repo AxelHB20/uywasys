@@ -13,7 +13,12 @@ import {
   estimateCode,
   reserveNumbers,
 } from '../common/sequence/clinic-sequence.js';
-import { fromDbDate, toDbDate } from '../common/time/clinic-day.js';
+import {
+  clinicDay,
+  fromDbDate,
+  startOfDayIn,
+  toDbDate,
+} from '../common/time/clinic-day.js';
 import { clinicToday } from '../common/time/clinic-today.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type {
@@ -149,6 +154,20 @@ export interface EstimatePrint extends EstimateView {
   };
 }
 
+/** Indicadores de la bandeja de presupuestos. */
+export interface EstimatesSummary {
+  /** Por responder y vigentes */
+  pending: { count: number; amount: number };
+  /** Por responder que vencen en los próximos 3 días (incluye hoy) */
+  expiringSoon: number;
+  /** Aceptados que falta cargar a la atención */
+  accepted: { count: number; amount: number };
+  /** Cargados a una atención en el mes en curso */
+  convertedMonth: { count: number; amount: number };
+  /** Últimos 90 días: aceptados (o cargados) sobre los ya respondidos o vencidos */
+  acceptance: { won: number; decided: number; rate: number | null };
+}
+
 /**
  * Presupuestos: servicios y productos del catálogo con su precio y descuento. El dueño los
  * acepta (o no) y, aceptados, se cargan a una atención con el precio presupuestado.
@@ -178,6 +197,81 @@ export class EstimatesService {
       take: 200,
     });
     return rows.map((r) => toView(r, today));
+  }
+
+  async summary(clinicId: number): Promise<EstimatesSummary> {
+    const { timezone } = await this.prisma.clinic.findUniqueOrThrow({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const today = clinicDay(timezone);
+    const todayDb = toDbDate(today);
+    const monthStart = startOfDayIn(timezone, `${today.slice(0, 8)}01`);
+    const since = startOfDayIn(timezone, addDays(today, -90));
+    const amount = (n: Prisma.Decimal | null) => Number(n ?? 0);
+    const [pending, soon, accepted, converted, recent, recentExpired] =
+      await Promise.all([
+        this.prisma.estimate.aggregate({
+          where: { clinicId, status: 'PENDING', validUntil: { gte: todayDb } },
+          _count: true,
+          _sum: { total: true },
+        }),
+        this.prisma.estimate.count({
+          where: {
+            clinicId,
+            status: 'PENDING',
+            validUntil: { gte: todayDb, lte: toDbDate(addDays(today, 3)) },
+          },
+        }),
+        this.prisma.estimate.aggregate({
+          where: { clinicId, status: 'ACCEPTED' },
+          _count: true,
+          _sum: { total: true },
+        }),
+        this.prisma.estimate.aggregate({
+          where: {
+            clinicId,
+            status: 'CONVERTED',
+            convertedAt: { gte: monthStart },
+          },
+          _count: true,
+          _sum: { total: true },
+        }),
+        this.prisma.estimate.groupBy({
+          by: ['status'],
+          where: { clinicId, createdAt: { gte: since } },
+          _count: true,
+        }),
+        this.prisma.estimate.count({
+          where: {
+            clinicId,
+            createdAt: { gte: since },
+            status: 'PENDING',
+            validUntil: { lt: todayDb },
+          },
+        }),
+      ]);
+    const byStatus = (status: EstimateStatus) =>
+      recent.find((r) => r.status === status)?._count ?? 0;
+    const won = byStatus('ACCEPTED') + byStatus('CONVERTED');
+    const decided = won + byStatus('REJECTED') + recentExpired;
+    return {
+      pending: { count: pending._count, amount: amount(pending._sum.total) },
+      expiringSoon: soon,
+      accepted: {
+        count: accepted._count,
+        amount: amount(accepted._sum.total),
+      },
+      convertedMonth: {
+        count: converted._count,
+        amount: amount(converted._sum.total),
+      },
+      acceptance: {
+        won,
+        decided,
+        rate: decided ? Math.round((won / decided) * 1000) / 10 : null,
+      },
+    };
   }
 
   async get(clinicId: number, id: number): Promise<EstimatePrint> {
@@ -375,6 +469,9 @@ export class EstimatesService {
             presentationId: i.presentationId ?? undefined,
             quantity: Number(i.quantity),
           })),
+          null,
+          // Lo cotizado se cobra aunque luego se haya desactivado
+          { allowInactive: true },
         );
         const result = await this.charges.createInTx(
           tx,
@@ -400,7 +497,11 @@ export class EstimatesService {
             }),
           },
           // El descuento ya se autorizó al emitir el presupuesto
-          { ...prep, maxDiscountPercent: new Prisma.Decimal(100) },
+          {
+            ...prep,
+            maxDiscountPercent: new Prisma.Decimal(100),
+            allowInactive: true,
+          },
         );
         await tx.estimate.update({
           where: { id },

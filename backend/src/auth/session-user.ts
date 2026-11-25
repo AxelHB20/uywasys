@@ -9,6 +9,8 @@ export interface SessionUser {
   role: Role;
   licenseNumber: string | null;
   mustChangePassword: boolean;
+  /** Soporte técnico: puede cambiar la configuración de facturación */
+  support: boolean;
   clinic: { id: number; name: string; logoUrl: string | null };
 }
 
@@ -41,6 +43,7 @@ export function toSessionUser(
     role: user.role,
     licenseNumber: user.licenseNumber,
     mustChangePassword: user.mustChangePassword,
+    support: user.isSupport,
     clinic: {
       id: user.clinic.id,
       name: user.clinic.name,

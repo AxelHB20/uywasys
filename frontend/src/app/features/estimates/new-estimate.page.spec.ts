@@ -80,7 +80,7 @@ describe('NewEstimatePage (presupuesto)', () => {
     });
     req.flush({ id: 7, code: 'PR-00001' });
     await tick();
-    expect(navigate).toHaveBeenCalledWith(['/presupuestos', 7]);
+    expect(navigate).toHaveBeenCalledWith(['/presupuestos', 7], { replaceUrl: true });
     http.verify();
   });
 

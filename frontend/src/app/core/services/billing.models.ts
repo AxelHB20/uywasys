@@ -3,7 +3,7 @@ import { BadgeTone } from '../../shared/ui/badge/badge.component';
 export type DocumentChoice = 'NOTE' | 'BOLETA' | 'FACTURA';
 export type DocumentType = 'BOLETA' | 'FACTURA' | 'CREDIT_NOTE';
 export type DocumentStatus = 'PENDING' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'ERROR';
-export type BillingProvider = 'SIMULATED' | 'NUBEFACT';
+export type BillingProvider = 'SIMULATED' | 'NUBEFACT' | 'LUCODE' | 'MIFACT';
 
 export interface BillingStatus {
   enabled: boolean;
@@ -11,26 +11,84 @@ export interface BillingStatus {
   production: boolean;
   /** true = los comprobantes no van a SUNAT (demo) */
   simulated: boolean;
+  /** false en producción: la simulación no se puede activar */
+  simulationAllowed?: boolean;
 }
 
 export interface BillingSettings {
+  /** false en producción: la opción de simulación no se ofrece */
+  simulationAllowed?: boolean;
   enabled: boolean;
   provider: BillingProvider;
   production: boolean;
   legalName: string | null;
+  /** Domicilio fiscal y ubigeo: los pide Mifact */
+  fiscalAddress: string | null;
+  ubigeo: string | null;
   apiUrl: string | null;
   hasToken: boolean;
+  /** Hay token de la consulta de RUC/DNI (APISPERU) */
+  hasLookupToken: boolean;
   boletaSeries: string;
   facturaSeries: string;
   boletaCreditSeries: string;
   facturaCreditSeries: string;
   missing: string[];
+  /** Cuándo se guardó el token actual (Mifact lo cambia cada ~6 meses) */
+  tokenUpdatedAt?: string | null;
+  /** Comprobantes por mes del plan (nulo = sin límite) y cuántos van este mes */
+  monthlyQuota?: number | null;
+  usedThisMonth?: number;
+  /** Vencimientos del servicio, YYYY-MM-DD: se avisa 30 días antes */
+  planExpiresOn?: string | null;
+  domainExpiresOn?: string | null;
+  serverExpiresOn?: string | null;
+  /** Conexión con el PSE según la última revisión automática (nulo en simulación) */
+  health?: {
+    state: 'OK' | 'TOKEN' | 'SUSPENDED' | 'UNREACHABLE';
+    checkedAt: string | null;
+    since: string | null;
+    error: string | null;
+  } | null;
 }
 
-export type BillingSettingsInput = Omit<BillingSettings, 'hasToken' | 'missing'> & {
+export type BillingSettingsInput = Omit<
+  BillingSettings,
+  'hasToken' | 'hasLookupToken' | 'missing' | 'health' | 'tokenUpdatedAt' | 'usedThisMonth'
+> & {
   /** Solo para cambiarlo; null = se mantiene el guardado */
   apiToken: string | null;
+  lookupToken?: string | null;
+  clearLookupToken?: boolean;
 };
+
+/** Datos del comprador escritos en el cobro (factura sin RUC guardado, boleta de más de S/ 700). */
+export interface BuyerInput {
+  docType: 'RUC' | 'DNI';
+  docNumber: string;
+  name: string;
+  address: string | null;
+  email: string | null;
+  /** Guardar en la ficha del cliente */
+  save?: boolean;
+}
+
+/** Datos de facturación que el sistema propone para un cliente. */
+export interface BuyerProposal {
+  docNumber: string;
+  name: string;
+  address: string | null;
+  email: string | null;
+}
+
+/** Resultado de buscar un RUC o DNI. LOCAL = ya estaba en la clínica. */
+export interface LookupResult {
+  name: string;
+  address: string | null;
+  status: string | null;
+  condition: string | null;
+  source: 'LOCAL' | 'APISPERU';
+}
 
 export interface DocumentSummary {
   id: number;
@@ -49,9 +107,13 @@ export interface DocumentSummary {
   sunatDescription: string | null;
   receiptId: number | null;
   related: string | null;
+  /** La nota de crédito que la anuló (boletas y facturas) */
+  annulledBy: { code: string; date: string } | null;
   pdfUrl: string | null;
   xmlUrl: string | null;
   cdrUrl: string | null;
+  /** Rechazado ya resuelto: se emitió otro comprobante o se anuló el cobro */
+  replacedAt: string | null;
 }
 
 export interface DocumentPage {
@@ -59,12 +121,21 @@ export interface DocumentPage {
   total: number;
   page: number;
   pageSize: number;
-  /** Con error o rechazados, en toda la clínica */
+  /** Con error o rechazados sin corregir, en toda la clínica */
   problems: number;
+  /** Del periodo y la búsqueda (sin filtro de tipo ni estado); los rechazados no cuentan */
+  summary: {
+    boletas: { count: number; amount: number };
+    facturas: { count: number; amount: number };
+    creditNotes: { count: number; amount: number };
+    annulled: number;
+    net: number;
+  };
 }
 
 export interface DocumentFilters {
-  status?: DocumentStatus | 'PROBLEMS' | null;
+  status?: DocumentStatus | 'PROBLEMS' | 'LATE' | 'ANNULLED' | null;
+  q?: string | null;
   type?: DocumentType | null;
   from?: string | null;
   to?: string | null;
@@ -95,6 +166,54 @@ export const DOC_TYPE_LABELS: Record<DocumentType, string> = {
   BOLETA: 'Boleta',
   FACTURA: 'Factura',
   CREDIT_NOTE: 'Nota de crédito',
+};
+
+/** Representación impresa A4 de un comprobante (también la nota de crédito) */
+export interface PrintDocument {
+  id: number;
+  type: DocumentType;
+  code: string;
+  status: DocumentStatus;
+  issueDate: string;
+  issuedAt: string;
+  simulated: boolean;
+  clinic: {
+    name: string;
+    legalName: string | null;
+    ruc: string | null;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+    logo: string | null;
+  };
+  customer: { docType: string; docNumber: string; name: string; address: string | null };
+  lines: {
+    code: string;
+    description: string;
+    unit: string;
+    quantity: number;
+    unitValue: number;
+    unitPrice: number;
+    total: number;
+    affectation: string;
+  }[];
+  totals: { taxed: number; exempt: number; unaffected: number; igv: number; total: number };
+  amountInWords: string;
+  hash: string | null;
+  qrText: string | null;
+  related: { type: DocumentType; code: string; issueDate: string } | null;
+  reason: string | null;
+  annulledBy: { code: string; status: DocumentStatus } | null;
+  receiptCode: string | null;
+  /** Celular del cliente (solo dentro del sistema, para WhatsApp) */
+  contactPhone: string | null;
+}
+
+/** Título completo en la hoja A4 */
+export const DOC_SHEET_TITLES: Record<DocumentType, string> = {
+  BOLETA: 'Boleta de venta electrónica',
+  FACTURA: 'Factura electrónica',
+  CREDIT_NOTE: 'Nota de crédito electrónica',
 };
 
 /** Título de la representación impresa */
@@ -156,22 +275,27 @@ export function documentOptions(
   };
   if (!status?.enabled) return [note];
   const hasDoc = !!client?.docType && !client.walkIn;
-  const boletaNeedsId = !hasDoc && total >= BOLETA_ID_THRESHOLD;
+  const boletaNeedsId = !hasDoc && total > BOLETA_ID_THRESHOLD;
   return [
+    // Nunca se bloquean: lo que falte (DNI o RUC del comprador) se escribe en el mismo cobro
     {
       value: 'BOLETA',
       label: 'Boleta',
-      disabled: boletaNeedsId,
+      disabled: false,
       hint: boletaNeedsId
-        ? `Desde S/ ${BOLETA_ID_THRESHOLD} la boleta lleva el DNI del cliente`
+        ? `Más de S/ ${BOLETA_ID_THRESHOLD} la boleta lleva el DNI del comprador`
         : null,
     },
     {
       value: 'FACTURA',
       label: 'Factura',
-      disabled: client?.docType !== 'RUC',
-      hint: client?.docType !== 'RUC' ? 'La factura necesita un cliente con RUC' : null,
+      disabled: false,
+      hint: null,
     },
-    note,
+    {
+      ...note,
+      label: 'Solo nota de venta',
+      hint: 'No es comprobante para SUNAT: toda venta debe llevar boleta o factura',
+    },
   ];
 }

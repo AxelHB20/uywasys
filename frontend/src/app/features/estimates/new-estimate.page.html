@@ -1,0 +1,473 @@
+<section class="space-y-6">
+  <app-back-link fallback="/presupuestos" fallbackLabel="Presupuestos" />
+  <header>
+    <h1 class="font-display text-2xl font-semibold text-slate-900">Nuevo presupuesto</h1>
+    <p class="mt-1 max-w-2xl text-sm text-slate-600">
+      Con los precios del catálogo. El precio presupuestado se respeta al cargarlo a la atención,
+      aunque el catálogo cambie después.
+    </p>
+  </header>
+
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)] lg:items-start">
+    <div class="min-w-0 space-y-5">
+      <!-- 1. Paciente -->
+      <section class="card p-5 sm:p-6" aria-labelledby="est-step-pet">
+        <h2
+          id="est-step-pet"
+          class="flex items-center gap-3 font-display text-lg font-semibold text-slate-900"
+        >
+          <span
+            class="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold"
+            [class]="pet() ? 'bg-emerald-600 text-white' : 'bg-anil-600 text-white'"
+            aria-hidden="true"
+          >
+            @if (pet()) {
+              <app-icon name="check" class="size-4" />
+            } @else {
+              1
+            }
+          </span>
+          Paciente <span class="sr-only">(obligatorio)</span>
+        </h2>
+        <div class="mt-4">
+          @if (pet(); as p) {
+            <div class="flex items-center gap-3 rounded-xl bg-anil-50 p-3 ring-1 ring-anil-200">
+              <span
+                class="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-anil-700 ring-1 ring-anil-200"
+                aria-hidden="true"
+              >
+                <app-icon name="paw" class="size-5" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <p class="font-medium text-slate-900">{{ p.petName }}</p>
+                <p class="truncate text-sm text-slate-600">{{ p.clientName }}</p>
+              </div>
+              <button type="button" class="btn btn-ghost h-10 px-3" (click)="pet.set(null)">
+                Cambiar
+              </button>
+            </div>
+          } @else {
+            <app-pet-picker
+              inputId="est-pet"
+              [invalid]="petMissing()"
+              (picked)="pet.set($event); petMissing.set(false)"
+            />
+          }
+          @if (petMissing()) {
+            <p class="field-error">Elige el paciente</p>
+          }
+        </div>
+      </section>
+
+      <!-- 2. Detalle -->
+      <section class="card p-5 sm:p-6" aria-labelledby="est-step-data">
+        <h2
+          id="est-step-data"
+          class="flex items-center gap-3 font-display text-lg font-semibold text-slate-900"
+        >
+          <span
+            class="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold"
+            [class]="checklist()[1].done ? 'bg-emerald-600 text-white' : 'bg-anil-600 text-white'"
+            aria-hidden="true"
+          >
+            @if (checklist()[1].done) {
+              <app-icon name="check" class="size-4" />
+            } @else {
+              2
+            }
+          </span>
+          Detalle
+        </h2>
+        <form [formGroup]="form" class="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <label for="est-title" class="field-label"
+              >Título <span class="text-rose-600" aria-hidden="true">*</span></label
+            >
+            <input
+              id="est-title"
+              formControlName="title"
+              class="field-input"
+              maxlength="150"
+              autocomplete="off"
+              placeholder="Ej.: Castración canina con exámenes prequirúrgicos"
+              [attr.aria-invalid]="bad('title')"
+              aria-describedby="est-title-hint"
+            />
+            @if (bad('title')) {
+              <p class="field-error">Escribe el título (mínimo 3 letras)</p>
+            } @else {
+              <p id="est-title-hint" class="field-hint">Es lo primero que lee el dueño.</p>
+            }
+          </div>
+          <div>
+            <span id="est-validity" class="field-label">Vigencia</span>
+            <div
+              class="mt-1.5 inline-flex h-11 rounded-xl bg-slate-100 p-1"
+              role="radiogroup"
+              aria-labelledby="est-validity"
+            >
+              @for (d of validity; track d) {
+                <button
+                  type="button"
+                  role="radio"
+                  [attr.aria-checked]="form.controls.validDays.value === d"
+                  class="rounded-lg px-3.5 text-sm font-medium transition-colors"
+                  [class]="
+                    form.controls.validDays.value === d
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  "
+                  (click)="form.controls.validDays.setValue(d)"
+                >
+                  {{ d }} días
+                </button>
+              }
+            </div>
+            <p class="field-hint">Hasta el {{ until() }}</p>
+          </div>
+          <div class="sm:col-span-2">
+            <label for="est-notes" class="field-label">Indicaciones para el dueño</label>
+            <textarea
+              id="est-notes"
+              formControlName="notes"
+              rows="2"
+              maxlength="1000"
+              class="field-input h-auto py-2.5"
+              placeholder="Ej.: incluye anestesia y control post operatorio. Ayuno de 12 horas."
+            ></textarea>
+          </div>
+        </form>
+      </section>
+
+      <!-- 3. Servicios y productos -->
+      <section class="card p-5 sm:p-6" aria-labelledby="est-lines">
+        <div class="flex items-center justify-between gap-3">
+          <h2
+            id="est-lines"
+            class="flex items-center gap-3 font-display text-lg font-semibold text-slate-900"
+          >
+            <span
+              class="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold"
+              [class]="lines().length ? 'bg-emerald-600 text-white' : 'bg-anil-600 text-white'"
+              aria-hidden="true"
+            >
+              @if (lines().length) {
+                <app-icon name="check" class="size-4" />
+              } @else {
+                3
+              }
+            </span>
+            Servicios y productos
+          </h2>
+          @if (lines().length) {
+            <span class="text-sm text-slate-500">
+              {{ lines().length }} {{ lines().length === 1 ? 'ítem' : 'ítems' }}
+            </span>
+          }
+        </div>
+
+        <div class="relative mt-4">
+          <label for="est-search" class="sr-only">Buscar servicio o producto</label>
+          <app-icon
+            name="search"
+            class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            id="est-search"
+            type="search"
+            [formControl]="search"
+            class="field-input mt-0 pl-10"
+            placeholder="Agregar servicio o producto del catálogo"
+            autocomplete="off"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="est-results"
+            [attr.aria-expanded]="searchOpen()"
+            [attr.aria-activedescendant]="searchOpen() ? 'est-opt-' + active() : null"
+            (input)="active.set(0)"
+            (keydown)="onSearchKey($event)"
+          />
+          @if (searchOpen()) {
+            <ul
+              id="est-results"
+              role="listbox"
+              aria-label="Resultados"
+              class="absolute z-10 mt-1 max-h-80 w-full overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200"
+            >
+              @for (o of options(); track o.key; let i = $index) {
+                <li [id]="'est-opt-' + i" role="option" [attr.aria-selected]="active() === i">
+                  <button
+                    type="button"
+                    tabindex="-1"
+                    class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+                    [class]="active() === i ? 'bg-anil-50' : 'hover:bg-slate-50'"
+                    (mouseenter)="active.set(i)"
+                    (click)="add(o)"
+                  >
+                    <span
+                      class="grid size-8 shrink-0 place-items-center rounded-lg"
+                      [class]="
+                        o.kind === 'SERVICE'
+                          ? 'bg-anil-50 text-anil-700'
+                          : 'bg-slate-100 text-slate-600'
+                      "
+                      aria-hidden="true"
+                    >
+                      <app-icon
+                        [name]="o.kind === 'SERVICE' ? 'stethoscope' : 'package'"
+                        class="size-4"
+                      />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate font-medium text-slate-900">{{
+                        o.description
+                      }}</span>
+                      <span class="block truncate text-xs text-slate-500">
+                        {{ o.kind === 'SERVICE' ? 'Servicio' : 'Producto' }}
+                        @if (o.detail) {
+                          · {{ o.detail }}
+                        }
+                      </span>
+                    </span>
+                    <span class="shrink-0 text-sm font-medium text-slate-700 tabular-nums">{{
+                      money(o.unitPrice)
+                    }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+
+        @if (lines().length) {
+          <div
+            class="mt-4 hidden grid-cols-[minmax(0,1fr)_7rem_6.5rem_6.5rem_2.5rem] gap-3 border-b border-slate-200 pb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase md:grid"
+            aria-hidden="true"
+          >
+            <span>Descripción</span>
+            <span class="text-center">Cantidad</span>
+            <span>Descuento</span>
+            <span class="text-right">Importe</span>
+            <span></span>
+          </div>
+          <ul class="divide-y divide-slate-100" aria-label="Ítems del presupuesto">
+            @for (l of lines(); track l.key; let i = $index) {
+              <li
+                class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5 py-3.5 md:grid-cols-[minmax(0,1fr)_7rem_6.5rem_6.5rem_2.5rem]"
+              >
+                <div class="flex min-w-0 items-start gap-3">
+                  <span
+                    class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg"
+                    [class]="
+                      l.option.kind === 'SERVICE'
+                        ? 'bg-anil-50 text-anil-700'
+                        : 'bg-slate-100 text-slate-600'
+                    "
+                    aria-hidden="true"
+                  >
+                    <app-icon
+                      [name]="l.option.kind === 'SERVICE' ? 'stethoscope' : 'package'"
+                      class="size-4"
+                    />
+                  </span>
+                  <div class="min-w-0">
+                    <p class="font-medium break-words text-slate-900">{{ l.option.description }}</p>
+                    <p class="text-xs text-slate-500">
+                      {{ l.option.kind === 'SERVICE' ? 'Servicio' : 'Producto' }}
+                      · {{ money(l.option.unitPrice) }} c/u
+                    </p>
+                    @if (l.option.controlled) {
+                      <p class="mt-0.5 flex items-center gap-1 text-xs text-rose-700">
+                        <app-icon name="pill" class="size-3.5" /> Controlado: al cargarlo pide
+                        receta
+                      </p>
+                    }
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 md:order-last"
+                  [attr.aria-label]="'Quitar ' + l.option.description"
+                  (click)="remove(l.key)"
+                >
+                  <app-icon name="trash" class="size-4" />
+                </button>
+
+                <!-- Cantidad -->
+                <div
+                  class="flex h-10 w-[7rem] items-center rounded-xl ring-1 ring-slate-300 focus-within:ring-2 focus-within:ring-anil-500"
+                  [class.ring-rose-500]="!(l.quantity > 0)"
+                >
+                  <button
+                    type="button"
+                    class="grid h-full w-9 shrink-0 place-items-center rounded-l-xl text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                    [disabled]="l.quantity <= 1"
+                    [attr.aria-label]="'Quitar uno de ' + l.option.description"
+                    (click)="step(l.key, -1)"
+                  >
+                    <app-icon name="minus" class="size-4" />
+                  </button>
+                  <label [for]="'est-qty-' + i" class="sr-only">Cantidad</label>
+                  <input
+                    [id]="'est-qty-' + i"
+                    type="number"
+                    inputmode="decimal"
+                    min="1"
+                    step="1"
+                    class="h-full w-full min-w-0 border-0 bg-transparent p-0 text-center text-sm font-medium text-slate-900 tabular-nums [appearance:textfield] focus:ring-0 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none"
+                    [value]="l.quantity"
+                    (input)="setQty(l.key, $any($event.target).value)"
+                    [attr.aria-invalid]="!(l.quantity > 0)"
+                  />
+                  <button
+                    type="button"
+                    class="grid h-full w-9 shrink-0 place-items-center rounded-r-xl text-slate-500 hover:bg-slate-50"
+                    [attr.aria-label]="'Agregar uno de ' + l.option.description"
+                    (click)="step(l.key, 1)"
+                  >
+                    <app-icon name="plus" class="size-4" />
+                  </button>
+                </div>
+
+                <!-- Descuento -->
+                <div class="relative max-md:col-span-2 max-md:row-start-3 max-md:w-40">
+                  <label
+                    [for]="'est-disc-' + i"
+                    class="mb-1 block text-xs text-slate-500 md:sr-only"
+                    >Descuento en soles</label
+                  >
+                  <span
+                    class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs text-slate-400"
+                    aria-hidden="true"
+                    >− S/</span
+                  >
+                  <input
+                    [id]="'est-disc-' + i"
+                    type="number"
+                    inputmode="decimal"
+                    min="0"
+                    step="0.5"
+                    class="field-input mt-0 h-10 pl-10 text-sm tabular-nums"
+                    placeholder="0.00"
+                    [value]="l.discount || ''"
+                    (input)="setDiscount(l.key, $any($event.target).value)"
+                    [attr.aria-invalid]="l.discount > gross(l)"
+                  />
+                  @if (l.discount > gross(l)) {
+                    <p class="mt-1 text-xs text-rose-700">Mayor que el importe</p>
+                  }
+                </div>
+
+                <p
+                  class="text-right font-semibold text-slate-900 tabular-nums max-md:col-start-2 max-md:row-start-2"
+                >
+                  {{ money(lineTotal(l)) }}
+                  @if (l.discount && l.discount <= gross(l)) {
+                    <span class="block text-xs font-normal text-slate-400 line-through">{{
+                      money(gross(l))
+                    }}</span>
+                  }
+                </p>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div
+            class="mt-4 flex flex-col items-center rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center"
+          >
+            <span class="grid size-10 place-items-center rounded-xl bg-slate-100 text-slate-500">
+              <app-icon name="clipboard-list" class="size-5" />
+            </span>
+            <p class="mt-2 text-sm font-medium text-slate-700">Aún no hay ítems</p>
+            <p class="mt-0.5 max-w-sm text-sm text-slate-500">
+              Busca lo que incluye: cirugía, anestesia, exámenes, medicación, hospitalización…
+            </p>
+          </div>
+        }
+      </section>
+    </div>
+
+    <!-- Resumen -->
+    <aside class="card overflow-hidden lg:sticky lg:top-6" aria-labelledby="est-summary">
+      <div class="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+        <h2 id="est-summary" class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          Resumen
+        </h2>
+        <p class="mt-1 line-clamp-2 font-medium break-words text-slate-900">
+          {{ form.controls.title.value.trim() || 'Sin título' }}
+        </p>
+        <p class="text-sm text-slate-600">
+          {{ pet()?.petName ?? 'Sin paciente'
+          }}{{ pet()?.clientName ? ' · ' + pet()?.clientName : '' }}
+        </p>
+      </div>
+      <div class="p-5">
+        <dl class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-slate-600">Subtotal</dt>
+            <dd class="text-slate-900 tabular-nums">{{ money(totals().gross) }}</dd>
+          </div>
+          @if (totals().discount) {
+            <div class="flex justify-between">
+              <dt class="text-slate-600">Descuentos</dt>
+              <dd class="text-emerald-700 tabular-nums">− {{ money(totals().discount) }}</dd>
+            </div>
+          }
+          <div class="flex items-baseline justify-between border-t border-slate-100 pt-3">
+            <dt class="font-medium text-slate-900">Total</dt>
+            <dd class="font-display text-2xl font-semibold text-slate-900 tabular-nums">
+              {{ money(totals().total) }}
+            </dd>
+          </div>
+        </dl>
+        <p class="mt-1 text-right text-xs text-slate-500">Precios en soles, IGV incluido</p>
+
+        <p
+          class="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600"
+        >
+          <app-icon name="calendar" class="size-4 shrink-0 text-slate-400" />
+          Válido hasta el <span class="font-medium text-slate-900">{{ until() }}</span>
+        </p>
+
+        <ul class="mt-4 space-y-1.5 text-sm" aria-label="Para emitir">
+          @for (c of checklist(); track c.label) {
+            <li
+              class="flex items-center gap-2"
+              [class]="c.done ? 'text-slate-700' : 'text-slate-500'"
+            >
+              <span
+                class="grid size-4.5 shrink-0 place-items-center rounded-full"
+                [class]="c.done ? 'bg-emerald-600 text-white' : 'ring-1 ring-slate-300'"
+                aria-hidden="true"
+              >
+                @if (c.done) {
+                  <app-icon name="check" class="size-3" />
+                }
+              </span>
+              {{ c.label }}<span class="sr-only">{{ c.done ? ': listo' : ': falta' }}</span>
+            </li>
+          }
+        </ul>
+
+        @if (invalidLines()) {
+          <p class="field-error">Revisa cantidades y descuentos</p>
+        }
+        <button
+          type="button"
+          class="btn btn-primary mt-5 w-full"
+          [disabled]="saving() || !lines().length"
+          (click)="submit()"
+        >
+          @if (saving()) {
+            <app-icon name="loader" class="size-4 animate-spin" />
+          }
+          Emitir presupuesto
+        </button>
+        <p class="mt-2 text-center text-xs text-slate-500">
+          Luego podrás imprimirlo en A4 o enviarlo por WhatsApp.
+        </p>
+      </div>
+    </aside>
+  </div>
+</section>

@@ -8,7 +8,6 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { SEX_LABELS, SPECIES_LABELS } from '../../core/services/clients.models';
 import { PrescriptionPrint, posology } from '../../core/services/medical.models';
 import { PrescriptionsService } from '../../core/services/prescriptions.service';
@@ -18,6 +17,7 @@ import { formatPhone } from '../../shared/utils/peru';
 import { petAge } from '../../shared/utils/pet-age';
 import { petCode } from '../../shared/utils/records';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 /**
  * Receta imprimible (A5 vertical). Lleva el nombre y la colegiatura del veterinario y un
@@ -25,18 +25,16 @@ import { apiErrorMessage } from '../../shared/utils/validators';
  */
 @Component({
   selector: 'app-prescription-print-page',
-  imports: [RouterLink, IconComponent],
+  imports: [BackLinkComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
         @if (rx(); as r) {
-          <a
-            [routerLink]="['/atenciones', r.visitId]"
-            class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-          >
-            <app-icon name="chevron-left" class="size-4" /> Atención de {{ r.pet.name }}
-          </a>
+          <app-back-link
+            [fallback]="'/atenciones/' + r.visitId"
+            [fallbackLabel]="'Atención de ' + r.pet.name"
+          />
           @if (!r.voidedAt) {
             <button type="button" class="btn btn-primary" (click)="print()">
               <app-icon name="file-text" class="size-4" /> Imprimir

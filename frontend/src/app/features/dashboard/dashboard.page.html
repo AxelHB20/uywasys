@@ -1,36 +1,41 @@
 <section class="space-y-6">
-  <!-- Bienvenida + accesos rápidos -->
-  <div
-    class="relative overflow-hidden rounded-3xl bg-anil-900 px-6 py-6 text-white sm:px-8 sm:py-7"
-  >
+  <!-- Bienvenida + lo que recepción hace todo el día -->
+  <div class="relative overflow-hidden rounded-2xl bg-anil-900 px-5 py-4 text-white sm:px-6">
     <div
-      class="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-chakana opacity-60 [mask-image:linear-gradient(to_left,black,transparent)]"
+      class="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-chakana opacity-50 [mask-image:linear-gradient(to_left,black,transparent)]"
       aria-hidden="true"
     ></div>
-    <div class="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-      <div>
-        <p class="text-sm font-medium text-anil-200">{{ today() }}</p>
-        <h1 class="mt-1 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+    <div class="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div class="min-w-0">
+        <h1 class="font-display text-xl font-semibold tracking-tight sm:text-2xl">
           {{ greeting() }}, {{ session.firstName() }}
         </h1>
-        <p class="mt-1.5 text-anil-100/80">Así está {{ session.clinicName() }} hoy.</p>
+        <p class="mt-0.5 text-sm text-anil-100/85">{{ today() }} · {{ session.clinicName() }}</p>
       </div>
-      <div class="flex flex-wrap gap-2">
-        @if (canRegister()) {
+      @if (canRegister()) {
+        <div class="flex flex-wrap gap-2">
+          <a
+            routerLink="/cola"
+            [queryParams]="{ agregar: 1 }"
+            class="btn h-10 bg-white px-3.5 text-anil-900 shadow-sm hover:bg-anil-50 active:bg-anil-100"
+          >
+            <app-icon name="plus" class="size-4" /> Agregar a la cola
+          </a>
+          <a
+            routerLink="/citas"
+            [queryParams]="{ nueva: 1 }"
+            class="btn h-10 bg-white/10 px-3.5 text-white ring-1 ring-white/25 hover:bg-white/15"
+          >
+            <app-icon name="calendar" class="size-4" /> Nueva cita
+          </a>
           <a
             routerLink="/clientes/nuevo"
-            class="btn bg-white text-anil-900 shadow-sm hover:bg-anil-50 active:bg-anil-100"
+            class="btn h-10 bg-white/10 px-3.5 text-white ring-1 ring-white/25 hover:bg-white/15"
           >
             <app-icon name="user-plus" class="size-4" /> Nuevo cliente
           </a>
-        }
-        <a
-          routerLink="/clientes"
-          class="btn bg-white/10 text-white ring-1 ring-white/20 backdrop-blur hover:bg-white/15"
-        >
-          <app-icon name="search" class="size-4" /> Buscar cliente
-        </a>
-      </div>
+        </div>
+      }
     </div>
   </div>
 
@@ -125,7 +130,7 @@
     @if (showSales()) {
       <li class="card p-4 sm:p-5">
         <div class="flex items-start justify-between gap-2">
-          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Ventas de hoy</p>
+          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cobrado hoy</p>
           <span
             class="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"
           >
@@ -136,12 +141,27 @@
           <p
             class="mt-2 font-display text-2xl font-semibold whitespace-nowrap text-slate-900 tabular-nums sm:text-3xl"
           >
-            {{ money(d.sales.total) }}
+            {{ money(d.sales.collected) }}
           </p>
-          <p class="mt-1 text-sm text-slate-500">
+          <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
             <a routerLink="/caja" class="hover:text-anil-700"
               >{{ d.sales.receipts }} {{ d.sales.receipts === 1 ? 'cobro' : 'cobros' }}</a
             >
+            <!-- Las devoluciones van aparte: así nunca sale un "cobrado" negativo -->
+            @if (d.sales.refunded > 0) {
+              <span class="text-slate-400" aria-hidden="true">·</span>
+              <a
+                routerLink="/caja"
+                class="whitespace-nowrap text-rose-700 tabular-nums hover:text-rose-800"
+                >{{ money(d.sales.refunded) }} devuelto</a
+              >
+            }
+            @if (lastWeekSameDay(); as w) {
+              <span class="text-slate-400 max-sm:hidden" aria-hidden="true">·</span>
+              <span class="whitespace-nowrap tabular-nums max-sm:block max-sm:w-full max-sm:text-xs"
+                >{{ w.label }}: {{ money(w.amount) }}</span
+              >
+            }
           </p>
         } @else {
           <div class="mt-3 h-8 w-20 animate-pulse rounded bg-slate-100"></div>
@@ -169,85 +189,165 @@
     }
   </ul>
 
-  <!-- Inventario: solo aparece si hay algo que atender -->
-  @if (data(); as dd) {
-    @if (dd.inventory.expiring || dd.inventory.lowStock) {
-      <section
-        class="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6 sm:px-6"
-        aria-label="Alertas de inventario"
-      >
-        <p class="flex items-center gap-2 font-medium text-slate-900">
-          <span class="grid size-9 place-items-center rounded-xl bg-maiz-100 text-amber-800"
-            ><app-icon name="package" class="size-[18px]"
-          /></span>
-          Inventario
-        </p>
-        <div class="flex flex-wrap gap-2">
-          @if (dd.inventory.expiring) {
-            <a
-              routerLink="/inventario"
-              [queryParams]="{ filtro: 'expiring' }"
-              class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-50 px-3 text-sm font-medium text-rose-800 ring-1 ring-rose-600/15 hover:bg-rose-100"
-            >
-              <app-icon name="alert" class="size-4" />
-              {{ dd.inventory.expiring }}
-              {{
-                dd.inventory.expiring === 1
-                  ? 'lote vencido o por vencer'
-                  : 'lotes vencidos o por vencer'
-              }}
-              (30 días)
-            </a>
+  <div class="grid gap-6 xl:items-start" [class.xl:grid-cols-3]="!!monthData()">
+    <!-- El mes en curso: solo el administrador -->
+    @if (monthData(); as m) {
+      <section class="card overflow-hidden xl:col-span-2" aria-labelledby="month-title">
+        <div class="flex flex-col gap-5 p-5 sm:p-6">
+          <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+            <div>
+              <h2
+                id="month-title"
+                class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+              >
+                Cobrado en {{ monthName() }}
+              </h2>
+              <p
+                class="mt-1 font-display text-3xl font-semibold whitespace-nowrap text-slate-900 tabular-nums"
+              >
+                {{ money(m.kpis.collected) }}
+              </p>
+              @if (monthDelta(); as dl) {
+                <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                  <span
+                    class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium tabular-nums"
+                    [class]="
+                      dl.percent === null || dl.trend === 'flat'
+                        ? 'bg-slate-100 text-slate-600'
+                        : dl.trend === 'up'
+                          ? 'bg-emerald-50 text-emerald-800'
+                          : 'bg-rose-50 text-rose-800'
+                    "
+                  >
+                    <app-icon
+                      [name]="
+                        dl.trend === 'up'
+                          ? 'trending-up'
+                          : dl.trend === 'down'
+                            ? 'trending-down'
+                            : 'minus'
+                      "
+                      class="size-3.5"
+                    />
+                    {{ trendText(dl) }}
+                  </span>
+                  <span class="text-slate-500">frente al {{ previousRange() }}</span>
+                </p>
+              }
+            </div>
+            <dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-right sm:text-left">
+              <div>
+                <dt class="text-xs text-slate-500">Vendido</dt>
+                <dd class="mt-0.5 font-semibold whitespace-nowrap text-slate-900 tabular-nums">
+                  {{ money(m.kpis.sold) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Atenciones</dt>
+                <dd class="mt-0.5 font-semibold text-slate-900 tabular-nums">
+                  {{ m.kpis.visits }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Ticket promedio</dt>
+                <dd class="mt-0.5 font-semibold whitespace-nowrap text-slate-900 tabular-nums">
+                  {{ money(m.kpis.averageTicket) }}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          @if (bars().length) {
+            <div class="border-t border-slate-100 pt-4">
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-medium text-slate-800">
+                  Cobrado por día · últimas 2 semanas
+                </p>
+                <ul
+                  class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600"
+                  aria-label="Leyenda"
+                >
+                  <li class="flex items-center gap-1.5">
+                    <span class="size-2.5 rounded-sm bg-anil-600" aria-hidden="true"></span> Cobrado
+                  </li>
+                  <li class="flex items-center gap-1.5">
+                    <span class="size-2.5 rounded-sm bg-slate-200" aria-hidden="true"></span> Semana
+                    anterior
+                  </li>
+                  <li class="flex items-center gap-1.5">
+                    <span
+                      class="w-3 border-t border-dashed border-slate-500"
+                      aria-hidden="true"
+                    ></span>
+                    Promedio
+                  </li>
+                </ul>
+              </div>
+              <app-daily-bars [bars]="bars()" />
+            </div>
           }
-          @if (dd.inventory.lowStock) {
-            <a
-              routerLink="/inventario"
-              [queryParams]="{ filtro: 'low' }"
-              class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-anil-50 px-3 text-sm font-medium text-anil-800 ring-1 ring-anil-600/15 hover:bg-anil-100"
-            >
-              {{ dd.inventory.lowStock }}
-              {{
-                dd.inventory.lowStock === 1 ? 'producto con stock bajo' : 'productos con stock bajo'
-              }}
-            </a>
-          }
+          <a
+            routerLink="/reportes"
+            class="-mb-2 inline-flex min-h-11 items-center gap-1 self-start text-sm font-medium text-anil-700 hover:text-anil-800"
+          >
+            Ver reportes <app-icon name="chevron-right" class="size-4" />
+          </a>
         </div>
       </section>
     }
-  }
 
-  <!-- Grooming del día: solo si hay movimiento -->
-  @if (data()?.grooming; as gr) {
-    @if (gr.active || gr.delivered) {
-      <a
-        routerLink="/grooming"
-        class="card flex flex-col gap-3 p-4 hover:ring-anil-300 sm:flex-row sm:items-center sm:gap-6 sm:px-6"
-        aria-label="Grooming de hoy"
+    <!-- Necesita atención: avisos, internados, grooming y refuerzos, de lo más urgente a lo informativo -->
+    @if (data()) {
+      <section
+        class="card flex flex-col overflow-hidden max-xl:order-first"
+        aria-labelledby="attention-title"
       >
-        <span class="flex items-center gap-2 font-medium text-slate-900">
-          <span class="grid size-9 place-items-center rounded-xl bg-anil-50 text-anil-700"
-            ><app-icon name="scissors" class="size-[18px]"
-          /></span>
-          Grooming
-        </span>
-        <span class="flex flex-wrap gap-2 text-sm">
-          <span class="rounded-xl bg-slate-100 px-3 py-2 font-medium text-slate-700 tabular-nums"
-            >{{ gr.active }} en el tablero</span
+        <div class="border-b border-slate-100 px-5 py-4 sm:px-6">
+          <h2 id="attention-title" class="font-display text-base font-semibold text-slate-900">
+            Necesita atención
+          </h2>
+          <p class="text-sm text-slate-500">
+            @if (attention().length) {
+              {{ attention().length }} {{ attention().length === 1 ? 'pendiente' : 'pendientes' }} ·
+              lo más urgente primero
+            } @else {
+              Nada pendiente por ahora.
+            }
+          </p>
+        </div>
+        @if (attention().length) {
+          <ul
+            class="divide-y divide-slate-100"
+            [class.xl:grid]="!monthData()"
+            [class.xl:grid-cols-2]="!monthData()"
           >
-          @if (gr.ready) {
-            <span
-              class="rounded-xl bg-emerald-50 px-3 py-2 font-medium text-emerald-800 tabular-nums"
-              >{{ gr.ready }} {{ gr.ready === 1 ? 'listo' : 'listos' }} para entregar</span
+            @for (n of visibleAttention(); track n.id) {
+              <li><ng-container *ngTemplateOutlet="attentionItem; context: { $implicit: n }" /></li>
+            }
+          </ul>
+          @if (hiddenAttention()) {
+            <button
+              type="button"
+              class="flex min-h-11 w-full items-center justify-center gap-1 border-t border-slate-100 px-5 text-sm font-medium text-anil-700 hover:bg-slate-50 hover:text-anil-800"
+              (click)="attentionOpen.set(true)"
             >
+              Ver los {{ attention().length }} pendientes
+              <app-icon name="chevron-right" class="size-4" />
+            </button>
           }
-          <span class="rounded-xl bg-slate-100 px-3 py-2 font-medium text-slate-700 tabular-nums"
-            >{{ gr.delivered }} {{ gr.delivered === 1 ? 'entregado' : 'entregados' }} hoy</span
-          >
-        </span>
-        <app-icon name="chevron-right" class="ml-auto size-4 text-slate-400 max-sm:hidden" />
-      </a>
+        } @else {
+          <div class="flex flex-1 items-center gap-3 px-5 py-6 sm:px-6">
+            <span class="grid size-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+              <app-icon name="check" class="size-[18px]" />
+            </span>
+            <p class="text-sm text-slate-700">
+              Sin urgencias, alertas de stock ni refuerzos vencidos.
+            </p>
+          </div>
+        }
+      </section>
     }
-  }
+  </div>
 
   <div class="grid gap-6 xl:grid-cols-3">
     <!-- Cola de hoy -->
@@ -337,8 +437,188 @@
       }
     </section>
 
+    <!-- Citas de hoy: las mismas de la agenda -->
+    <section class="card overflow-hidden" aria-labelledby="appointments-title">
+      <div
+        class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"
+      >
+        <div class="min-w-0">
+          <h2 id="appointments-title" class="font-display text-base font-semibold text-slate-900">
+            Citas de hoy
+          </h2>
+          @if (appointments(); as ap) {
+            <p class="text-sm text-slate-500 tabular-nums">
+              @if (ap.total) {
+                {{ ap.pending }} por llegar · {{ ap.arrived }}
+                {{ ap.arrived === 1 ? 'llegó' : 'llegaron' }}
+                @if (ap.noShow) {
+                  · {{ ap.noShow }} no {{ ap.noShow === 1 ? 'vino' : 'vinieron' }}
+                }
+              } @else {
+                Agenda libre
+              }
+            </p>
+          }
+        </div>
+        <a
+          routerLink="/citas"
+          class="inline-flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-anil-700 hover:text-anil-800"
+        >
+          Agenda <app-icon name="chevron-right" class="size-4" />
+        </a>
+      </div>
+      @if (appointments(); as ap) {
+        @if (ap.items.length) {
+          <ul class="divide-y divide-slate-100">
+            @for (a of ap.items; track a.id) {
+              @let next = a.id === nextAppointmentId();
+              <li>
+                <a
+                  routerLink="/citas"
+                  class="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-slate-50 sm:px-6"
+                  [class.bg-anil-50]="next"
+                  [attr.aria-label]="next ? 'Próxima cita: ' + a.pet.name : null"
+                >
+                  <span
+                    class="w-12 shrink-0 text-sm font-semibold tabular-nums"
+                    [class]="next ? 'text-anil-800' : 'text-slate-600'"
+                    >{{ appointmentTime(a) }}</span
+                  >
+                  <div class="min-w-0 flex-1">
+                    <p class="flex items-center gap-1.5 truncate font-medium text-slate-900">
+                      <app-icon
+                        [name]="speciesIcon(a.pet.species)"
+                        class="size-4 shrink-0 text-slate-500"
+                      />
+                      <span class="truncate">{{ a.pet.name }}</span>
+                    </p>
+                    <p class="truncate text-xs text-slate-500">
+                      {{ appointmentTypes[a.type] }} · {{ a.vet?.fullName ?? 'Quien esté libre' }}
+                    </p>
+                  </div>
+                  <app-badge [tone]="appointmentTones[a.status]" class="shrink-0">{{
+                    next ? 'Próxima' : appointmentLabels[a.status]
+                  }}</app-badge>
+                </a>
+              </li>
+            }
+          </ul>
+          @if (ap.total > ap.items.length) {
+            <p class="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-500 sm:px-6">
+              y {{ ap.total - ap.items.length }} más en la agenda
+            </p>
+          }
+        } @else {
+          <div class="flex flex-col items-center px-6 py-10 text-center">
+            <span class="grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-500">
+              <app-icon name="calendar" class="size-6" />
+            </span>
+            <p class="mt-3 font-medium text-slate-900">No hay citas para hoy</p>
+            @if (canRegister()) {
+              <a routerLink="/citas" class="btn btn-secondary mt-4">Agendar una cita</a>
+            }
+          </div>
+        }
+      } @else {
+        <div class="space-y-3 p-5" aria-busy="true">
+          @for (i of [1, 2, 3]; track i) {
+            <div class="h-10 animate-pulse rounded-xl bg-slate-100"></div>
+          }
+        </div>
+      }
+    </section>
+  </div>
+
+  <div class="grid items-start gap-6 xl:grid-cols-3">
+    <!-- Refuerzos de vacunas y desparasitaciones: los mismos de Refuerzos -->
+    @if (canSeeRecord() && reminders(); as rm) {
+      <section class="card overflow-hidden xl:col-span-2" aria-labelledby="reminders-title">
+        <div
+          class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"
+        >
+          <div class="min-w-0">
+            <h2 id="reminders-title" class="font-display text-base font-semibold text-slate-900">
+              Refuerzos que tocan
+            </h2>
+            <p class="text-sm text-slate-500 tabular-nums">
+              {{ rm.upcoming }} esta semana ·
+              <span [class.font-medium]="rm.overdue" [class.text-rose-700]="rm.overdue"
+                >{{ rm.overdue }} {{ rm.overdue === 1 ? 'vencido' : 'vencidos' }}</span
+              >
+            </p>
+          </div>
+          <a
+            routerLink="/vacunas"
+            class="inline-flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-anil-700 hover:text-anil-800"
+          >
+            Ver todos <app-icon name="chevron-right" class="size-4" />
+          </a>
+        </div>
+        @if (rm.items.length) {
+          <ul class="divide-y divide-slate-100">
+            @for (item of rm.items; track item.id) {
+              @let due = dueLabel(item);
+              <li class="flex items-center gap-3 px-5 py-3 sm:px-6">
+                <a
+                  [routerLink]="['/mascotas', item.pet.id]"
+                  class="flex min-w-0 flex-1 items-center gap-3 rounded-lg hover:text-anil-800"
+                >
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700"
+                    aria-hidden="true"
+                  >
+                    <app-icon [name]="speciesIcon(item.pet.species)" class="size-5" />
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block truncate font-medium text-slate-900"
+                      >{{ item.pet.name }} · {{ item.name }}</span
+                    >
+                    <span class="block truncate text-xs text-slate-500"
+                      >{{ item.client.name }}
+                      <span class="sm:hidden" [class.text-rose-700]="due.tone === 'danger'"
+                        >· {{ due.text }}</span
+                      ></span
+                    >
+                  </span>
+                </a>
+                <app-badge [tone]="due.tone" class="shrink-0 max-sm:hidden">{{
+                  due.text
+                }}</app-badge>
+                <a
+                  [href]="whatsapp(item)"
+                  target="_blank"
+                  rel="noopener"
+                  class="grid size-11 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/15 transition-colors hover:bg-emerald-100"
+                  [attr.aria-label]="
+                    'Recordar por WhatsApp a ' + item.client.name + ' (' + due.text + ')'
+                  "
+                  [title]="'WhatsApp · ' + due.text"
+                >
+                  <app-icon name="message-circle" class="size-5" />
+                </a>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="flex flex-col items-center px-6 py-10 text-center">
+            <span
+              class="grid size-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-700"
+            >
+              <app-icon name="syringe" class="size-6" />
+            </span>
+            <p class="mt-3 font-medium text-slate-900">Nadie tiene refuerzos pendientes</p>
+            <p class="mt-1 text-sm text-slate-500">Ni esta semana ni vencidos.</p>
+          </div>
+        }
+      </section>
+    }
+
     <!-- Clientes recientes -->
-    <section class="card overflow-hidden" aria-labelledby="recent-title">
+    <section
+      class="card overflow-hidden"
+      [class.xl:col-span-3]="!reminders()"
+      aria-labelledby="recent-title"
+    >
       <div
         class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"
       >
@@ -454,3 +734,38 @@
     </section>
   }
 </section>
+
+<!-- Un aviso de "Necesita atención" (en la tarjeta y en la lista completa) -->
+<ng-template #attentionItem let-n>
+  <a
+    [routerLink]="n.link"
+    [queryParams]="n.query"
+    class="group flex min-h-16 items-center gap-3 px-5 py-3 hover:bg-slate-50 sm:px-6"
+  >
+    <span class="grid size-9 shrink-0 place-items-center rounded-xl" [class]="toneClass(n.tone)">
+      <app-icon [name]="n.icon" class="size-[18px]" />
+    </span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-medium text-slate-900">{{ n.title }}</span>
+      <span class="block truncate text-sm text-slate-500">{{ n.detail }}</span>
+    </span>
+    <app-icon
+      name="chevron-right"
+      class="size-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
+    />
+  </a>
+</ng-template>
+
+<!-- Todos los pendientes: en una ventana, para que el inicio no cambie de forma -->
+<app-modal
+  [open]="attentionOpen()"
+  title="Necesita atención"
+  [description]="attention().length + ' pendientes, lo más urgente primero.'"
+  (closed)="attentionOpen.set(false)"
+>
+  <ul class="-mx-6 -my-5 divide-y divide-slate-100">
+    @for (n of attention(); track n.id) {
+      <li><ng-container *ngTemplateOutlet="attentionItem; context: { $implicit: n }" /></li>
+    }
+  </ul>
+</app-modal>

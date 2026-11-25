@@ -14,6 +14,30 @@ services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    # Estadísticas de consultas (para la revisión semanal de rendimiento) y registro de las que
+    # tardan más de 1 s con su plan, sin los valores (datos de clientes): docker compose logs db.
+    # Memoria pensada para un VPS de 8 GB que comparte con la API y la web.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements,auto_explain
+      - -c
+      - pg_stat_statements.track=top
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - auto_explain.log_min_duration=1000
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=3GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+    shm_size: 256mb
     environment:
       POSTGRES_USER: uywasys
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en deploy/.env}
@@ -52,6 +76,8 @@ services:
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       # Cifra el token del PSE; si queda vacío se usa JWT_SECRET
       BILLING_SECRET: ${BILLING_SECRET:-}
+      # Producción: sin comprobantes simulados (sin valor tributario). true solo para pruebas.
+      BILLING_ALLOW_SIMULATED: ${BILLING_ALLOW_SIMULATED:-false}
     logging: *logging
 
   web:
@@ -72,7 +98,7 @@ services:
       - caddy-config:/config
     logging: *logging
 
-  # Respaldo diario cifrado (03:15, hora de Lima) y copia fuera del servidor con rclone.
+  # Respaldo diario incremental y cifrado (03:15, hora de Lima), fuera del servidor con rclone.
   backup:
     build: ./backup
     restart: unless-stopped
@@ -84,9 +110,14 @@ services:
       PGUSER: uywasys
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: uywasys
-      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?Define BACKUP_AGE_RECIPIENT en deploy/.env (clave pública de age)}
-      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_PASSWORD: ${BACKUP_PASSWORD:?Define BACKUP_PASSWORD en deploy/.env (contraseña que cifra los respaldos)}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-30}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
       RCLONE_REMOTE: ${RCLONE_REMOTE:-}
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
+      PERF_PING_URL: ${PERF_PING_URL:-}
+      PERF_SLOW_MS: ${PERF_SLOW_MS:-300}
       TZ: America/Lima
     volumes:
       - backups:/backups

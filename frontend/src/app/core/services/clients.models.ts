@@ -43,13 +43,22 @@ export const SEX_LABELS: Record<PetSex, string> = { MALE: 'Macho', FEMALE: 'Hemb
 /** Quienes registran y editan clientes, mascotas y la cola (igual que el backend). */
 export const FRONT_DESK_ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION'];
 
+/** Quienes ven la historia clínica (SOAP, recetas, consentimientos). Caja y groomer no. */
+export const CLINICAL_ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION'];
+
 export interface PetBadge {
   id: number;
   /** Correlativo de la clínica (HC-00045) */
   number: number;
   name: string;
   species: Species;
+  /** Para reconocerla al ponerla en la cola (pueden faltar en respuestas antiguas) */
+  sex?: PetSex | null;
+  breed?: string | null;
+  birthDate?: string | null;
   aggressive: boolean;
+  /** Cómo manejarla ("usar bozal"): solo si es agresiva */
+  aggressiveNote?: string | null;
   hasAllergies: boolean;
   active: boolean;
 }
@@ -98,6 +107,14 @@ export interface Pet {
   active: boolean;
   /** Solo en la ficha: última atención terminada (AAAA-MM-DD) */
   lastVisit?: string | null;
+  /** Próxima cita (por confirmar o confirmada) que todavía no pasó */
+  nextAppointment?: {
+    id: number;
+    startsAt: string;
+    type: 'CONSULTATION' | 'GROOMING';
+    reason: string | null;
+    vet: string | null;
+  } | null;
 }
 
 export interface AuthorizedPerson {
@@ -120,6 +137,11 @@ export interface ClientDetail {
   address: string | null;
   district: string | null;
   notes: string | null;
+  /** Datos de facturación: se llenan solos al facturar desde la caja */
+  invoiceRuc: string | null;
+  invoiceName: string | null;
+  invoiceAddress: string | null;
+  invoiceEmail: string | null;
   active: boolean;
   consentAt: string;
   consentVersion: string;
@@ -159,6 +181,14 @@ export interface ClientInput {
   district: string | null;
   notes: string | null;
   marketingConsent: boolean;
+}
+
+/** Datos de facturación editables en la ficha (invoiceRuc null = borrarlos) */
+export interface ClientInvoiceInput {
+  invoiceRuc: string | null;
+  invoiceName: string | null;
+  invoiceAddress: string | null;
+  invoiceEmail: string | null;
 }
 
 export interface NewClient extends ClientInput {

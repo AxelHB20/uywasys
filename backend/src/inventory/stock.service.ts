@@ -301,6 +301,9 @@ export class StockService {
       unitCost: Decimal | null;
       supplier: string | null;
       documentNumber: string | null;
+      /** Proveedor de la lista y compra (ficha) en la que entró el lote */
+      supplierId?: number | null;
+      purchaseId?: number | null;
       /** Motivo del kardex; por defecto "Compra <comprobante> · <proveedor>" */
       reason?: string;
     },
@@ -318,6 +321,8 @@ export class StockService {
         unitCost: req.unitCost,
         supplier: req.supplier,
         documentNumber: req.documentNumber,
+        supplierId: req.supplierId ?? null,
+        purchaseId: req.purchaseId ?? null,
         createdById: req.userId,
       },
       select: { id: true },
@@ -343,6 +348,62 @@ export class StockService {
       },
     });
     return { batchId: batch.id, balanceAfter: balance };
+  }
+
+  /**
+   * Anula el ingreso de un lote (compra anulada): sale todo lo que entró.
+   * Solo si nada del lote se usó todavía; si no, la corrección es un ajuste por conteo.
+   */
+  async voidReceipt(
+    tx: Tx,
+    req: {
+      clinicId: number;
+      productId: number;
+      batchId: number;
+      userId: number;
+      reason: string;
+    },
+  ): Promise<MovementLine> {
+    const product = await this.lockProduct(tx, req.clinicId, req.productId);
+    const [batch] = await tx.$queryRaw<
+      { id: number; quantity: Decimal; initial_quantity: Decimal }[]
+    >(Prisma.sql`
+      SELECT id, quantity, initial_quantity FROM product_batches
+      WHERE id = ${req.batchId} AND product_id = ${req.productId}
+        AND clinic_id = ${req.clinicId}
+      FOR UPDATE`);
+    if (!batch) throw new NotFoundException('El lote no existe');
+    const quantity = new D(batch.quantity.toString());
+    if (!quantity.equals(batch.initial_quantity.toString()))
+      throw new ConflictException(
+        `Ya se usó parte de ${product.name}: corrige con un ajuste por conteo en vez de anular la compra`,
+      );
+    const balance = product.totalStock.minus(quantity);
+    await tx.productBatch.update({
+      where: { id: batch.id },
+      data: { quantity: 0 },
+    });
+    await tx.product.update({
+      where: { id: req.productId },
+      data: { totalStock: balance },
+    });
+    await tx.stockMovement.create({
+      data: {
+        clinicId: req.clinicId,
+        productId: req.productId,
+        batchId: batch.id,
+        type: 'PURCHASE_VOID',
+        quantity: quantity.negated(),
+        balanceAfter: balance,
+        reason: req.reason,
+        userId: req.userId,
+      },
+    });
+    return {
+      batchId: batch.id,
+      quantity: quantity.negated(),
+      balanceAfter: balance,
+    };
   }
 
   /** Conteo físico: deja cada lote en lo contado y registra la diferencia. */

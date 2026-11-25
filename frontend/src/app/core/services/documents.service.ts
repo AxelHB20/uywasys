@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, from, switchMap } from 'rxjs';
+import { prepareClinicalFile } from '../../shared/utils/image';
 import {
   Attachment,
   AttachmentKind,
@@ -23,14 +24,26 @@ export class DocumentsService {
 
   upload(
     petId: number,
-    data: { file: File; kind: AttachmentKind; title: string; visitId?: number },
+    data: {
+      file: File;
+      kind: AttachmentKind;
+      title: string;
+      visitId?: number;
+      /** true = sin comprimir (radiografía, microscopio) */
+      original?: boolean;
+    },
   ): Observable<Attachment> {
-    const form = new FormData();
-    form.append('kind', data.kind);
-    form.append('title', data.title);
-    if (data.visitId) form.append('visitId', String(data.visitId));
-    form.append('file', data.file);
-    return this.http.post<Attachment>(`/api/pets/${petId}/attachments`, form);
+    // Las fotos se achican antes de subir (WebP ~0,35 MB); el PDF va tal cual
+    return from(prepareClinicalFile(data.file, !!data.original)).pipe(
+      switchMap(({ blob, name }) => {
+        const form = new FormData();
+        form.append('kind', data.kind);
+        form.append('title', data.title);
+        if (data.visitId) form.append('visitId', String(data.visitId));
+        form.append('file', blob, name);
+        return this.http.post<Attachment>(`/api/pets/${petId}/attachments`, form);
+      }),
+    );
   }
 
   voidAttachment(id: number, reason: string): Observable<Attachment> {

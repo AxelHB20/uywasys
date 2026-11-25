@@ -58,6 +58,7 @@ export class AuthGuard implements CanActivate {
         role: true,
         active: true,
         mustChangePassword: true,
+        isSupport: true,
         sessionVersion: true,
         clinic: { select: { active: true } },
       },
@@ -83,7 +84,12 @@ export class AuthGuard implements CanActivate {
         );
     }
 
-    req.user = { id: user.id, clinicId: user.clinicId, role: user.role };
+    req.user = {
+      id: user.id,
+      clinicId: user.clinicId,
+      role: user.role,
+      support: user.isSupport,
+    };
     return true;
   }
 }

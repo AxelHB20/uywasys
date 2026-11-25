@@ -9,7 +9,6 @@ import {
   signal,
 } from '@angular/core';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { SessionService } from '../../core/auth/session.service';
 import { SPECIES_LABELS } from '../../core/services/clients.models';
 import { ConsentDocument } from '../../core/services/documents.models';
@@ -21,6 +20,7 @@ import { formatDate } from '../../shared/utils/dates';
 import { formatPhone } from '../../shared/utils/peru';
 import { petCode } from '../../shared/utils/records';
 import { apiErrorMessage } from '../../shared/utils/validators';
+import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 /**
  * Consentimiento firmado, imprimible en A4. Muestra la firma, la fecha y hora exactas y la
@@ -28,19 +28,16 @@ import { apiErrorMessage } from '../../shared/utils/validators';
  */
 @Component({
   selector: 'app-consent-print-page',
-  imports: [ReactiveFormsModule, RouterLink, IconComponent, ModalComponent],
+  imports: [BackLinkComponent, ReactiveFormsModule, IconComponent, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
         @if (doc(); as d) {
-          <a
-            [routerLink]="d.visitId ? ['/atenciones', d.visitId] : ['/mascotas', d.pet.id]"
-            class="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
-          >
-            <app-icon name="chevron-left" class="size-4" />
-            {{ d.visitId ? 'Atención de ' + d.pet.name : 'Historia de ' + d.pet.name }}
-          </a>
+          <app-back-link
+            [fallback]="d.visitId ? '/atenciones/' + d.visitId : '/mascotas/' + d.pet.id"
+            [fallbackLabel]="d.visitId ? 'Atención de ' + d.pet.name : 'Historia de ' + d.pet.name"
+          />
           <div class="flex flex-wrap gap-2">
             @if (canVoid()) {
               <button type="button" class="btn btn-secondary" (click)="openVoid()">Anular</button>

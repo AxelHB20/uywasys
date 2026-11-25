@@ -1,4 +1,6 @@
 import { Species } from './clients.models';
+import type { GroomingTransport } from './grooming.models';
+import type { ReminderMark } from './medical.models';
 
 export type AppointmentStatus = 'SCHEDULED' | 'CONFIRMED' | 'ARRIVED' | 'NO_SHOW' | 'CANCELLED';
 export type AppointmentType = 'CONSULTATION' | 'GROOMING';
@@ -25,6 +27,10 @@ export interface Appointment {
   type: AppointmentType;
   reason: string | null;
   notes: string | null;
+  transport: GroomingTransport;
+  transportAddress: string | null;
+  /** Decimal del servidor: llega como texto */
+  transportPrice: string | number | null;
   status: AppointmentStatus;
   cancelReason: string | null;
   queueEntryId: number | null;
@@ -33,6 +39,10 @@ export interface Appointment {
   client: { id: number; name: string; phone: string };
   vet: { id: number; fullName: string } | null;
   createdBy: { id: number; fullName: string };
+  /** Avisos ya hechos de esta cita */
+  reminded?: ReminderMark[];
+  /** El dueño activó los avisos en su portal: le llega solo */
+  autoNotice?: boolean;
 }
 
 export interface AgendaStaff {
@@ -49,6 +59,9 @@ export interface AppointmentInput {
   type: AppointmentType;
   reason: string | null;
   notes: string | null;
+  transport?: GroomingTransport;
+  transportAddress?: string | null;
+  transportPrice?: number | null;
   allowOverlap?: boolean;
 }
 
@@ -96,6 +109,27 @@ export function timeSlots(from = 7, to = 22, step = 15): string[] {
 export function nextSlot(now: Date = new Date(), slots = timeSlots()): string | null {
   const { minutes } = limaClock(now);
   return slots.find((s) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) >= minutes) ?? null;
+}
+
+/**
+ * Primer horario libre (de 15 en 15) donde entra una cita de `durationMin`, entre la apertura y el
+ * cierre (minutos desde medianoche) y no antes de `after`. null si ya no entra nada ese día.
+ */
+export function firstFreeSlot(
+  busy: Pick<Appointment, 'startsAt' | 'durationMin'>[],
+  o: { open: number; close: number; after?: number; durationMin?: number; step?: number },
+): string | null {
+  const step = o.step ?? 15;
+  const dur = o.durationMin ?? 30;
+  const ranges = busy.map((a) => {
+    const s = limaClock(a.startsAt).minutes;
+    return [s, s + a.durationMin] as const;
+  });
+  const from = Math.max(o.open, Math.ceil((o.after ?? 0) / step) * step);
+  for (let m = Math.ceil(from / step) * step; m + dur <= o.close; m += step)
+    if (!ranges.some(([s, e]) => m < e && m + dur > s))
+      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return null;
 }
 
 /** "10:00 – 10:30" */
