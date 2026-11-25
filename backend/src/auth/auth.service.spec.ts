@@ -2,6 +2,8 @@ import { HttpStatus, UnauthorizedException } from '@nestjs/common';
 import type { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
 import type { AuditService } from '../common/audit/audit.service.js';
+import type { ConfigService } from '@nestjs/config';
+import type { MailService } from '../common/mail/mail.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import {
   AuthService,
@@ -51,6 +53,8 @@ function setup(user: ReturnType<typeof buildUser> | null) {
     prisma as unknown as PrismaService,
     jwt as unknown as JwtService,
     audit as unknown as AuditService,
+    { enabled: false, send: vi.fn() } as unknown as MailService,
+    { get: vi.fn() } as unknown as ConfigService,
   );
   return { service, prisma, jwt, audit };
 }

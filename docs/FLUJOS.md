@@ -345,6 +345,13 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   con **"Llevar a casa"** en Terminados (propone "Lo llevamos"). La línea entra a la cuenta igual.
 - WhatsApp de "listo" ya dice "En breve salimos a dejarlo(a)" y el total incluye la movilidad.
 
+### ¿Olvidaste tu contraseña? (25 nov)
+- En la pantalla de ingreso, si el servidor tiene correo configurado (`SMTP_USER`/`SMTP_PASS`, Gmail de la clínica con contraseña de aplicación). Sin correo, sigue el texto "Pídele al administrador…".
+- El usuario escribe su correo → recibe un enlace (`/recuperar?token=…`) que vale **30 minutos** y sirve **una sola vez**; máximo 3 pedidos por hora y cuenta. La pantalla responde lo mismo exista o no el correo.
+- Al crear la clave nueva: se desbloquea la cuenta, deja de ser temporal y se cierran sus sesiones en otros equipos. Queda en Actividad ("Pidió recuperar…", "Creó una contraseña nueva…").
+- Solo cuentas activas de clínicas activas. En la base se guarda solo el hash del enlace.
+- Respaldo si el correo no llega: el otro administrador (o soporte) le restablece la clave desde Usuarios.
+
 ### Actividad (25 nov)
 - Solo el administrador. Arriba, **Para revisar · últimos 7 días** por grupo (cierres con diferencia, anulaciones, precios, stock, accesos fallidos, facturación, usuarios o datos); cada tarjeta filtra.
 - Filtros: área (botones), persona y período (Todo, Hoy, 7 días, 30 días, Fechas). Quedan en la dirección (`?area=`, `?importantes=1`, `?grupo=`, `?periodo=`, `?desde=&hasta=`).

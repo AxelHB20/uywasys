@@ -4,12 +4,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### ¿Olvidaste tu contraseña? por correo (25 nov)
+- **Pantalla de ingreso:** enlace "¿Olvidaste tu contraseña?" (solo si el servidor tiene correo). El usuario recibe un correo con un enlace que vale 30 minutos y sirve una vez; crea su clave nueva en `/recuperar`.
+- Siempre responde lo mismo exista o no el correo; máximo 3 pedidos por hora y cuenta, 5 por minuto por conexión. En la base solo se guarda el hash (`password_resets`).
+- Al restablecer: desbloquea la cuenta, quita la clave temporal y cierra las sesiones de otros equipos. Queda en Actividad.
+- Servidor: `GET /auth/options`, `POST /auth/forgot`, `POST /auth/reset`; `MailService` con nodemailer (Gmail + contraseña de aplicación). Variables nuevas: `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (y `SMTP_HOST`, `SMTP_PORT`, `APP_URL`). Migración `20261125020000_recuperar_clave`.
+- Dependencia nueva del backend: `nodemailer` 10.6.1.
+
 ### Despliegue por imágenes privadas (protege el código) (25 nov)
 - El servidor de la clínica ya **no recibe el código fuente**. En la PC se arman las imágenes y se suben al registro privado de GitHub (GHCR); el servidor solo las descarga.
 - El JavaScript del backend se **compacta y se le quitan los mapas de código** dentro de la imagen (`backend/scripts/minify-dist.mjs`, llamado desde `backend/Dockerfile`): en el servidor no queda código legible. Verificado: la API compactada arranca y responde igual.
 - Nuevos: `deploy/docker-compose.server.yml` (el servidor solo necesita este archivo y `.env`, sin `git clone`) y `deploy/publicar-imagenes.ps1` (arma y sube API, web y respaldo a GHCR).
 - `docs/DEPLOY.md` actualizado: instalar y actualizar con `docker compose ... pull` en vez de `git`.
 - No cambia el método viejo para pruebas locales ni el CI (`deploy/docker-compose.yml` sigue armando desde el código).
+- Imagen del backend: el seed (`npx prisma db seed`) funciona sin `src/` (enlace al cliente de Prisma compilado).
+- `deploy/web.Dockerfile.dockerignore`: al armar la web desde Windows ya no se copia el `node_modules` de Windows (rompía `ng build` con "node.exe: not found").
 
 ### Actividad: para revisar, filtros simples y soporte claro (25 nov)
 - **Para revisar · últimos 7 días** arriba: cierres con diferencia, anulaciones, cambios de precio, ajustes de stock, accesos fallidos, cambios en facturación y de usuarios o datos. Cada tarjeta filtra la lista; "Ver los N" muestra todo lo marcado.

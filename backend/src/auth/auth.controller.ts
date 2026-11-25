@@ -20,6 +20,10 @@ import type { AuthUser } from '../common/auth/auth-user.js';
 import { AuthService } from './auth.service.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import {
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto.js';
 import type { SessionUser } from './session-user.js';
 
 @Controller('auth')
@@ -50,6 +54,38 @@ export class AuthController {
     );
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
     return { user };
+  }
+
+  /** Qué ofrece la pantalla de ingreso (por ahora, si se puede recuperar la contraseña por correo) */
+  @Public()
+  @Get('options')
+  options(): { passwordReset: boolean } {
+    return this.auth.options();
+  }
+
+  /** "¿Olvidaste tu contraseña?": envía un enlace al correo. Siempre responde lo mismo. */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('forgot')
+  @HttpCode(HttpStatus.OK)
+  async forgot(
+    @Body() dto: ForgotPasswordDto,
+    @Req() req: Request,
+  ): Promise<{ ok: true }> {
+    await this.auth.requestPasswordReset(dto.email, req.ip);
+    return { ok: true };
+  }
+
+  /** Crea la contraseña nueva con el enlace del correo */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('reset')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reset(
+    @Body() dto: ResetPasswordDto,
+    @Req() req: Request,
+  ): Promise<void> {
+    await this.auth.resetPassword(dto.token, dto.password, req.ip);
   }
 
   /** Usuario de la sesión actual (lo usa el frontend al abrir la app). */

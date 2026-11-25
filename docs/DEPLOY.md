@@ -140,6 +140,26 @@ docker compose exec -e DEMO_REFRESH=1 api node scripts/demo-data.mjs
 
 Qué trae la demo para mostrar: inicio con cola, citas de hoy (una llegó, una no vino, las demás más tarde), refuerzos que tocan esta semana y vencidos con WhatsApp, avisos (urgencia, un lote vencido, uno por vencer y stock bajo) y lo cobrado en el mes; reportes de ventas, margen (los servicios con sus insumos) e inventario (con un lote vencido y correas sin movimiento); grooming en todos los estados con comisiones; una cirugía con presupuesto aceptado, consentimiento firmado y radiografía; caja abierta con cobros, venta de mostrador y egreso.
 
+### 4.4 "¿Olvidaste tu contraseña?" por correo (recomendado)
+
+Así el dueño y el personal recuperan su clave solos, sin llamarte. Se envía desde el **Gmail de la clínica**, gratis.
+
+1. Entra a esa cuenta de Google → **Seguridad** → activa la **Verificación en dos pasos** (es requisito de Google).
+2. Abre [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), escribe `Uywa` y toca **Crear**. Copia las 16 letras (solo se muestran una vez).
+3. En el servidor, agrega a `~/uywa/.env`:
+
+   ```text
+   SMTP_USER=correo-de-la-clinica@gmail.com
+   SMTP_PASS=las16letrasdelacontrasenadeaplicacion
+   SMTP_FROM=Gomez Medic <correo-de-la-clinica@gmail.com>
+   ```
+
+4. `uywa up -d` (reinicia la API). En la pantalla de ingreso aparece **¿Olvidaste tu contraseña?**.
+
+Cómo funciona: el usuario escribe su correo y recibe un enlace que vale **30 minutos** y sirve **una sola vez** (como máximo 3 pedidos por hora). Al crear la clave nueva se desbloquea la cuenta y se cierran sus sesiones en otros equipos. La pantalla responde lo mismo exista o no el correo.
+
+⚠ Si alguien cambia la contraseña del Gmail de la clínica, Google anula la contraseña de aplicación y los correos dejan de salir: crea otra (paso 2), cámbiala en `.env` y `uywa up -d`. Si falla un envío, queda en `uywa logs api` ("No se pudo enviar el correo").
+
 ## 5. Respaldo
 
 - **Automático:** todos los días a las 03:15 (hora de Lima), directo al remoto. Se guardan 30 días (uno por día) y 12 meses (uno por mes); lo más antiguo se borra solo. Se cambia con `BACKUP_KEEP_DAILY` y `BACKUP_KEEP_MONTHLY`. Para ver si corrió y cuánto ocupa: `uywa logs backup`.

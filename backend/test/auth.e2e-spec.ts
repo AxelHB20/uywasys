@@ -5,6 +5,7 @@ import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
+import { MailService } from '../src/common/mail/mail.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 // Requiere la base de datos levantada (docker compose up -d) y las migraciones aplicadas.
@@ -42,6 +43,7 @@ describe('Autenticación (e2e)', () => {
   afterAll(async () => {
     if (prisma && clinicId) {
       await prisma.auditLog.deleteMany({ where: { clinicId } });
+      await prisma.passwordReset.deleteMany({ where: { user: { clinicId } } });
       await prisma.user.deleteMany({ where: { clinicId } });
       await prisma.clinic.delete({ where: { id: clinicId } });
     }
@@ -170,5 +172,108 @@ describe('Autenticación (e2e)', () => {
     expect(actions.map((a) => a.action)).toEqual(
       expect.arrayContaining(['auth.login', 'auth.login_failed']),
     );
+  });
+
+  it('"¿Olvidaste tu contraseña?": enlace por correo, de un solo uso, que desbloquea y cierra sesiones', async () => {
+    const http = () => request(app.getHttpServer());
+    const mail = app.get(MailService);
+    const resetEmail = `e2e-reset-${Date.now()}@uywa.pe`;
+    await prisma.user.create({
+      data: {
+        clinicId,
+        fullName: 'Rosa Recuperar',
+        email: resetEmail,
+        passwordHash: await bcrypt.hash('ClaveVieja123', 4),
+        role: 'ADMIN',
+        mustChangePassword: true,
+        lockedUntil: new Date(Date.now() + 10 * 60_000),
+      },
+    });
+    expect((await http().get('/api/auth/options').expect(200)).body).toEqual({
+      passwordReset: true,
+    });
+
+    // Un correo que no existe responde igual y no envía nada
+    const before = mail.outbox.length;
+    await http()
+      .post('/api/auth/forgot')
+      .send({ email: 'nadie@uywa.pe' })
+      .expect(200, { ok: true });
+    expect(mail.outbox.length).toBe(before);
+
+    await http()
+      .post('/api/auth/forgot')
+      .send({ email: resetEmail.toUpperCase() })
+      .expect(200);
+    const sent = mail.outbox.at(-1)!;
+    expect(sent.to).toBe(resetEmail);
+    expect(sent.subject).toContain('Clínica e2e');
+    expect(sent.text).toContain('Hola, Rosa');
+    const token = /recuperar\?token=([\w-]+)/.exec(sent.text)![1];
+    // En la base no queda el token, solo su hash
+    const stored = await prisma.passwordReset.findFirstOrThrow({
+      where: { user: { email: resetEmail } },
+    });
+    expect(stored.tokenHash).not.toContain(token);
+
+    const weak = await http()
+      .post('/api/auth/reset')
+      .send({ token, password: 'corta' })
+      .expect(400);
+    expect(weak.body.errors[0]).toContain('al menos 8 caracteres');
+    await http()
+      .post('/api/auth/reset')
+      .send({ token, password: 'ClaveNueva456' })
+      .expect(204);
+    // El mismo enlace no sirve dos veces
+    const again = await http()
+      .post('/api/auth/reset')
+      .send({ token, password: 'OtraClave789' })
+      .expect(400);
+    expect(again.body.message).toContain('venció o ya se usó');
+
+    // Desbloqueada, sin clave temporal, con la clave nueva y las sesiones anteriores cerradas
+    // (se revisa en la base: el login ya alcanzó su límite por conexión en otra prueba)
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { email: resetEmail },
+    });
+    expect(user.lockedUntil).toBeNull();
+    expect(user.mustChangePassword).toBe(false);
+    expect(user.sessionVersion).toBe(1);
+    expect(await bcrypt.compare('ClaveNueva456', user.passwordHash)).toBe(true);
+    const audit = await prisma.auditLog.findMany({
+      where: { user: { email: resetEmail } },
+      select: { action: true },
+    });
+    expect(audit.map((a) => a.action)).toEqual(
+      expect.arrayContaining(['auth.reset_requested', 'auth.password_reset']),
+    );
+
+    // Un enlace vencido no sirve; como máximo 3 pedidos por hora
+    await http()
+      .post('/api/auth/forgot')
+      .send({ email: resetEmail })
+      .expect(200);
+    const expired = /recuperar\?token=([\w-]+)/.exec(
+      mail.outbox.at(-1)!.text,
+    )![1];
+    await prisma.passwordReset.updateMany({
+      where: { user: { email: resetEmail }, usedAt: null },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    await http()
+      .post('/api/auth/reset')
+      .send({ token: expired, password: 'ClaveNueva999' })
+      .expect(400);
+    await http()
+      .post('/api/auth/forgot')
+      .send({ email: resetEmail })
+      .expect(200);
+    const count = mail.outbox.length;
+    await http()
+      .post('/api/auth/forgot')
+      .send({ email: resetEmail })
+      .expect(200);
+    expect(mail.outbox.length).toBe(count);
   });
 });

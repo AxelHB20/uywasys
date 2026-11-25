@@ -36,6 +36,16 @@
         Ingresa con el correo que te dio el administrador de tu clínica.
       </p>
 
+      @if (restablecida() && !serverError()) {
+        <div
+          class="mt-6 flex gap-2.5 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200"
+          role="status"
+        >
+          <app-icon name="check" class="mt-0.5 size-4 text-emerald-700" />
+          Listo, tu contraseña cambió. Ingresa con la nueva.
+        </div>
+      }
+
       @if (expirada() && !serverError()) {
         <div
           class="mt-6 flex gap-2.5 rounded-xl bg-anil-50 px-4 py-3 text-sm text-anil-900 ring-1 ring-anil-100"
@@ -134,9 +144,20 @@
         </button>
       </form>
 
-      <p class="mt-8 text-sm text-slate-600">
-        ¿Olvidaste tu contraseña? Pídele al administrador de tu clínica que la restablezca.
-      </p>
+      @if (options().passwordReset) {
+        <p class="mt-6 text-center">
+          <a
+            routerLink="/recuperar"
+            [queryParams]="form.controls.email.valid ? { correo: form.controls.email.value } : {}"
+            class="inline-flex min-h-11 items-center text-sm font-semibold text-anil-700 hover:underline"
+            >¿Olvidaste tu contraseña?</a
+          >
+        </p>
+      } @else {
+        <p class="mt-8 text-sm text-slate-600">
+          ¿Olvidaste tu contraseña? Pídele al administrador de tu clínica que la restablezca.
+        </p>
+      }
       <p class="mt-6 text-xs text-slate-500">
         Al ingresar aceptas los
         <a

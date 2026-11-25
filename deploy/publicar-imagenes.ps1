@@ -39,9 +39,16 @@ foreach ($img in $images) {
   docker build -t "${ref}:$Tag" -t "${ref}:latest" -f $img.dockerfile $img.context
   if ($LASTEXITCODE -ne 0) { throw "Fallo al armar $($img.name)." }
   Write-Host "Subiendo $ref..." -ForegroundColor Cyan
-  docker push "${ref}:$Tag"
-  docker push "${ref}:latest"
-  if ($LASTEXITCODE -ne 0) { throw "Fallo al subir $($img.name)." }
+  # Cada subida se revisa por separado (GHCR a veces rechaza la primera; se reintenta una vez)
+  foreach ($t in @($Tag, 'latest')) {
+    docker push "${ref}:$t"
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "Reintentando subir ${ref}:$t..." -ForegroundColor Yellow
+      Start-Sleep -Seconds 5
+      docker push "${ref}:$t"
+      if ($LASTEXITCODE -ne 0) { throw "Fallo al subir ${ref}:$t." }
+    }
+  }
 }
 
 Write-Host "`nListo. Subidas las 3 imagenes con la version $Tag." -ForegroundColor Green

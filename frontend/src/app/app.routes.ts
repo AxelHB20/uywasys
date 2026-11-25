@@ -20,6 +20,13 @@ export const routes: Routes = [
       import('./features/auth/change-password.page').then((m) => m.ChangePasswordPage),
   },
   {
+    // "¿Olvidaste tu contraseña?": pedir el enlace y, con ?token=, crear la contraseña nueva
+    path: 'recuperar',
+    title: 'Recuperar contraseña · Uywa',
+    loadComponent: () =>
+      import('./features/auth/recover-password.page').then((m) => m.RecoverPasswordPage),
+  },
+  {
     // Públicas: se pueden leer antes de iniciar sesión
     path: 'legal/terminos',
     title: 'Términos del servicio · Uywa',

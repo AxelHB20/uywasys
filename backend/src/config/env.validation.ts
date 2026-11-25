@@ -93,6 +93,35 @@ class EnvironmentVariables {
   @IsBoolean()
   TRUST_PROXY: boolean = false;
 
+  /** Correo para "¿Olvidaste tu contraseña?". Con Gmail: la cuenta y una contraseña de aplicación. */
+  @IsOptional()
+  @IsString()
+  SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PASS?: string;
+
+  /** Por defecto smtp.gmail.com, puerto 465 */
+  @IsOptional()
+  @IsString()
+  SMTP_HOST?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  SMTP_PORT?: number;
+
+  /** Remitente, por ejemplo "Gomez Medic <clinica@gmail.com>". Por defecto, "Uywa <SMTP_USER>". */
+  @IsOptional()
+  @IsString()
+  SMTP_FROM?: string;
+
+  /** Dirección pública del sistema para los enlaces de los correos. Por defecto, CORS_ORIGIN. */
+  @IsOptional()
+  @IsString()
+  APP_URL?: string;
+
   /** Origen del frontend permitido por CORS (por ejemplo http://localhost:4200) */
   @IsOptional()
   @IsString()

@@ -81,6 +81,13 @@ services:
       BILLING_SECRET: ${BILLING_SECRET:-}
       # Producción: sin comprobantes simulados. true solo en el servidor de prueba.
       BILLING_ALLOW_SIMULATED: ${BILLING_ALLOW_SIMULATED:-false}
+      # "¿Olvidaste tu contraseña?": correo de la clínica (Gmail + contraseña de aplicación). Vacío = apagado.
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_URL: https://${DOMAIN}
     logging: *logging
 
   web:

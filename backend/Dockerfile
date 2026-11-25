@@ -35,6 +35,9 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json prisma.config.ts ./
 COPY --chown=node:node prisma ./prisma
 COPY --chown=node:node scripts ./scripts
+# El seed (prisma/seed.ts) importa el cliente de Prisma desde src/generated; en la imagen no hay src,
+# así que se apunta al cliente ya compilado de dist/
+RUN mkdir -p src/generated && ln -s ../../dist/generated/prisma src/generated/prisma
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

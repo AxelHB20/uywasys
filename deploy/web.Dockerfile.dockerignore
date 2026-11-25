@@ -1,0 +1,15 @@
+# Lo que NO entra al armar la imagen web (deploy/web.Dockerfile se arma desde la raíz del proyecto).
+# Sobre todo node_modules de Windows: si se copia, pisa el de Linux y "ng" busca node.exe.
+**/node_modules
+**/.angular
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+.git
+backend
+e2e
+docs
+deploy/backup

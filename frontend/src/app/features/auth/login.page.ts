@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
@@ -30,6 +31,12 @@ export class LoginPage {
   /** ?volver=/ruta → a dónde ir después de ingresar. ?expirada=1 → la sesión anterior venció. */
   readonly volver = input<string>();
   readonly expirada = input<string>();
+  /** ?restablecida=1 → viene de crear su contraseña nueva con el enlace del correo */
+  readonly restablecida = input<string>();
+  /** Si el servidor puede enviar correos, se ofrece "¿Olvidaste tu contraseña?" */
+  protected readonly options = toSignal(this.auth.options(), {
+    initialValue: { passwordReset: false },
+  });
 
   protected readonly form = new FormGroup({
     email: new FormControl('', {

@@ -106,6 +106,7 @@ model User {
   lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(3)
   /// Sube al cambiar o restablecer la contraseña: las sesiones con una versión anterior dejan de valer
   sessionVersion      Int       @default(0) @map("session_version")
+  passwordResets      PasswordReset[]
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   labOrdersRequested LabOrder[] @relation("LabOrderRequestedBy")
@@ -2010,4 +2011,20 @@ model PurchaseFile {
   createdBy User     @relation(fields: [createdById], references: [id])
 
   @@map("purchase_files")
+}
+
+/// Enlace de "¿Olvidaste tu contraseña?": se guarda solo el hash del token. Vale 30 minutos y una sola vez.
+model PasswordReset {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  ip        String?   @db.VarChar(64)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_resets")
 }

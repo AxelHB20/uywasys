@@ -48,6 +48,23 @@ export class AuthService {
       .pipe(tap((user) => this.session.user.set(user)));
   }
 
+  /** Qué ofrece la pantalla de ingreso: si se puede recuperar la contraseña por correo */
+  options(): Observable<{ passwordReset: boolean }> {
+    return this.http
+      .get<{ passwordReset: boolean }>('/api/auth/options')
+      .pipe(catchError(() => of({ passwordReset: false })));
+  }
+
+  /** "¿Olvidaste tu contraseña?": el servidor responde igual exista o no el correo */
+  forgotPassword(email: string): Observable<unknown> {
+    return this.http.post('/api/auth/forgot', { email });
+  }
+
+  /** Crea la contraseña nueva con el enlace del correo */
+  resetPassword(token: string, password: string): Observable<unknown> {
+    return this.http.post('/api/auth/reset', { token, password });
+  }
+
   logout(): void {
     this.http
       .post('/api/auth/logout', {})

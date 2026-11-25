@@ -17,8 +17,10 @@ describe('LoginPage', () => {
 
   afterEach(() => http.verify());
 
-  function render() {
+  function render(passwordReset = false) {
     const fixture = TestBed.createComponent(LoginPage);
+    fixture.detectChanges();
+    http.expectOne('/api/auth/options').flush({ passwordReset });
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     const type = (selector: string, value: string) => {
@@ -85,5 +87,21 @@ describe('LoginPage', () => {
     expect(safeReturnUrl('//sitio-malicioso.com')).toBe('/dashboard');
     expect(safeReturnUrl('https://sitio-malicioso.com')).toBe('/dashboard');
     expect(safeReturnUrl(undefined)).toBe('/dashboard');
+  });
+
+  it('ofrece "¿Olvidaste tu contraseña?" solo si el servidor puede enviar correos', () => {
+    let { el } = render(false);
+    expect(el.querySelector('a[href^="/recuperar"]')).toBeNull();
+    expect(el.textContent).toContain('Pídele al administrador');
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [LoginPage],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    ({ el } = render(true));
+    expect(el.querySelector('a[href^="/recuperar"]')?.textContent).toContain(
+      '¿Olvidaste tu contraseña?',
+    );
   });
 });

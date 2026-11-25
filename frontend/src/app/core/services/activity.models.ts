@@ -132,6 +132,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'auth.login_failed': 'Intento de ingreso con contraseña incorrecta',
   'auth.locked': 'Cuenta bloqueada por intentos fallidos',
   'auth.password_change': 'Cambió su contraseña',
+  'auth.reset_requested': 'Pidió recuperar su contraseña por correo',
+  'auth.password_reset': 'Creó una contraseña nueva con el enlace del correo',
   'cash.open': 'Abrió la caja',
   'cash.close': 'Cerró la caja (cuadró)',
   'cash.close_difference': 'Cerró la caja con diferencia',

@@ -10,6 +10,7 @@ import { CashModule } from './cash/cash.module.js';
 import { ClientsModule } from './clients/clients.module.js';
 import { ClinicModule } from './clinic/clinic.module.js';
 import { AuditModule } from './common/audit/audit.module.js';
+import { MailModule } from './common/mail/mail.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { GroomingModule } from './grooming/grooming.module.js';
@@ -43,6 +44,7 @@ import { VisitsModule } from './visits/visits.module.js';
     }),
     PrismaModule,
     AuditModule,
+    MailModule,
     AuthModule,
     ClinicModule,
     UsersModule,
