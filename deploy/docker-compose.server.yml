@@ -97,6 +97,7 @@ services:
       - api
     environment:
       DOMAIN: ${DOMAIN}
+      PRUEBA_DOMAIN: ${PRUEBA_DOMAIN:-}
     ports:
       - "80:80"
       - "443:443"
@@ -104,6 +105,8 @@ services:
     volumes:
       - caddy-data:/data
       - caddy-config:/config
+      # Sitios extra (sistema de prueba): archivos .caddy en ~/uywa/sites. Vacía = solo la clínica.
+      - ./sites:/etc/caddy/sites:ro
     logging: *logging
 
   backup:
@@ -131,7 +134,56 @@ services:
       - ./backup/rclone:/config/rclone:ro
     logging: *logging
 
+  # ── Sistema de prueba (opcional) ─────────────────────────────────────────────
+  # Para enseñar y mostrar sin tocar los datos reales: base de datos aparte, comprobantes simulados,
+  # sin correo y sin respaldos. Solo arranca con --profile prueba (ver docs/DEPLOY.md, sección 10).
+  # Necesita PRUEBA_DOMAIN, PRUEBA_POSTGRES_PASSWORD y PRUEBA_JWT_SECRET en .env (si faltan, no arranca).
+  # NUNCA pongas aquí el token de Mifact de producción.
+  prueba-db:
+    image: postgres:17-alpine
+    profiles: ["prueba"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: uywasys
+      POSTGRES_PASSWORD: ${PRUEBA_POSTGRES_PASSWORD:-}
+      POSTGRES_DB: uywasys
+      TZ: America/Lima
+    volumes:
+      - prueba-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uywasys -d uywasys"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  prueba-api:
+    image: ghcr.io/${IMAGE_OWNER}/uywasys-api:${IMAGE_TAG:-latest}
+    profiles: ["prueba"]
+    restart: unless-stopped
+    depends_on:
+      prueba-db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://uywasys:${PRUEBA_POSTGRES_PASSWORD:-}@prueba-db:5432/uywasys
+      CORS_ORIGIN: https://${PRUEBA_DOMAIN:-}
+      JWT_SECRET: ${PRUEBA_JWT_SECRET:-}
+      SESSION_HOURS: 8
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-600}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
+      DEMO_PASSWORD: ${PRUEBA_DEMO_PASSWORD:-}
+      BILLING_SECRET: ${PRUEBA_BILLING_SECRET:-}
+      # Comprobantes con sello "Simulación · sin valor tributario"
+      BILLING_ALLOW_SIMULATED: "true"
+      APP_URL: https://${PRUEBA_DOMAIN:-}
+    logging: *logging
+
 volumes:
+  prueba-db-data:
   db-data:
   caddy-data:
   caddy-config:

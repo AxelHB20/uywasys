@@ -130,7 +130,7 @@ Abre `https://demo.tudominio.pe`. El certificado HTTPS se emite solo en el prime
 
 **Buscadores y vista previa:** la app es privada de cada clínica, así que va fuera de Google (`noindex` en `index.html` y en la cabecera `X-Robots-Tag` de Caddy); la página de venta irá en otro dominio. Con el dominio definitivo, para que el enlace se vea con imagen al compartirlo por WhatsApp, agrega en `frontend/src/index.html` una imagen de 1200×630 en `public/` y `<meta property="og:image" content="https://TU-DOMINIO/og.png">` (siempre con la dirección completa).
 
-**Datos de demostración:** con `DEMO_PASSWORD` definido, el script arma una clínica con historia: equipo (dos veterinarios, recepción, caja y dos groomers), unos 55 clientes con sus mascotas, catálogo con stock y compras, y 70 días de atenciones con SOAP, vacunas, recetas, cobros con boletas, cierres de caja, citas y grooming; hoy deja la cola con gente esperando, atenciones en curso, el tablero de grooming, una cirugía con presupuesto y consentimiento firmado, y citas para la semana. Tarda alrededor de un minuto. Si la clínica del seed está vacía la usa; si no, crea una clínica aparte, "Veterinaria Huellitas" (`admin@huellitas.pe`), que no se mezcla con datos reales. Para rehacerla: `DEMO_RESET=1` (archiva la anterior). Días de historia: `DEMO_DAYS` (7 a 120; por defecto 70, así los reportes de 30 días se comparan con 30 días que también tienen movimiento).
+**Datos de demostración:** con `DEMO_PASSWORD` definido, el script arma una clínica con **un año completo de historia** que crece mes a mes y tiene temporadas (verano y diciembre con más grooming, invierno con más consultas): equipo (dos veterinarios, recepción, caja, dos groomers y una practicante que ya se fue), unos 300 clientes con sus mascotas, más de 2 000 atenciones con SOAP, vacunas, recetas y exámenes, cobros con boletas y facturas, cierres de caja (algunos con diferencia), anulaciones con nota de crédito, subidas de precio, compras de reposición según lo que se usa (con la foto de la última factura), lotes vencidos y por vencer, avisos de refuerzo enviados por WhatsApp, portal del dueño, una adenda, controlados, merma y conteo físico; hoy deja la cola con gente esperando, atenciones en curso, el tablero de grooming, dos internados, una cirugía con presupuesto y consentimiento firmado, y citas para la semana. Así Inicio, Reportes (12 meses de punta a punta), Actividad y cada sección tienen qué mostrar. Tarda unos 5 minutos. Si la clínica del seed está vacía la usa; si no, crea una clínica aparte, "Veterinaria Huellitas" (`admin@huellitas.pe`), que no se mezcla con datos reales. Para rehacerla: `DEMO_RESET=1` (archiva la anterior). Días de historia: `DEMO_DAYS` (7 a 430; por defecto 364, así "12 meses" empieza el día en que la clínica empezó a usar Uywa; para una prueba rápida, 25).
 
 **Antes de mostrarla (importante):** la demo se arma con las fechas del día en que se corrió. Si la muestras otro día, tráela al día con `DEMO_REFRESH=1` (tarda segundos, no crea nada): el último día de la demo pasa a ser hoy, lo de hoy queda repartido hasta ese momento (cola, consultorio y tablero de grooming "en vivo") y las citas pendientes quedan para más tarde; la hoja de los internados también se trae a la hora actual. Córrelo media hora antes de la reunión:
 
@@ -172,6 +172,13 @@ Cómo funciona: el usuario escribe su correo y recibe un enlace que vale **30 mi
   3. `uywa run --rm backup restore.sh latest SI-RESTAURAR` (o el código de un respaldo anterior, de la lista).
   4. `uywa start api`.
 - **Copia completa extra (opcional, el primer mes):** con `BACKUP_AGE_RECIPIENT` (clave pública de `age-keygen`) se guarda además una copia completa diaria en el servidor, 7 días. Se restaura con `uywa run --rm -v /ruta/clave.agekey:/key:ro backup restore.sh uywasys_FECHA.dump.age SI-RESTAURAR`.
+
+- **Si el Drive gratis se llena (archivar y liberar):** primero baja el historial (`BACKUP_KEEP_MONTHLY=3` en `.env`, `uywa up -d`). Si aun así no alcanza, archiva:
+  1. En una PC con rclone: `rclone copy gdrive:uywa-respaldos D:\uywa-archivo-AÑO` y guarda una segunda copia en un disco externo.
+  2. Comprueba la copia: `restic -r D:\uywa-archivo-AÑO check` (pide la `BACKUP_PASSWORD`).
+  3. Recién entonces: `rclone purge gdrive:uywa-respaldos`.
+  4. Esa noche el respaldo crea un almacén nuevo solo y sube una copia completa de la base actual.
+  El archivo se restaura con la misma `BACKUP_PASSWORD` (por eso nunca cambia). Queda escrito en la hoja de entrega: Drive gratuito de 15 GB; si se llena se reduce el historial o se archiva sin costo; más almacenamiento lo paga la clínica si lo quiere.
 
 ## 6. Monitoreo
 
@@ -226,3 +233,37 @@ Lo mismo se prueba solo en GitHub Actions en cada push (job `produccion`).
 - [ ] Datos de la clínica, logo y horario completos en Configuración.
 - [ ] Clave del administrador cambiada a una propia.
 - [ ] Los textos de `docs/legal/` pasaron por un abogado antes de cargar datos reales.
+
+## 10. Sistema de prueba en el mismo servidor (opcional)
+
+Para enseñar al personal y mostrar el sistema sin tocar los datos reales, por ejemplo en `prueba-veterinario.duckdns.org`. Corre junto a la clínica con **su propia base de datos** (`prueba-db`), comprobantes **simulados** (sello "Simulación · sin valor tributario"), sin correo y sin respaldos. Usa la misma versión que la clínica: al actualizar, se actualizan las dos.
+
+⚠ Nunca pongas el token de Mifact de producción en el sistema de prueba.
+
+1. El subdominio debe apuntar a la IP del servidor (en DuckDNS, la misma IP).
+2. En el servidor, **antes de reiniciar**, crea la carpeta de sitios extra (si Docker la crea, queda sin permiso para copiar):
+   ```bash
+   mkdir -p ~/uywa/sites
+   ```
+3. Desde tu PC copia el sitio y el compose:
+   ```bash
+   scp deploy\sites\prueba.caddy uywa@IP:~/uywa/sites/
+   scp deploy\docker-compose.server.yml uywa@IP:~/uywa/
+   ```
+4. En el servidor, agrega al `.env` (los secretos se generan solos; cambia el dominio y la clave de demostración):
+   ```bash
+   cat >> ~/uywa/.env <<EOF
+   COMPOSE_PROFILES=prueba
+   PRUEBA_DOMAIN=prueba-veterinario.duckdns.org
+   PRUEBA_POSTGRES_PASSWORD=$(openssl rand -hex 24)
+   PRUEBA_JWT_SECRET=$(openssl rand -hex 48)
+   PRUEBA_DEMO_PASSWORD=UnaClaveDemo2026
+   EOF
+   uywa pull && uywa up -d
+   ```
+   `COMPOSE_PROFILES=prueba` hace que `uywa up -d` levante también la prueba. Para apagarla: bórrala del `.env` y `uywa stop prueba-api prueba-db`.
+5. Carga los datos de demostración (unos 5 minutos): `uywa exec prueba-api node scripts/demo-data.mjs`. Crea "Veterinaria Huellitas" con un año completo de historia; se entra con `admin@huellitas.pe` y `PRUEBA_DEMO_PASSWORD`.
+6. Antes de mostrarla otro día, tráela a la fecha de hoy: `uywa exec -e DEMO_REFRESH=1 prueba-api node scripts/demo-data.mjs`. Para rehacerla desde cero: `-e DEMO_RESET=1`.
+
+El nombre de la clínica en el menú ("Veterinaria Huellitas") y el sello de simulación en los comprobantes distinguen la prueba del sistema real. Las sesiones no se mezclan: cada sistema tiene su dominio y su propia clave de sesión.
+

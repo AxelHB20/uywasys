@@ -1,0 +1,5 @@
+# Sistema de prueba: mismo servidor, base de datos aparte (servicios prueba-db y prueba-api).
+# Se copia a ~/uywa/sites/ en el servidor. PRUEBA_DOMAIN sale del .env.
+{$PRUEBA_DOMAIN} {
+	import app prueba-api:3000
+}

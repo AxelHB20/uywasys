@@ -10,7 +10,8 @@
  *   DEMO_PASSWORD      clave del equipo de demostración (10+ caracteres, letras y números)
  *   DATABASE_URL       la base de datos (dentro de Docker ya está definida)
  *   API_URL            por defecto http://127.0.0.1:3000/api
- *   DEMO_DAYS          días de historia (por defecto 70, máximo 120; para mostrar, 25 basta)
+ *   DEMO_DAYS          días de historia (por defecto 364: el año completo, así "12 meses" en
+ *                      Reportes tiene movimiento de punta a punta; máximo 430; prueba rápida: 25)
  *   DEMO_RESET=1       si ya existe la clínica de demostración, la archiva y crea otra
  *   DEMO_REFRESH=1     no crea nada: trae la demo existente al día de hoy (segundos). Úsalo antes
  *                      de mostrarla: el último día de la demo pasa a ser hoy, lo de hoy queda
@@ -37,11 +38,40 @@ const API = (process.env.API_URL ?? 'http://127.0.0.1:3000/api').replace(
 const SEED_EMAIL = process.env.SEED_ADMIN_EMAIL ?? '';
 const SEED_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? '';
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? '';
-// 70 días: los reportes de 30 días se comparan con 30 días anteriores que también tienen movimiento
+// 364 días: "12 meses" en Reportes empieza justo el día en que la clínica empezó a usar Uywa
+// (sin un período anterior a medias que infle las comparaciones), y 7 días, 30 días y los meses
+// se comparan con períodos que también tienen movimiento. La clínica crece y tiene temporadas.
 const DAYS = Math.min(
-  120,
-  Math.max(7, Number(process.env.DEMO_DAYS ?? 70) || 70),
+  430,
+  Math.max(7, Number(process.env.DEMO_DAYS ?? 364) || 364),
 );
+
+/**
+ * Qué tan movido es un día: la clínica abrió con menos clientes y fue creciendo, y tiene sus
+ * temporadas. En Lima el verano (enero a marzo) y diciembre llenan el grooming; el invierno
+ * (junio a agosto) trae más consultas respiratorias.
+ */
+function busyness(iso, offset) {
+  const growth = 0.62 + 0.38 * (1 - Math.min(1, -offset / Math.max(DAYS, 1)));
+  const month = Number(iso.slice(5, 7));
+  const consult =
+    growth * ([6, 7, 8].includes(month) ? 1.15 : month === 12 ? 1.05 : 1);
+  const groom =
+    growth *
+    (month === 12
+      ? 1.45
+      : [1, 2, 3].includes(month)
+        ? 1.3
+        : [6, 7].includes(month)
+          ? 0.85
+          : 1);
+  return { consult, groom };
+}
+/** Escala una cantidad sin perder los días tranquilos (el azar decide el redondeo) */
+const scaled = (n, f) => {
+  const x = n * f;
+  return Math.max(0, Math.floor(x) + (rand() < x - Math.floor(x) ? 1 : 0));
+};
 const DOMAIN = 'huellitas.pe';
 const TZ = 'America/Lima';
 
@@ -212,6 +242,16 @@ function png(width, height, pixel) {
     chunk('IDAT', deflateSync(raw)),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+/** Foto de una factura: hoja blanca con renglones y un encabezado */
+function invoicePng() {
+  return png(300, 400, (x, y) => {
+    const header = y > 24 && y < 64 && x > 24 && x < 180;
+    const line = y > 100 && y < 360 && (y - 100) % 22 < 2 && x > 24 && x < 276;
+    const total = y > 364 && y < 380 && x > 180 && x < 276;
+    const ink = header || line || total;
+    return ink ? [60, 64, 80, 255] : [250, 250, 247, 255];
+  });
 }
 /** Firma: un trazo ondulado */
 function signaturePng() {
@@ -1605,6 +1645,17 @@ async function main() {
     };
   }
   const { vet, vet2, reception, cashier, groomer, groomer2 } = team;
+  // Una practicante que trabajó unos meses: su acceso se desactiva al final (Actividad → Accesos)
+  const intern =
+    DAYS > 60
+      ? (
+          await call(admin, 'POST', '/users', {
+            fullName: 'Diana Paredes Lazo',
+            role: 'RECEPTION',
+            email: `${prefix}practicante@${adminEmailDomain}`,
+          })
+        ).data.user
+      : null;
   const vets = [vet, vet2];
   const groomers = [groomer, groomer2];
 
@@ -1668,6 +1719,7 @@ async function main() {
       });
     pending.clear();
   };
+  let restocking = false; // compras de reposición: solo lo que se usó
   const buy = async (key, product, purchase) => {
     let id = products[key]?.id;
     if (!id) {
@@ -1687,6 +1739,22 @@ async function main() {
     const presentation =
       products[key].presentations.find((p) => p.factor === purchase.factor) ??
       products[key].presentations[0];
+    let quantity = purchase.quantity;
+    const units = quantity * Number(presentation.factor ?? 1);
+    // La primera compra marca el stock normal; después solo se repone lo que se fue usando
+    products[key].target ??= units;
+    if (restocking) {
+      const { rows } = await db.query(
+        `SELECT coalesce(sum(quantity), 0)::float AS stock FROM product_batches WHERE product_id = $1`,
+        [id],
+      );
+      const missing = products[key].target - rows[0].stock;
+      if (missing < products[key].target * 0.4) return; // todavía alcanza
+      quantity = Math.max(
+        1,
+        Math.ceil(missing / Number(presentation.factor ?? 1)),
+      );
+    }
     const supplier = purchase.supplier ?? 'Droguería Andina S.A.C.';
     const keyOf = `${supplier}|${purchase.document}`;
     if (!pending.has(keyOf))
@@ -1694,7 +1762,7 @@ async function main() {
     pending.get(keyOf).lines.push({
       productId: id,
       presentationId: presentation.id,
-      quantity: purchase.quantity,
+      quantity,
       unitPrice: purchase.cost,
       lotNumber: purchase.lot,
       expiresAt: purchase.expiresAt,
@@ -1872,7 +1940,7 @@ async function main() {
       lot: `VS-${2600 + offset * -1}`,
       expiresAt: day(240),
       cost: 28,
-      document: `F001-${1200 - offset}`,
+      document: `F001-${1200 - offset * 10}`,
     });
     await buy('triple', CATALOG.triple, {
       factor: 1,
@@ -1880,7 +1948,7 @@ async function main() {
       lot: `TF-${900 - offset}`,
       expiresAt: day(180),
       cost: 26,
-      document: `F001-${1200 - offset}`,
+      document: `F001-${1200 - offset * 10}`,
     });
     await buy('rabia', CATALOG.rabia, {
       factor: 1,
@@ -1888,7 +1956,7 @@ async function main() {
       lot: `AR-${300 - offset}`,
       expiresAt: day(300),
       cost: 12,
-      document: `F001-${1200 - offset}`,
+      document: `F001-${1200 - offset * 10}`,
     });
     await buy('antipulgas', CATALOG.antipulgas, {
       factor: 1,
@@ -1896,7 +1964,7 @@ async function main() {
       lot: `AP-${7700 - offset}`,
       expiresAt: day(420),
       cost: 55,
-      document: `F001-${1201 - offset}`,
+      document: `F001-${1201 - offset * 10}`,
       supplier: 'Agrovet del Centro E.I.R.L.',
     });
     await buy('pipeta', CATALOG.pipeta, {
@@ -1905,7 +1973,7 @@ async function main() {
       lot: `PG-${500 - offset}`,
       expiresAt: day(380),
       cost: 22,
-      document: `F001-${1201 - offset}`,
+      document: `F001-${1201 - offset * 10}`,
       supplier: 'Agrovet del Centro E.I.R.L.',
     });
     await buy('desparasitante', CATALOG.desparasitante, {
@@ -1914,7 +1982,7 @@ async function main() {
       lot: `DP-${110 - offset}`,
       expiresAt: day(500),
       cost: 70,
-      document: `F001-${1201 - offset}`,
+      document: `F001-${1201 - offset * 10}`,
     });
     await buy('amoxicilina', CATALOG.amoxicilina, {
       factor: 100,
@@ -1922,7 +1990,7 @@ async function main() {
       lot: `AX-${40 - offset}`,
       expiresAt: day(400),
       cost: 90,
-      document: `F001-${1202 - offset}`,
+      document: `F001-${1202 - offset * 10}`,
     });
     await buy('suero', CATALOG.suero, {
       factor: 500,
@@ -1930,7 +1998,7 @@ async function main() {
       lot: `SF-${70 - offset}`,
       expiresAt: day(600),
       cost: 7,
-      document: `F001-${1202 - offset}`,
+      document: `F001-${1202 - offset * 10}`,
     });
     await buy('jeringa', CATALOG.jeringa, {
       factor: 100,
@@ -1938,7 +2006,7 @@ async function main() {
       lot: `JR-${60 - offset}`,
       expiresAt: day(900),
       cost: 18,
-      document: `F001-${1202 - offset}`,
+      document: `F001-${1202 - offset * 10}`,
     });
     await buy('champu', CATALOG.champu, {
       factor: 500,
@@ -1946,7 +2014,7 @@ async function main() {
       lot: `CH-${118 - offset}`,
       expiresAt: day(330),
       cost: 21,
-      document: `F001-${1203 - offset}`,
+      document: `F001-${1203 - offset * 10}`,
     });
     await buy('champuNormal', CATALOG.champuNormal, {
       factor: 3800,
@@ -1954,7 +2022,7 @@ async function main() {
       lot: `CN-${20 - offset}`,
       expiresAt: day(500),
       cost: 55,
-      document: `F001-${1203 - offset}`,
+      document: `F001-${1203 - offset * 10}`,
     });
     await buy('alimento', CATALOG.alimento, {
       factor: 1,
@@ -1962,7 +2030,7 @@ async function main() {
       lot: `AB-${5530 - offset}`,
       expiresAt: day(240),
       cost: 58,
-      document: `F001-${1204 - offset}`,
+      document: `F001-${1204 - offset * 10}`,
       supplier: 'Distribuidora PetFood S.A.C.',
     });
     await buy('alimentoGato', CATALOG.alimentoGato, {
@@ -1971,7 +2039,7 @@ async function main() {
       lot: `AG-${880 - offset}`,
       expiresAt: day(260),
       cost: 33,
-      document: `F001-${1204 - offset}`,
+      document: `F001-${1204 - offset * 10}`,
       supplier: 'Distribuidora PetFood S.A.C.',
     });
     await buy('guantes', CATALOG.guantes, {
@@ -1980,7 +2048,7 @@ async function main() {
       lot: `GE-${300 - offset}`,
       expiresAt: day(900),
       cost: 22,
-      document: `F001-${1202 - offset}`,
+      document: `F001-${1202 - offset * 10}`,
     });
     await buy('tubo', CATALOG.tubo, {
       factor: 100,
@@ -1988,7 +2056,7 @@ async function main() {
       lot: `TE-${80 - offset}`,
       expiresAt: day(700),
       cost: 70,
-      document: `F001-${1202 - offset}`,
+      document: `F001-${1202 - offset * 10}`,
     });
     await buy('meloxicam', CATALOG.meloxicam, {
       factor: 100,
@@ -1996,7 +2064,7 @@ async function main() {
       lot: `MX-${2700 - offset}`,
       expiresAt: day(400),
       cost: 85,
-      document: `F001-${1202 - offset}`,
+      document: `F001-${1202 - offset * 10}`,
     });
     await buy('snack', CATALOG.snack, {
       factor: 1,
@@ -2004,7 +2072,7 @@ async function main() {
       lot: `SN-${45 - offset}`,
       expiresAt: day(200),
       cost: 2.5,
-      document: `F001-${1204 - offset}`,
+      document: `F001-${1204 - offset * 10}`,
       supplier: 'Distribuidora PetFood S.A.C.',
     });
   };
@@ -2394,7 +2462,7 @@ async function main() {
       method === 'CASH'
         ? Math.ceil(amount / 10) * 10 + (chance(0.4) ? 10 : 0)
         : null;
-    await call(cashier.cookie, 'POST', '/cash/receipts', {
+    const res = await call(cashier.cookie, 'POST', '/cash/receipts', {
       requestKey: randomUUID(),
       clientId,
       amount,
@@ -2410,7 +2478,10 @@ async function main() {
       // Toda venta lleva su comprobante: factura a la empresa con RUC, boleta a los demás
       document: ruc ? 'FACTURA' : 'BOLETA',
     });
+    lastReceipt = { id: res.data.receipt?.id ?? res.data.id, clientId };
+    return lastReceipt;
   };
+  let lastReceipt = null;
   const openCash = async () => {
     const { data } = await call(cashier.cookie, 'POST', '/cash/sessions', {
       openingAmount: pick([100, 150, 200]),
@@ -2783,6 +2854,7 @@ async function main() {
   step(
     `Historia de ${DAYS} días (atenciones, cobros, cierres de caja, grooming)`,
   );
+  const portalClients = new Set();
   for (let offset = -DAYS; offset < 0; offset++) {
     const d = day(offset);
     labStage =
@@ -2794,17 +2866,18 @@ async function main() {
     const wd = weekday(d);
     const sunday = wd === 0; // domingo: solo la mañana
     const saturday = wd === 6 || sunday;
+    const busy = busyness(d, offset);
     block = await snapshot();
     await openCash();
+    lastReceipt = null;
     // Clientes nuevos que llegan ese día
-    for (let i = 0; i < (chance(0.6) ? between(1, 2) : 0); i++)
+    for (let i = 0; i < (chance(0.6 * busy.consult) ? between(1, 2) : 0); i++)
       await newClient();
     // Consultas
-    const consults = sunday
-      ? between(1, 3)
-      : saturday
-        ? between(2, 4)
-        : between(4, 7);
+    const consults = scaled(
+      sunday ? between(0, 2) : saturday ? between(2, 4) : between(4, 7),
+      busy.consult,
+    );
     for (let i = 0; i < consults; i++) {
       const pet = pickPet(
         (p) => ['DOG', 'CAT'].includes(p.species) || chance(0.3),
@@ -2842,11 +2915,11 @@ async function main() {
       await collectClient(pet.clientId, { partial: chance(0.07) });
     }
     // Grooming
-    for (
-      let i = 0;
-      i < (sunday ? between(1, 2) : saturday ? between(3, 5) : between(1, 3));
-      i++
-    ) {
+    const grooms = scaled(
+      sunday ? between(0, 1) : saturday ? between(3, 5) : between(1, 3),
+      busy.groom,
+    );
+    for (let i = 0; i < grooms; i++) {
       const pet = pickPet(
         (p) => p.species === 'DOG' || (p.species === 'CAT' && chance(0.2)),
       );
@@ -2922,6 +2995,37 @@ async function main() {
           `/appointments/${appt.data.id}/no-show`,
         ).catch(() => undefined);
     }
+    // Un cobro mal registrado: el administrador lo anula (sale la nota de crédito) y se vuelve a cobrar
+    if (lastReceipt && -offset % 47 === 11) {
+      await call(admin, 'POST', `/cash/receipts/${lastReceipt.id}/void`, {
+        reason: pick([
+          'Se cobró con el medio de pago equivocado',
+          'Se registró al cliente equivocado',
+          'Pidió factura y se emitió boleta',
+        ]),
+      });
+      await collectClient(lastReceipt.clientId);
+    }
+    // Suben los precios: queda en Actividad (precios) y el ticket promedio sube en Reportes
+    if (offset === -200 && DAYS > 210)
+      await call(admin, 'PATCH', `/care-services/${services.unas}`, {
+        price: 12,
+      });
+    if (offset === -120 && DAYS > 130)
+      await call(admin, 'PATCH', `/care-services/${services.consulta}`, {
+        price: 55,
+      });
+    // Terminó la práctica: se desactiva su acceso
+    if (intern && offset === -45)
+      await call(admin, 'PATCH', `/users/${intern.id}`, { active: false });
+    // Algunos dueños reciben el enlace a su portal (vacunas, citas y recetas desde el celular)
+    if (chance(0.12)) {
+      const p = pickPet();
+      if (!portalClients.has(p.clientId)) {
+        portalClients.add(p.clientId);
+        await call(reception.cookie, 'POST', `/clients/${p.clientId}/portal`);
+      }
+    }
     await closeCash();
     await shiftTo(
       block,
@@ -2932,7 +3036,9 @@ async function main() {
     // Compras de reposición cada tres semanas
     if (offset % 21 === 0) {
       block = await snapshot();
+      restocking = true;
       await purchases(offset, 0.8);
+      restocking = false;
       await flushPurchases();
       await shiftTo(block, d, '19:35', '19:50');
     }
@@ -2940,6 +3046,81 @@ async function main() {
     process.stdout.write(`  ${d} listo\r`);
   }
   console.log('');
+
+  // ── Lo que la clínica hace alrededor de las atenciones ──
+  step('Avisos de refuerzo, portal del dueño, adenda y factura de compra');
+  block = await snapshot();
+  // Refuerzos que vencieron o vencen esta semana: a más de la mitad ya se les avisó por WhatsApp
+  const { rows: dueBoosters } = await db.query(
+    `SELECT id FROM immunizations WHERE clinic_id = $1 AND voided_at IS NULL
+       AND next_due_at BETWEEN $2::date - 45 AND $2::date + 7 ORDER BY id`,
+    [clinicId, today],
+  );
+  for (const v of dueBoosters)
+    if (chance(0.55))
+      await call(reception.cookie, 'POST', '/reminders/sent', {
+        kind: 'VACCINE',
+        targetId: v.id,
+      }).catch(() => undefined);
+  // El aviso salió unos días antes de la fecha del refuerzo, en horario de atención
+  const markReminderDates = () =>
+    db.query(
+      `UPDATE reminder_logs r
+        SET sent_at = LEAST(now(), ((i.next_due_at - 3) + time '10:00' + (r.id % 360) * interval '1 minute') AT TIME ZONE 'America/Lima')
+       FROM immunizations i
+      WHERE r.kind = 'VACCINE' AND r.target_id = i.id AND r.clinic_id = $1`,
+      [clinicId],
+    );
+  // Los dueños con portal lo abrieron alguna vez
+  await db.query(
+    `UPDATE portal_links SET view_count = (id % 9) + 1 WHERE clinic_id = $1`,
+    [clinicId],
+  );
+  // Una adenda: el dueño llamó días después de la consulta
+  const {
+    rows: [lastVisit],
+  } = await db.query(
+    `SELECT id, closed_at FROM visits
+      WHERE clinic_id = $1 AND status = 'CLOSED' AND attended_by_id = $2
+        AND closed_at < now() - interval '4 days'
+      ORDER BY closed_at DESC LIMIT 1`,
+    [clinicId, vet.id],
+  );
+  if (lastVisit) {
+    await call(vet.cookie, 'POST', `/visits/${lastVisit.id}/addenda`, {
+      text: 'Llamó la dueña: comió bien y ya no tiene fiebre. Se mantiene el tratamiento hasta completar los 7 días.',
+    });
+  }
+  // La foto de la factura de la última compra (Compras → detalle)
+  const {
+    rows: [lastPurchase],
+  } = await db.query(
+    `SELECT id FROM purchases WHERE clinic_id = $1 ORDER BY id DESC LIMIT 1`,
+    [clinicId],
+  );
+  if (lastPurchase) {
+    const invoice = new FormData();
+    invoice.append(
+      'file',
+      new Blob([invoicePng()], { type: 'image/png' }),
+      'factura-proveedor.png',
+    );
+    await call(
+      admin,
+      'POST',
+      `/inventory/purchases/${lastPurchase.id}/file`,
+      invoice,
+    ).catch(() => undefined);
+  }
+  // Todo esto pasó ayer al cierre (Actividad no lo muestra a una hora de hoy en que nadie trabajó);
+  // los avisos y la adenda van luego a su propia fecha
+  await shiftTo(block, day(-1), '18:30', '19:20');
+  await markReminderDates();
+  if (lastVisit)
+    await db.query(
+      `UPDATE visit_addenda SET created_at = $2::timestamptz + interval '1 day 2 hours' WHERE visit_id = $1`,
+      [lastVisit.id, lastVisit.closed_at],
+    );
 
   // ── Controlados, merma y conteo: el inventario muestra su ciclo completo ──
   step('Controlados, merma y conteo físico');

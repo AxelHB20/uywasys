@@ -4,6 +4,18 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Demo completa: un año de historia (25 nov)
+- **`scripts/demo-data.mjs`:** 364 días por defecto (antes 70; máximo 430). "12 meses" en Reportes tiene movimiento de punta a punta y sin un período anterior a medias.
+- La clínica **crece** (empieza con ~60 % del movimiento de hoy) y tiene **temporadas**: diciembre y verano con más grooming, invierno con más consultas.
+- Nuevo en la historia: anulaciones de cobros con nota de crédito, subidas de precio (consulta y corte de uñas), una practicante cuyo acceso se desactiva, portal del dueño enviado a ~45 clientes, avisos de refuerzo marcados como enviados por WhatsApp, una adenda y la foto de la factura de la última compra. Actividad → Revisar muestra anulaciones, precios y accesos.
+- **Compras de reposición según lo que se usó** (antes se compraba siempre lo mismo y el stock crecía sin fin): stock e inventario realistas, con stock bajo.
+- Números de factura de compra que no se repiten con historias largas.
+
+### Sistema de prueba en el mismo servidor (25 nov)
+- **Prueba sin tocar los datos reales:** servicios opcionales `prueba-db` y `prueba-api` en `docker-compose.server.yml` (perfil `prueba`, se encienden con `COMPOSE_PROFILES=prueba` en `.env`). Base de datos aparte, comprobantes simulados, sin correo ni respaldos, misma versión que la clínica.
+- **Caddy:** la configuración del sitio pasa a un bloque reutilizable (`import app <api>`) y carga sitios extra desde `~/uywa/sites/*.caddy` (vacía = solo la clínica). Nuevo `deploy/sites/prueba.caddy`.
+- Docs: `docs/DEPLOY.md` sección 10 y `docs/COMANDOS-SERVIDOR.txt` (comandos del servidor para el día a día). Procedimiento para archivar y liberar el Drive cuando se llene.
+
 ### ¿Olvidaste tu contraseña? por correo (25 nov)
 - **Pantalla de ingreso:** enlace "¿Olvidaste tu contraseña?" (solo si el servidor tiene correo). El usuario recibe un correo con un enlace que vale 30 minutos y sirve una vez; crea su clave nueva en `/recuperar`.
 - Siempre responde lo mismo exista o no el correo; máximo 3 pedidos por hora y cuenta, 5 por minuto por conexión. En la base solo se guarda el hash (`password_resets`).

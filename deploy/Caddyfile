@@ -1,11 +1,13 @@
 # Caddy: HTTPS con certificado gratuito (Let's Encrypt) que se renueva solo.
 # DOMAIN sale del archivo .env (por ejemplo demo.uywa.pe). Con DOMAIN=localhost sirve en tu PC.
-{$DOMAIN} {
+
+# La app completa (web + /api) apuntando a la API que se indica: "import app api:3000"
+(app) {
 	encode zstd gzip
 
 	# La API: el backend no se expone a internet, solo Caddy lo alcanza
 	handle /api/* {
-		reverse_proxy api:3000
+		reverse_proxy {args[0]}
 	}
 
 	# La app de Angular: cualquier ruta que no sea un archivo carga index.html
@@ -39,3 +41,11 @@
 		format console
 	}
 }
+
+{$DOMAIN} {
+	import app api:3000
+}
+
+# Sitios extra en el mismo servidor (por ejemplo el sistema de prueba): un archivo .caddy por sitio
+# en ~/uywa/sites del servidor. Si la carpeta está vacía no pasa nada.
+import /etc/caddy/sites/*.caddy

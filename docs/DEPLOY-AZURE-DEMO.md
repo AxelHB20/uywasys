@@ -101,7 +101,7 @@ Doble clic en **`deploy\demo-al-dia.bat`** y elige:
 
 - **1. Traer al día** (segundos, no borra nada): cola, consultorio, grooming, citas e internados con la
   hora de ahora. Córrelo media hora antes de la reunión.
-- **2. Rehacer desde cero** (1 a 3 minutos): clínica nueva con 70 días de historia; la anterior se
+- **2. Rehacer desde cero** (unos 5 minutos): clínica nueva con un año de historia; la anterior se
   archiva. Entra con `admin@huellitas.pe` / `Demo2026clave`.
 
 ## Mantenimiento

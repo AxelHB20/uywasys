@@ -1,0 +1,189 @@
+UYWA - GOMEZ MEDIC - COMANDOS DEL SERVIDOR
+===========================================
+Sistema:   https://gomezmedic.duckdns.org
+Prueba:    https://prueba-veterinario.duckdns.org (datos de demostracion, no reales)
+Servidor:  Contabo, IP 5.252.53.190, usuario uywa
+Correo de la clinica: gomezmedic.sac@gmail.com (envia correos y guarda respaldos en Drive)
+
+NUNCA pongas contrasenas, tokens ni el contenido del .env en capturas o chats.
+
+Como saber en que ventana estas:
+  PS C:\...>  o  PS H:\...>     = tu PC (PowerShell)
+  uywa@vmi3784237:~$            = el servidor
+
+
+1. ENTRAR AL SERVIDOR (desde la PowerShell de tu PC)
+----------------------------------------------------
+ssh uywa@5.252.53.190
+
+Salir del servidor:
+exit
+
+
+2. VER SI TODO ESTA FUNCIONANDO (en el servidor)
+------------------------------------------------
+Estado de los 4 servicios (deben decir Up / healthy):
+uywa ps
+
+Prueba rapida de la pagina (debe salir "status":"ok" y "database":"up"):
+curl -s https://gomezmedic.duckdns.org/api/health; echo
+
+Correo de recuperacion activo (debe salir "passwordReset":true):
+curl -s https://gomezmedic.duckdns.org/api/auth/options; echo
+
+Espacio en disco:
+df -h /
+
+
+3. VER ERRORES (en el servidor)
+-------------------------------
+Ultimas lineas del sistema:
+uywa logs api --tail 50
+
+Buscar un codigo de error que te mando la clinica (ej. 7F3A09C2):
+uywa logs api | grep 7F3A09C2
+
+Problemas con el envio de correos:
+uywa logs api --tail 100 | grep -i correo
+
+
+4. RESPALDOS (en el servidor)
+-----------------------------
+Se hacen solos todas las noches a las 3:15 a.m. al Drive de la clinica.
+
+Ver si corrio anoche:
+uywa logs backup --tail 20
+
+Hacer un respaldo ahora (SIEMPRE antes de actualizar):
+uywa exec backup backup.sh
+
+Ver la lista de respaldos guardados:
+uywa run --rm backup restore.sh lista
+
+Prueba de restauracion (no toca la base real; hacerla 1 vez al ano):
+uywa run --rm backup verify.sh
+
+RESTAURAR (solo ante un desastre, borra lo actual y pone el respaldo):
+uywa stop api
+uywa run --rm backup restore.sh latest SI-RESTAURAR
+uywa start api
+
+
+5. ACTUALIZAR A UNA VERSION NUEVA
+---------------------------------
+En tu PC (PowerShell, dentro de H:\uywasys), cambiando v0.4.2 por la version nueva:
+git add -A; git commit -m "Descripcion del cambio"; git tag v0.4.2
+git push; git push --tags
+powershell -ExecutionPolicy Bypass -File .\deploy\publicar-imagenes.ps1 -Owner axelhb20 -Tag v0.4.2
+
+Si cambio el archivo docker-compose.server.yml, subelo tambien:
+scp deploy\docker-compose.server.yml uywa@5.252.53.190:~/uywa/
+
+En el servidor:
+uywa exec backup backup.sh
+sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=v0.4.2/' ~/uywa/.env
+uywa pull && uywa up -d
+
+Comprobar:
+uywa ps
+curl -s https://gomezmedic.duckdns.org/api/health; echo
+
+
+6. REINICIAR
+------------
+Reiniciar todo el sistema (en el servidor):
+uywa restart
+
+Reiniciar solo la parte del sistema (api):
+uywa restart api
+
+Aplicar cambios del .env:
+uywa up -d
+
+
+7. CAMBIAR LA CONTRASENA DE APLICACION DEL GMAIL
+------------------------------------------------
+Hace falta si alguien cambia la contrasena del Gmail de la clinica (los correos dejan de salir).
+
+a) En https://myaccount.google.com/apppasswords (cuenta gomezmedic.sac):
+   borra las anteriores, crea una nueva llamada Uywa y copia las 16 letras.
+
+b) En el servidor, un comando a la vez:
+sed -i '/^SMTP_PASS=/d' ~/uywa/.env
+read -s -p Clave: P; echo; printf 'SMTP_PASS=%s\n' "${P// /}" >> ~/uywa/.env; unset P
+   (en "Clave:" haz clic derecho UNA vez y Enter; no se ve nada, es normal)
+
+c) Comprobar (debe salir 16) y aplicar:
+grep '^SMTP_PASS=' ~/uywa/.env | cut -d= -f2 | tr -d '\n' | wc -c
+uywa up -d
+
+
+8. SI EL DRIVE GRATIS (15 GB) SE LLENA
+--------------------------------------
+Ver cuanto lleva: drive.google.com con gomezmedic.sac, abajo a la izquierda.
+
+Opcion 1 (gratis): guardar menos historial, en el servidor:
+sed -i '/^BACKUP_KEEP_MONTHLY=/d' ~/uywa/.env
+echo 'BACKUP_KEEP_MONTHLY=3' >> ~/uywa/.env
+uywa up -d
+
+Opcion 2 (archivar): ver docs\DEPLOY.md, seccion 5.
+NUNCA cambies BACKUP_PASSWORD: sin ella los respaldos no se pueden abrir.
+
+
+9. SI LOS RESPALDOS FALLAN POR PERMISO DE GOOGLE DRIVE
+------------------------------------------------------
+En tu PC (PowerShell):
+rclone config reconnect gdrive:
+   (se abre el navegador: entra con gomezmedic.sac y acepta)
+scp "$env:APPDATA\rclone\rclone.conf" uywa@5.252.53.190:~/uywa/backup/rclone/
+
+En el servidor:
+uywa exec backup backup.sh
+
+
+10. SEGURIDAD DEL SERVIDOR
+--------------------------
+Actualizar Ubuntu (1 vez al mes):
+sudo apt update && sudo apt upgrade -y
+
+Si pide reiniciar el servidor:
+sudo reboot
+   (espera 2 minutos y vuelve a entrar; el sistema arranca solo)
+
+Ver si alguien intento entrar y fue bloqueado:
+sudo fail2ban-client status sshd
+
+
+11. LO QUE NO DEBE PERDERSE (guardar fuera del servidor)
+--------------------------------------------------------
+- BACKUP_PASSWORD (esta en ~/uywa/.env): sin ella no hay respaldo que sirva.
+- La llave SSH de tu PC (carpeta C:\Users\TU_USUARIO\.ssh).
+- Acceso al Gmail gomezmedic.sac (lo tiene Mitchel).
+- El archivo rclone.conf (esta en tu PC: %APPDATA%\rclone\rclone.conf).
+
+
+12. SISTEMA DE PRUEBA (prueba-veterinario.duckdns.org)
+------------------------------------------------------
+Base de datos aparte: lo que hagas ahi NO toca los datos de la clinica.
+Se entra con admin@huellitas.pe y la clave PRUEBA_DEMO_PASSWORD del .env:
+grep ^PRUEBA_DEMO_PASSWORD ~/uywa/.env
+
+Traer la demo a la fecha de hoy (antes de mostrarla):
+uywa exec -e DEMO_REFRESH=1 prueba-api node scripts/demo-data.mjs
+
+Rehacer la demo desde cero (si la desordenaron):
+uywa exec -e DEMO_RESET=1 prueba-api node scripts/demo-data.mjs
+
+Ver errores de la prueba:
+uywa logs prueba-api --tail 50
+
+Apagar la prueba (la clinica sigue igual):
+sed -i '/^COMPOSE_PROFILES=/d' ~/uywa/.env
+uywa stop prueba-api prueba-db
+
+Volver a encenderla:
+echo 'COMPOSE_PROFILES=prueba' >> ~/uywa/.env
+uywa up -d
+
+NUNCA pongas el token de Mifact de produccion en la prueba.
