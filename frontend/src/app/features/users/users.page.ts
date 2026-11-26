@@ -34,6 +34,10 @@ const ROLES: Role[] = ['ADMIN', 'VET', 'RECEPTION', 'GROOMER', 'CASHIER'];
     ModalComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(document:click)': 'onDocClick($event)',
+    '(document:keydown.escape)': 'closeMenu()',
+  },
   templateUrl: './users.page.html',
 })
 export class UsersPage implements OnInit {
@@ -193,6 +197,39 @@ export class UsersPage implements OnInit {
 
   protected ask(kind: Confirmation['kind'], member: TeamMember): void {
     this.confirmation.set({ kind, member });
+  }
+
+  // ── Menú ⋯ de cada usuario (Restablecer contraseña · Desactivar) ──
+  protected readonly menuFor = signal<number | null>(null);
+  /** Cerca del borde de abajo, el menú se abre hacia arriba */
+  protected readonly menuUp = signal(false);
+  private menuButton: HTMLElement | null = null;
+
+  protected toggleMenu(id: number, event: Event): void {
+    if (this.menuFor() === id) {
+      this.menuFor.set(null);
+      return;
+    }
+    this.menuButton = event.currentTarget as HTMLElement;
+    this.menuUp.set(this.menuButton.getBoundingClientRect().bottom > window.innerHeight - 160);
+    this.menuFor.set(id);
+  }
+
+  protected pick(kind: Confirmation['kind'], member: TeamMember): void {
+    this.menuFor.set(null);
+    this.ask(kind, member);
+  }
+
+  protected closeMenu(): void {
+    if (this.menuFor() === null) return;
+    this.menuFor.set(null);
+    this.menuButton?.focus(); // el foco vuelve al botón ⋯
+  }
+
+  protected onDocClick(event: Event): void {
+    if (this.menuFor() === null) return;
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest('[data-user-menu]')) this.menuFor.set(null);
   }
 
   protected confirm(): void {

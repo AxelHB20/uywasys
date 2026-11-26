@@ -257,7 +257,7 @@ const clock = new Intl.DateTimeFormat('es-PE', {
                         [attr.aria-label]="'Avisar por WhatsApp a ' + r.client.name"
                       >
                         <app-icon name="message-circle" class="size-4" />
-                        {{ mark ? 'Otra vez' : 'Avisar' }}
+                        {{ mark ? 'Avisar de nuevo' : 'Avisar' }}
                       </button>
                     }
                     @if (r.agenda; as params) {

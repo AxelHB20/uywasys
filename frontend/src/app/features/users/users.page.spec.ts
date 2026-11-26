@@ -85,6 +85,23 @@ describe('UsersPage', () => {
     expect(rows[1].textContent).toContain('CMVP 4521');
     expect(rows[2].textContent).toContain('Inactivo');
     expect(rows[2].textContent).toContain('Activar');
+    // Desactivar ya no está a la vista en cada fila: va en ⋯
+    expect(rows[1].textContent).not.toContain('Desactivar');
+    expect(rows[0].querySelector('[aria-label^="Más acciones"]')).toBeNull();
+  });
+
+  it('el menú ⋯ ofrece Restablecer contraseña y Desactivar, y se cierra con Escape', async () => {
+    const { fixture, el } = await render();
+    const row = el.querySelectorAll('tbody tr')[1];
+    row.querySelector<HTMLButtonElement>('[aria-label^="Más acciones"]')!.click();
+    fixture.detectChanges();
+    const items = Array.from(row.querySelectorAll('[role="menuitem"]')).map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(items).toEqual(['Restablecer contraseña', 'Desactivar usuario…']);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(row.querySelector('[role="menu"]')).toBeNull();
   });
 
   it('exige colegiatura para veterinarios y muestra la clave temporal al crear', async () => {
@@ -140,8 +157,10 @@ describe('UsersPage', () => {
   it('desactiva a un usuario después de confirmar', async () => {
     const { fixture, el } = await render();
     const row = el.querySelectorAll('tbody tr')[1];
+    row.querySelector<HTMLButtonElement>('[aria-label^="Más acciones"]')!.click();
+    fixture.detectChanges();
     (
-      Array.from(row.querySelectorAll('button')).find((b) =>
+      Array.from(row.querySelectorAll('[role="menuitem"]')).find((b) =>
         b.textContent?.includes('Desactivar'),
       ) as HTMLButtonElement
     ).click();

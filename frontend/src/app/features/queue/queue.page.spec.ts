@@ -225,35 +225,12 @@ describe('QueuePage (cola de hoy)', () => {
     expect(el.textContent).toContain('por Ana');
   });
 
-  it('atendido sin movilidad: "Llevar a casa" agrega la entrega con su precio', () => {
-    const fixture = render('RECEPTION', [
+  it('terminados sin movilidad: sin botón "Llevar a casa" (la lista queda simple)', () => {
+    const el: HTMLElement = render('RECEPTION', [
       item(1, { status: 'DONE', finishedAt: '2026-10-27T15:00:00Z' }),
-    ]);
-    const el: HTMLElement = fixture.nativeElement;
-    el.querySelector<HTMLButtonElement>('[aria-label="Llevar a Mascota 1 a su casa"]')!.click();
-    http.expectOne('/api/clients/100').flush({ address: 'Av. Lima 123', district: null });
-    http.expectOne('/api/clients/100/transport-price').flush({ price: 10 });
-    fixture.detectChanges();
-    expect(el.querySelector<HTMLInputElement>('#qm-address')!.value).toBe('Av. Lima 123');
-    expect(el.querySelector<HTMLInputElement>('#qm-price')!.value).toBe('10');
-    el.querySelector<HTMLButtonElement>('button[form="move-form"]')!.click();
-    const req = http.expectOne({ method: 'PATCH', url: '/api/queue/1' });
-    expect(req.request.body).toEqual({
-      transport: 'DROPOFF',
-      transportAddress: 'Av. Lima 123',
-      transportPrice: 10,
-    });
-    req.flush(
-      item(1, {
-        status: 'DONE',
-        transport: 'DROPOFF',
-        transportAddress: 'Av. Lima 123',
-        transportPrice: 10,
-        homePending: true,
-      }),
-    );
-    fixture.detectChanges();
-    expect(el.textContent).toContain('Falta llevarlo a casa');
+    ]).nativeElement;
+    expect(el.querySelector('[aria-label="Llevar a Mascota 1 a su casa"]')).toBeNull();
+    expect(el.textContent).not.toContain('Llevar a casa');
   });
 
   it('sacar de la cola con movilidad: pregunta si se cobra igual', () => {

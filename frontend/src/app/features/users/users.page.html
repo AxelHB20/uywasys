@@ -5,7 +5,7 @@
       <p class="mt-1 text-slate-600">
         Quiénes ingresan al sistema y qué puede hacer cada uno.
         @if (!loading() && !loadError()) {
-          <span class="text-slate-500"
+          <span class="font-medium text-slate-700"
             >{{ activeCount() }} {{ activeCount() === 1 ? 'activo' : 'activos' }}</span
           >
         }
@@ -33,22 +33,25 @@
     </div>
   } @else {
     <!-- Escritorio: tabla -->
-    <div class="card hidden overflow-hidden md:block">
+    <!-- Sin overflow-hidden: el menú ⋯ de la última fila no se corta -->
+    <div class="card hidden md:block">
       <table class="w-full text-left text-sm">
         <thead
           class="border-b border-slate-100 bg-slate-50/70 text-xs font-medium uppercase tracking-wide text-slate-500"
         >
           <tr>
-            <th scope="col" class="px-5 py-3">Nombre</th>
+            <th scope="col" class="rounded-tl-2xl px-5 py-3">Nombre</th>
             <th scope="col" class="px-5 py-3">Rol</th>
             <th scope="col" class="px-5 py-3">Estado</th>
             <th scope="col" class="px-5 py-3">Último ingreso</th>
-            <th scope="col" class="px-5 py-3"><span class="sr-only">Acciones</span></th>
+            <th scope="col" class="rounded-tr-2xl px-5 py-3">
+              <span class="sr-only">Acciones</span>
+            </th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           @for (member of members(); track member.id) {
-            <tr [class.opacity-60]="!member.active" class="transition-colors hover:bg-slate-50/60">
+            <tr [class.bg-slate-50]="!member.active" class="transition-colors hover:bg-slate-50/60">
               <td class="px-5 py-4">
                 <div class="flex items-center gap-3">
                   <span
@@ -97,7 +100,7 @@
     <!-- Móvil: tarjetas -->
     <ul class="space-y-3 md:hidden">
       @for (member of members(); track member.id) {
-        <li class="card p-4" [class.opacity-60]="!member.active">
+        <li class="card p-4" [class.bg-slate-50]="!member.active">
           <div class="flex items-start gap-3">
             <span
               class="grid size-11 shrink-0 place-items-center rounded-full bg-anil-100 text-sm font-semibold text-anil-800"
@@ -150,22 +153,48 @@
     </button>
     @if (member.id !== myId()) {
       @if (member.active) {
-        <button
-          type="button"
-          class="btn btn-ghost size-11 px-0 lg:size-10"
-          (click)="ask('reset', member)"
-          [attr.aria-label]="'Restablecer la contraseña de ' + member.fullName"
-          title="Restablecer contraseña"
-        >
-          <app-icon name="key-round" class="size-4" />
-        </button>
-        <button
-          type="button"
-          class="btn btn-ghost h-11 px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 lg:h-10"
-          (click)="ask('deactivate', member)"
-        >
-          Desactivar
-        </button>
+        <!-- Restablecer y Desactivar se usan poco: van en ⋯ (Desactivar en rojo, pide confirmación) -->
+        <div class="relative" data-user-menu>
+          <button
+            type="button"
+            class="btn btn-ghost size-11 px-0 lg:size-10"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="menuFor() === member.id"
+            [attr.aria-label]="'Más acciones para ' + member.fullName"
+            title="Más acciones"
+            (click)="toggleMenu(member.id, $event)"
+          >
+            <app-icon name="more-horizontal" class="size-4" />
+          </button>
+          @if (menuFor() === member.id) {
+            <div
+              class="panel-in absolute right-0 z-30 w-60 rounded-xl bg-white p-1.5 text-left shadow-xl ring-1 ring-slate-900/5"
+              [class]="
+                menuUp()
+                  ? 'bottom-full mb-1.5 origin-bottom-right'
+                  : 'top-full mt-1.5 origin-top-right'
+              "
+              role="menu"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm text-slate-800 hover:bg-slate-50"
+                (click)="pick('reset', member)"
+              >
+                <app-icon name="key-round" class="size-4 text-slate-500" /> Restablecer contraseña
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="mt-1 flex min-h-11 w-full items-center gap-2.5 rounded-lg border-t border-slate-100 px-3 text-left text-sm text-rose-700 hover:bg-rose-50"
+                (click)="pick('deactivate', member)"
+              >
+                <app-icon name="lock" class="size-4" /> Desactivar usuario…
+              </button>
+            </div>
+          }
+        </div>
       } @else {
         <button
           type="button"

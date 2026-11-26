@@ -349,8 +349,7 @@ export class QueuePage {
 
   protected openMove(item: QueueItem): void {
     this.moveForm.reset({
-      // "Llevar a casa" desde Terminados propone la entrega
-      transport: item.transport === 'NONE' && item.status === 'DONE' ? 'DROPOFF' : item.transport,
+      transport: item.transport,
       transportAddress: item.transportAddress ?? '',
       transportPrice: item.transportPrice,
     });

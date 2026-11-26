@@ -197,21 +197,8 @@
                   >{{ closedSummary(item) }}</app-badge
                 >
               }
-              @if (
-                canEdit() &&
-                item.status === 'DONE' &&
-                item.type === 'CONSULTATION' &&
-                item.transport === 'NONE'
-              ) {
-                <button
-                  type="button"
-                  class="btn btn-ghost h-10 shrink-0 px-3 text-sm"
-                  [attr.aria-label]="'Llevar a ' + item.pet.name + ' a su casa'"
-                  (click)="openMove(item)"
-                >
-                  Llevar a casa
-                </button>
-              }
+              <!-- La movilidad se pone al agregar a la cola o en la tarjeta (⋯): en Terminados ya no,
+                   para que la lista sea simple (antes "Llevar a casa" en cada fila confundía) -->
               @if (item.homePending && canEdit()) {
                 <button
                   type="button"

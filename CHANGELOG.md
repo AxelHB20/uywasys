@@ -4,6 +4,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Usuarios y Refuerzos: acciones más claras (26 nov)
+- **Usuarios:** "Desactivar" ya no está a la vista en cada fila. Restablecer contraseña y Desactivar usuario… (rojo, con confirmación) van en el menú ⋯; queda a la vista Editar (y Activar en los inactivos). El menú de la última fila ya no se corta.
+- **Usuarios inactivos:** fondo gris en lugar de atenuar la fila (el texto no pasaba contraste). "N activos" con contraste 4.5:1 (axe: 0 fallas).
+- **Refuerzos:** "Otra vez" → "Avisar de nuevo".
+- Pruebas: menú ⋯ (opciones y Escape), desactivar desde el menú.
+
 ### Sistema de prueba: probar una versión antes que la clínica (26 nov)
 - **`PRUEBA_IMAGE_TAG`** en `.env`: la prueba puede ir una versión adelante (vacío = la misma que la clínica). Nuevo servicio **`prueba-web`** (su propia web), así la prueba usa su propia pantalla y su propia API.
 - **Red aparte para la prueba** (`prueba-db`, `prueba-api`, `prueba-web`): no alcanza la base ni la API de la clínica. El web principal está en las dos redes y sirve la prueba por su dominio.
@@ -24,6 +30,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 - **"Continuar atención"** sin el hueco entre palabras.
 - **Recepción** ya no ve "Continuar atención" (le daba error: las consultas las abre el médico); ve "Con Dra. …".
 - **"Abierta hace N h"** en ámbar cuando una atención pasa de 2 horas.
+- **Terminados sin "Llevar a casa":** el botón en cada fila parecía que ya tenía movilidad. La movilidad se pone al agregar a la cola o en la tarjeta (⋯ → Movilidad) mientras está en la cola.
 - **"Esperar" → "Pasar a espera"**, que dice lo que hace. En "En espera", recepción ya no ve el texto "Lo llama el veterinario" (no aportaba): solo el menú ⋯.
 - **Celular:** la página ya no se desliza de costado (6 px de más); pestaña "Listos" → "Terminados"; ⋯ de 44 px.
 - **Accesibilidad:** fecha, ayudas de columna y contadores de pestaña con contraste 4.5:1 (axe: 0 fallas en PC, tablet y celular).

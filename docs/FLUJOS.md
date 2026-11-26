@@ -341,8 +341,9 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   qué hora). Si quedó **internado**, la hoja de internamiento lo recuerda y se marca al darle de alta.
 - **Lo trajo y ya no puede volver ("llévenlo"):** la movilidad se agrega o cambia después. En
   grooming, en el detalle del tablero ("Agregar"/"Cambiar", recepción y administrador) mientras no
-  se entregue. En consulta, con el ícono de movilidad de la tarjeta de la cola o, ya atendido,
-  con **"Llevar a casa"** en Terminados (propone "Lo llevamos"). La línea entra a la cuenta igual.
+  se entregue. En consulta, desde la tarjeta de la cola (⋯ → Movilidad) mientras no se termine. En
+  Terminados ya no se agrega (26 nov: el botón "Llevar a casa" en cada fila parecía un estado y
+  confundía). La línea entra a la cuenta y se cobra en Caja.
 - WhatsApp de "listo" ya dice "En breve salimos a dejarlo(a)" y el total incluye la movilidad.
 
 ### Grooming: tablero más ágil (26 nov)
@@ -371,7 +372,13 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
 - El usuario escribe su correo → recibe un enlace (`/recuperar?token=…`) que vale **30 minutos** y sirve **una sola vez**; máximo 3 pedidos por hora y cuenta. La pantalla responde lo mismo exista o no el correo.
 - Al crear la clave nueva: se desbloquea la cuenta, deja de ser temporal y se cierran sus sesiones en otros equipos. Queda en Actividad ("Pidió recuperar…", "Creó una contraseña nueva…").
 - Solo cuentas activas de clínicas activas. En la base se guarda solo el hash del enlace.
-- Respaldo si el correo no llega: el otro administrador (o soporte) le restablece la clave desde Usuarios.
+- Respaldo si el correo no llega: el otro administrador (o soporte) le restablece la clave desde Usuarios (⋯ → Restablecer contraseña).
+
+### Usuarios y Refuerzos: acciones de cada fila (26 nov)
+- **Usuarios:** en cada fila queda a la vista solo **Editar** (lápiz). **Restablecer contraseña** y **Desactivar usuario…** (en rojo, pide confirmación) van en el menú ⋯; cerca del borde de abajo el menú se abre hacia arriba; Escape lo cierra y el foco vuelve al ⋯. Un usuario inactivo muestra **Activar** a la vista. Uno mismo no tiene ⋯ (no puede desactivarse).
+- Usuario inactivo: fila con fondo gris y etiqueta "Inactivo" (antes se atenuaba toda la fila y el texto no se leía bien).
+- **Refuerzos:** tras avisar, el botón dice **"Avisar de nuevo"** (antes "Otra vez").
+- Regla para todas las listas: un botón lleva verbo y se ve como botón; un estado es una etiqueta de color. En la fila solo la acción principal; lo de poco uso va en ⋯ o en el detalle.
 
 ### Actividad (25 nov)
 - Solo el administrador. Arriba, **Para revisar · últimos 7 días** por grupo (cierres con diferencia, anulaciones, precios, stock, accesos fallidos, facturación, usuarios o datos); cada tarjeta filtra.
