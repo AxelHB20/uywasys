@@ -345,6 +345,27 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   con **"Llevar a casa"** en Terminados (propone "Lo llevamos"). La línea entra a la cuenta igual.
 - WhatsApp de "listo" ya dice "En breve salimos a dejarlo(a)" y el total incluye la movilidad.
 
+### Grooming: tablero más ágil (26 nov)
+- **"Pasar a" salta el paso que no se pidió:** solo baño → de Baño a **Listo**; solo corte/uñas/oídos →
+  de En espera a **Corte**. Se decide por el nombre del servicio (con "baño" = Baño; lo demás = Corte;
+  la movilidad no cuenta). Arrastrando se puede ir a cualquier paso hacia adelante, como antes.
+- **Nuevo ingreso:** el cursor ya está en el buscador de la mascota.
+- **Tablet acostada (1024–1279 px):** las columnas vacías quedan como franjas delgadas; al arrastrar una
+  tarjeta vuelven a su ancho para soltarla. Desde 1280 px, 4 columnas iguales.
+- Tarjeta: raza y **dueño en su propia línea**. Botones de 44 px en tablet y celular.
+- Detalle: solo los pasos posibles; abajo **Cancelar servicio** (rojo, a la izquierda) y a la derecha
+  Constancia, Ver atención y Entregar, sin partirse.
+- Pendiente (Excel): si el groomer ve los montos del día.
+
+### Cola de hoy: tarjetas más simples (26 nov)
+- Cada tarjeta: botón principal (**Atender** / **Ingreso** / **Continuar atención**) + **Pasar a espera**
+  (antes "Esperar") + menú **⋯** con Marcar/Quitar urgencia, Movilidad (consulta) y Sacar de la cola…
+  (en rojo, pide confirmar y si se cobra la movilidad). La marca "Urgente" sigue a la vista.
+- **Recepción** no abre consultas: en "En atención" ve **"Con Dra. …"** en vez de "Continuar atención".
+- En atención **más de 2 horas**: etiqueta ámbar "Abierta hace N h" (cerrarla o pasarla a caja).
+- Celular: la pestaña de terminados se llama **Terminados**; el botón ⋯ mide 44 px.
+- Pendiente (Excel de secciones por usuario): si el groomer deja de ver "Cola de hoy".
+
 ### ¿Olvidaste tu contraseña? (25 nov)
 - En la pantalla de ingreso, si el servidor tiene correo configurado (`SMTP_USER`/`SMTP_PASS`, Gmail de la clínica con contraseña de aplicación). Sin correo, sigue el texto "Pídele al administrador…".
 - El usuario escribe su correo → recibe un enlace (`/recuperar?token=…`) que vale **30 minutos** y sirve **una sola vez**; máximo 3 pedidos por hora y cuenta. La pantalla responde lo mismo exista o no el correo.

@@ -1,4 +1,5 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -619,6 +620,10 @@ export class GroomingCheckInPage {
 
   constructor() {
     this.form.controls.size.valueChanges.subscribe((s) => this.sizeValue.set(s));
+    // El cursor ya en el buscador: se escribe apenas se abre (si no viene una mascota elegida)
+    afterNextRender(() => {
+      if (!Number(this.petId())) document.getElementById('gr-pet')?.focus();
+    });
     effect(() => {
       const id = Number(this.petId());
       if (id) untracked(() => this.loadPet(id));

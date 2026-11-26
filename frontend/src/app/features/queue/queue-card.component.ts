@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { SPECIES_LABELS } from '../../core/services/clients.models';
 import { TRANSPORT_LABELS } from '../../core/services/grooming.models';
@@ -10,11 +19,18 @@ import { formatPhone } from '../../shared/utils/peru';
 import { SPECIES_ICONS, petCode } from '../../shared/utils/records';
 import { clockTime, minutesBetween, durationLabel } from './queue-time';
 
+/** Más de 2 horas en atención: probablemente se olvidó cerrar o cobrar */
+const LONG_OPEN_MINUTES = 120;
+
 /** Tarjeta de un paciente en la cola, con las acciones que corresponden a su estado. */
 @Component({
   selector: 'app-queue-card',
   imports: [RouterLink, IconComponent, BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(document:click)': 'onDocClick($event)',
+    '(document:keydown.escape)': 'menuOpen.set(false)',
+  },
   template: `
     @let it = item();
     <article
@@ -75,11 +91,23 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
           </span>
         </p>
       }
-      <p class="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+      <p class="mt-2 flex items-center gap-1.5 text-xs text-slate-600">
         <app-icon name="clock" class="size-3.5 shrink-0" />
-        <span class="tabular-nums">{{ waitText() }}</span>
+        @if (longOpen()) {
+          <!-- Abierta hace mucho: que alguien la cierre o la pase a caja (igual que Atenciones) -->
+          <span
+            class="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 tabular-nums"
+            >{{ waitText() }}</span
+          >
+        } @else {
+          <span class="tabular-nums">{{ waitText() }}</span>
+        }
       </p>
-      @if (it.attendedBy && it.status === 'IN_PROGRESS') {
+      @if (
+        it.attendedBy &&
+        it.status === 'IN_PROGRESS' &&
+        !(it.visit?.status === 'OPEN' && !opensVisit())
+      ) {
         <p class="mt-1 truncate pl-5 text-xs text-slate-500">
           Atiende {{ it.attendedBy.fullName }}
         </p>
@@ -92,7 +120,7 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
               @if (it.type === 'GROOMING' || canAttend()) {
                 <button
                   type="button"
-                  class="btn btn-primary h-10 flex-1 px-3 whitespace-nowrap"
+                  class="btn btn-primary h-10 min-w-0 flex-1 px-3 whitespace-nowrap"
                   [disabled]="busy()"
                   (click)="attend.emit()"
                 >
@@ -105,12 +133,12 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
               }
               <button
                 type="button"
-                class="btn btn-secondary h-10 flex-1 px-3 whitespace-nowrap"
+                class="btn btn-secondary h-10 min-w-0 flex-1 px-3 whitespace-nowrap"
                 [disabled]="busy()"
                 (click)="move.emit('WAITING')"
-                title="Pasar a la sala de espera"
+                title="Pasar a la sala de espera: listo para que lo llamen"
               >
-                Esperar
+                Pasar a espera
               </button>
             }
             @case ('WAITING') {
@@ -134,13 +162,22 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
               }
             }
             @case ('IN_PROGRESS') {
-              @if (it.visit?.status === 'OPEN') {
-                <a [routerLink]="['/atenciones', it.visit!.id]" class="btn btn-primary h-10 flex-1">
-                  <app-icon name="stethoscope" class="size-4" /> Continuar<span
-                    class="max-xl:sr-only"
-                    >&nbsp;atención</span
-                  >
+              @if (it.visit?.status === 'OPEN' && opensVisit()) {
+                <a
+                  [routerLink]="['/atenciones', it.visit!.id]"
+                  class="btn btn-primary h-10 min-w-0 flex-1 px-3 whitespace-nowrap"
+                >
+                  <app-icon name="stethoscope" class="size-4" />
+                  <span>Continuar<span class="max-xl:sr-only"> atención</span></span>
                 </a>
+              } @else if (it.visit?.status === 'OPEN') {
+                <!-- Recepción no abre consultas: solo ve quién la atiende -->
+                <p class="flex h-10 min-w-0 flex-1 items-center gap-2 text-sm text-slate-700">
+                  <app-icon name="stethoscope" class="size-4 shrink-0 text-slate-500" />
+                  <span class="truncate"
+                    >Con {{ it.attendedBy?.fullName ?? 'el veterinario' }}</span
+                  >
+                </p>
               } @else {
                 <button
                   type="button"
@@ -161,48 +198,60 @@ import { clockTime, minutesBetween, durationLabel } from './queue-time';
               }
             }
           }
-          <button
-            type="button"
-            class="btn btn-ghost size-10 shrink-0 px-0"
-            [class]="it.urgent ? 'text-rose-700' : ''"
-            [disabled]="busy()"
-            (click)="toggleUrgent.emit()"
-            [attr.aria-label]="
-              it.urgent
-                ? 'Quitar urgencia a ' + it.pet.name
-                : 'Marcar a ' + it.pet.name + ' como urgente'
-            "
-            [attr.aria-pressed]="it.urgent"
-            [title]="it.urgent ? 'Quitar urgencia' : 'Marcar urgente'"
-          >
-            <app-icon name="alert" class="size-4" />
-          </button>
-          <!-- Movilidad (consulta): el grooming la cambia en su tablero -->
-          @if (it.type === 'CONSULTATION') {
+          <!-- Lo de menos uso va en ⋯: así la fila cabe en la columna (antes la × se salía) -->
+          <div class="relative shrink-0" data-queue-menu>
             <button
               type="button"
-              class="btn btn-ghost size-10 shrink-0 px-0"
-              [class]="it.transport !== 'NONE' ? 'text-anil-700' : ''"
+              class="btn btn-secondary size-10 px-0 max-lg:size-11"
               [disabled]="busy()"
-              (click)="editMove.emit()"
-              [attr.aria-label]="'Movilidad de ' + it.pet.name"
-              title="Movilidad (recojo o entrega)"
+              [attr.aria-expanded]="menuOpen()"
+              [attr.aria-controls]="'queue-menu-' + it.id"
+              [attr.aria-label]="'Más acciones para ' + it.pet.name"
+              (click)="menuOpen.set(!menuOpen())"
             >
-              <app-icon name="map-pin" class="size-4" />
+              <app-icon name="more-horizontal" class="size-4" />
             </button>
-          }
-          @if (it.status !== 'IN_PROGRESS') {
-            <button
-              type="button"
-              class="btn btn-ghost size-10 shrink-0 px-0 hover:bg-rose-50 hover:text-rose-700"
-              [disabled]="busy()"
-              (click)="cancel.emit()"
-              [attr.aria-label]="'Sacar a ' + it.pet.name + ' de la cola'"
-              title="Sacar de la cola"
-            >
-              <app-icon name="x" class="size-4" />
-            </button>
-          }
+            @if (menuOpen()) {
+              <div
+                [id]="'queue-menu-' + it.id"
+                class="panel-in absolute top-full right-0 z-30 mt-2 w-60 origin-top-right rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-slate-900/5"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm hover:bg-slate-50"
+                  [class]="it.urgent ? 'text-rose-700' : 'text-slate-800'"
+                  (click)="pick(toggleUrgent)"
+                >
+                  <app-icon name="alert" class="size-4" />
+                  {{ it.urgent ? 'Quitar urgencia' : 'Marcar urgente' }}
+                </button>
+                <!-- Movilidad (consulta): el grooming la cambia en su tablero -->
+                @if (it.type === 'CONSULTATION') {
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm text-slate-800 hover:bg-slate-50"
+                    (click)="pick(editMove)"
+                  >
+                    <app-icon name="map-pin" class="size-4 text-slate-500" />
+                    Movilidad (recojo o entrega)
+                  </button>
+                }
+                @if (it.status !== 'IN_PROGRESS') {
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="mt-1 flex min-h-11 w-full items-center gap-2.5 rounded-lg border-t border-slate-100 px-3 text-left text-sm text-rose-700 hover:bg-rose-50"
+                    (click)="pick(cancel)"
+                  >
+                    <app-icon name="x" class="size-4" /> Sacar de la cola…
+                  </button>
+                }
+              </div>
+            }
+          </div>
         </div>
       }
       <span class="sr-only">{{ petCode(it.pet.number) }}</span>
@@ -225,6 +274,33 @@ export class QueueCardComponent {
   readonly editMove = output<void>();
 
   protected readonly petCode = petCode;
+  private readonly host = inject(ElementRef<HTMLElement>);
+  protected readonly menuOpen = signal(false);
+  /** Grooming lo abre cualquiera que trabaje la cola; las consultas solo quien atiende */
+  protected readonly opensVisit = computed(
+    () => this.item().type === 'GROOMING' || this.canAttend(),
+  );
+  /** En atención hace más de 2 horas: se avisa en ámbar */
+  protected readonly longOpen = computed(() => {
+    const it = this.item();
+    return (
+      it.status === 'IN_PROGRESS' &&
+      !!it.startedAt &&
+      minutesBetween(it.startedAt, this.now()) > LONG_OPEN_MINUTES
+    );
+  });
+
+  protected pick(action: { emit: () => void }): void {
+    this.menuOpen.set(false);
+    action.emit();
+  }
+
+  protected onDocClick(event: Event): void {
+    if (!this.menuOpen()) return;
+    const target = event.target as HTMLElement | null;
+    const menu = this.host.nativeElement.querySelector('[data-queue-menu]');
+    if (!menu?.contains(target)) this.menuOpen.set(false);
+  }
   protected readonly speciesIcon = computed(() => SPECIES_ICONS[this.item().pet.species]);
   protected readonly speciesLabel = computed(() => SPECIES_LABELS[this.item().pet.species]);
   protected readonly phone = computed(() => formatPhone(this.item().client.phone));
@@ -237,7 +313,9 @@ export class QueueCardComponent {
   protected readonly waitText = computed(() => {
     const it = this.item();
     if (it.status === 'IN_PROGRESS' && it.startedAt)
-      return `En atención hace ${durationLabel(minutesBetween(it.startedAt, this.now()))}`;
+      return this.longOpen()
+        ? `Abierta hace ${durationLabel(minutesBetween(it.startedAt, this.now()))}`
+        : `En atención hace ${durationLabel(minutesBetween(it.startedAt, this.now()))}`;
     return `Espera ${durationLabel(minutesBetween(it.arrivedAt, this.now()))}`;
   });
 }

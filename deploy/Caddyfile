@@ -1,6 +1,14 @@
 # Caddy: HTTPS con certificado gratuito (Let's Encrypt) que se renueva solo.
 # DOMAIN sale del archivo .env (por ejemplo demo.uywa.pe). Con DOMAIN=localhost sirve en tu PC.
 
+# A quién se le cree la IP real del visitante (cabecera X-Forwarded-For). Por defecto a nadie de
+# afuera; el web del sistema de prueba, que va detrás del web principal, usa private_ranges.
+{
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+	}
+}
+
 # La app completa (web + /api) apuntando a la API que se indica: "import app api:3000"
 (app) {
 	encode zstd gzip
@@ -43,7 +51,7 @@
 }
 
 {$DOMAIN} {
-	import app api:3000
+	import app {$API_UPSTREAM:api:3000}
 }
 
 # Sitios extra en el mismo servidor (por ejemplo el sistema de prueba): un archivo .caddy por sitio

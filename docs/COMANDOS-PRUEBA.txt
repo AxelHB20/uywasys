@@ -1,0 +1,153 @@
+UYWA - SISTEMA DE PRUEBA (prueba-veterinario.duckdns.org)
+=========================================================
+Base de datos APARTE: nada de lo que se haga aqui toca a Gomez Medic.
+Sin respaldos (los datos son inventados), sin correo, comprobantes de prueba.
+
+Ventanas:
+  PC        = PowerShell de Windows   (PS H:\uywasys>)
+  SERVIDOR  = ssh uywa@5.252.53.190   (uywa@vmi3784237:~$)
+
+NUNCA pongas aqui el token de Mifact de PRODUCCION de Gomez Medic.
+
+
+A. INSTALAR LA PRUEBA DESDE CERO (ya hecho el 25/11/2026)
+---------------------------------------------------------
+A1. SERVIDOR - carpeta de sitios (antes de copiar):
+mkdir -p ~/uywa/sites
+
+A2. PC - copiar los 2 archivos:
+cd H:\uywasys
+scp deploy\sites\prueba.caddy uywa@5.252.53.190:~/uywa/sites/
+scp deploy\docker-compose.server.yml uywa@5.252.53.190:~/uywa/
+
+A3. SERVIDOR - respaldo de la clinica real antes de tocar nada:
+uywa exec backup backup.sh
+
+A4. SERVIDOR - configuracion (cambia Huellitas2026 por la clave de la demo;
+    pega desde "cat" hasta "EOF"):
+cat >> ~/uywa/.env <<FIN
+COMPOSE_PROFILES=prueba
+PRUEBA_DOMAIN=prueba-veterinario.duckdns.org
+PRUEBA_POSTGRES_PASSWORD=$(openssl rand -hex 24)
+PRUEBA_JWT_SECRET=$(openssl rand -hex 48)
+PRUEBA_DEMO_PASSWORD=Huellitas2026
+FIN
+
+Comprobar (debe salir 5):
+grep -c '^PRUEBA_\|^COMPOSE_PROFILES' ~/uywa/.env
+
+A5. SERVIDOR - arrancar (deben salir prueba-db y prueba-api):
+uywa pull && uywa up -d
+
+A6. SERVIDOR - cargar la demo (un ano de historia, unos 5 minutos):
+uywa exec prueba-api node scripts/demo-data.mjs
+
+
+B. ENTRAR
+---------
+https://prueba-veterinario.duckdns.org
+Administrador de la demo: admin@huellitas.pe
+Otros usuarios (misma clave): vet@huellitas.pe, vet2@huellitas.pe,
+  reception@huellitas.pe, cashier@huellitas.pe, groomer@huellitas.pe
+
+Ver la clave de la demo (SERVIDOR):
+grep ^PRUEBA_DEMO_PASSWORD ~/uywa/.env
+
+
+C. CUENTA DE SOPORTE EN LA PRUEBA
+---------------------------------
+C1. Navegador: entra como admin@huellitas.pe -> Usuarios -> Nuevo usuario
+    Nombre: Soporte Uywa | Correo: axelhuatuco@gmail.com | Rol: Administrador
+    Copia la contrasena temporal.
+
+C2. SERVIDOR - marcarla como soporte (debe decir UPDATE 1):
+uywa exec prueba-db psql -U uywasys -d uywasys -c "UPDATE users SET is_support = true WHERE email = 'axelhuatuco@gmail.com';"
+
+C3. Navegador: cierra sesion, entra con axelhuatuco@gmail.com y la temporal,
+    y crea una clave propia (distinta a la del sistema real).
+
+
+D. FACTURACION DE PRUEBA CON MIFACT (ambiente demo de Mifact)
+-------------------------------------------------------------
+Datos PUBLICOS de prueba de Mifact (no son de Gomez Medic):
+  RUC:   20100100100
+  Token: gN8zNRBV+/FVxTLwdaZx0w==
+
+D1. SERVIDOR - RUC de prueba (la pantalla no lo acepta; debe decir UPDATE 1):
+uywa exec prueba-db psql -U uywasys -d uywasys -c "UPDATE clinics SET ruc = '20100100100' WHERE id = (SELECT clinic_id FROM users WHERE email = 'axelhuatuco@gmail.com');"
+
+D2. SERVIDOR - numeracion propia desde 5001, ANTES de la primera boleta
+    (debe decir INSERT 0 4):
+uywa exec prueba-db psql -U uywasys -d uywasys -c "INSERT INTO clinic_sequences (clinic_id, key, last_value) SELECT clinic_id, k, 5000 FROM users, unnest(array['cpe:B077','cpe:F077','cpe:BC77','cpe:FC77']) k WHERE email='axelhuatuco@gmail.com' ON CONFLICT (clinic_id, key) DO UPDATE SET last_value = 5000;"
+
+D3. Navegador (cuenta de soporte) -> Comprobantes -> Configurar:
+    Proveedor: Mifact
+    Ruta: VACIA (vacia = ambiente de pruebas de Mifact)
+    Token: gN8zNRBV+/FVxTLwdaZx0w==
+    Razon social: Veterinaria Huellitas
+    Direccion fiscal: Av. Prueba 123
+    Ubigeo: 150101
+    Series: Boleta B077 | Factura F077 | NC boleta BC77 | NC factura FC77
+    Produccion: NO marcar
+    Guardar -> Probar conexion
+
+D4. Probar: un cobro pequeno con boleta -> en Comprobantes debe salir B077-5001 Aceptado.
+
+Si Mifact dice "el comprobante ya existe" (otro uso el numero con el RUC compartido):
+uywa exec prueba-db psql -U uywasys -d uywasys -c "UPDATE clinic_sequences SET last_value = last_value + 3000 WHERE key LIKE 'cpe:%77';"
+  y luego reintentar desde Comprobantes.
+
+
+E. EL DIA A DIA DE LA DEMO (SERVIDOR)
+-------------------------------------
+Traerla a la fecha de hoy (hacerlo antes de mostrarla; segundos):
+uywa exec -e DEMO_REFRESH=1 prueba-api node scripts/demo-data.mjs
+
+Rehacerla desde cero si la desordenaron (unos 5 minutos):
+uywa exec -e DEMO_RESET=1 prueba-api node scripts/demo-data.mjs
+  OJO: crea una clinica nueva. Hay que repetir C (soporte) y D (Mifact).
+
+Ver errores:
+uywa logs prueba-api --tail 50
+
+Estado de los servicios:
+uywa ps
+
+
+F. APAGAR / ENCENDER LA PRUEBA (la clinica real sigue igual)
+------------------------------------------------------------
+Apagar:
+sed -i '/^COMPOSE_PROFILES=/d' ~/uywa/.env
+uywa stop prueba-api prueba-db
+
+Encender:
+echo 'COMPOSE_PROFILES=prueba' >> ~/uywa/.env
+uywa up -d
+
+
+G. ACTUALIZAR: PRIMERO LA PRUEBA, DESPUES LA CLINICA
+----------------------------------------------------
+La prueba tiene su propia API y su propia web. PRUEBA_IMAGE_TAG en el .env decide su version
+(sin esa linea, usa la misma que la clinica). Cambia v0.4.4 por la version nueva.
+
+G1. PC (H:\uywasys) - publicar la version nueva:
+git add -A; git commit -m "Descripcion del cambio"; git tag v0.4.4
+git push; git push --tags
+powershell -ExecutionPolicy Bypass -File .\deploy\publicar-imagenes.ps1 -Owner axelhb20 -Tag v0.4.4
+  (si cambio docker-compose.server.yml o deploy\sites\prueba.caddy, copialos con scp)
+
+G2. SERVIDOR - actualizar SOLO la prueba:
+uywa exec backup backup.sh
+sed -i '/^PRUEBA_IMAGE_TAG=/d' ~/uywa/.env
+echo 'PRUEBA_IMAGE_TAG=v0.4.4' >> ~/uywa/.env
+uywa pull prueba-api prueba-web && uywa up -d
+uywa exec -e DEMO_REFRESH=1 prueba-api node scripts/demo-data.mjs
+
+G3. Revisar en https://prueba-veterinario.duckdns.org que todo funcione.
+
+G4. SERVIDOR - si todo esta bien, actualizar la clinica:
+sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=v0.4.4/' ~/uywa/.env
+uywa pull && uywa up -d
+
+Si algo fallo en G3: la clinica nunca se toco. Se corrige, se publica otra version y se repite.
+OJO: la prueba necesita v0.4.3 o mas nueva. No pongas PRUEBA_IMAGE_TAG en una version anterior.

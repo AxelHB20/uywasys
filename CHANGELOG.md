@@ -4,6 +4,31 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Sistema de prueba: probar una versión antes que la clínica (26 nov)
+- **`PRUEBA_IMAGE_TAG`** en `.env`: la prueba puede ir una versión adelante (vacío = la misma que la clínica). Nuevo servicio **`prueba-web`** (su propia web), así la prueba usa su propia pantalla y su propia API.
+- **Red aparte para la prueba** (`prueba-db`, `prueba-api`, `prueba-web`): no alcanza la base ni la API de la clínica. El web principal está en las dos redes y sirve la prueba por su dominio.
+- **Caddy:** `API_UPSTREAM` (a qué API va /api, por defecto `api:3000`) y `TRUSTED_PROXIES` (por defecto nadie; `prueba-web` confía en la red interna para ver la IP real). `deploy/sites/prueba.caddy` ahora reenvía a `prueba-web`.
+- Docs: `DEPLOY.md` 10.1, `COMANDOS-PRUEBA.txt` sección G.
+
+### Grooming: revisión del tablero (26 nov)
+- **Menos toques:** "Pasar a" salta el paso que no se pidió (solo baño va de Baño a Listo; solo uñas, de En espera a Corte).
+- **Nuevo ingreso** con el cursor ya en el buscador.
+- **Tablet acostada:** columnas vacías delgadas (se ensanchan al arrastrar); ya no se cortan nombres, groomers ni servicios.
+- **Tarjeta:** dueño en su línea; botones de 44 px en tablet y celular (manos mojadas).
+- **Detalle:** solo los pasos posibles (antes salían apagados); Cancelar servicio a la izquierda y en rojo; Constancia y Ver atención sin partirse.
+- **Accesibilidad:** tiempo en el estado y columnas vacías con contraste 4.5:1 (axe: 0 fallas en 390, 820, 1024, 1180 y 1366 px).
+- Pruebas: `nextStatusFor` (solo baño, solo uñas, baño y corte, anulados).
+
+### Cola de hoy: revisión (26 nov)
+- **La × ya no se sale de la tarjeta:** la fila queda en botón principal + "Pasar a espera" + menú ⋯ (urgente, movilidad, sacar de la cola).
+- **"Continuar atención"** sin el hueco entre palabras.
+- **Recepción** ya no ve "Continuar atención" (le daba error: las consultas las abre el médico); ve "Con Dra. …".
+- **"Abierta hace N h"** en ámbar cuando una atención pasa de 2 horas.
+- **"Esperar" → "Pasar a espera"**, que dice lo que hace. En "En espera", recepción ya no ve el texto "Lo llama el veterinario" (no aportaba): solo el menú ⋯.
+- **Celular:** la página ya no se desliza de costado (6 px de más); pestaña "Listos" → "Terminados"; ⋯ de 44 px.
+- **Accesibilidad:** fecha, ayudas de columna y contadores de pestaña con contraste 4.5:1 (axe: 0 fallas en PC, tablet y celular).
+- Pruebas: recepción ve quién atiende, ámbar desde 2 h, menú ⋯ con sus 3 acciones.
+
 ### Demo completa: un año de historia (25 nov)
 - **`scripts/demo-data.mjs`:** 364 días por defecto (antes 70; máximo 430). "12 meses" en Reportes tiene movimiento de punta a punta y sin un período anterior a medias.
 - La clínica **crece** (empieza con ~60 % del movimiento de hoy) y tiene **temporadas**: diciembre y verano con más grooming, invierno con más consultas.

@@ -1,5 +1,6 @@
-# Sistema de prueba: mismo servidor, base de datos aparte (servicios prueba-db y prueba-api).
+# Sistema de prueba: mismo servidor, con su propia base (prueba-db), API (prueba-api) y web (prueba-web).
+# Así puede ir una versión adelante de la clínica (PRUEBA_IMAGE_TAG) para probar antes de actualizar.
 # Se copia a ~/uywa/sites/ en el servidor. PRUEBA_DOMAIN sale del .env.
 {$PRUEBA_DOMAIN} {
-	import app prueba-api:3000
+	reverse_proxy prueba-web:80
 }

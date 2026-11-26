@@ -31,7 +31,7 @@ import {
   TRANSPORT_LABELS,
   canMove,
   checklistFlags,
-  nextStatus,
+  nextStatusFor,
   readyMessageLink,
 } from '../../core/services/grooming.models';
 import { GroomingService } from '../../core/services/grooming.service';
@@ -154,7 +154,9 @@ export class GroomingBoardPage {
   protected readonly money = money;
   protected readonly clock = clockTime;
   protected readonly flags = checklistFlags;
-  protected readonly nextStatus = nextStatus;
+  protected readonly nextStatus = nextStatusFor;
+  /** Arrastrando: las columnas vacías vuelven a su ancho para poder soltar ahí */
+  protected readonly dragging = signal(false);
   protected readonly today = limaToday();
 
   protected readonly canEdit = computed(() => GROOMING_ROLES.includes(this.session.role() ?? ''));

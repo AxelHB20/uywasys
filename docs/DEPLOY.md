@@ -267,3 +267,19 @@ Para enseñar al personal y mostrar el sistema sin tocar los datos reales, por e
 
 El nombre de la clínica en el menú ("Veterinaria Huellitas") y el sello de simulación en los comprobantes distinguen la prueba del sistema real. Las sesiones no se mezclan: cada sistema tiene su dominio y su propia clave de sesión.
 
+### 10.1 Probar una versión nueva primero en la prueba
+
+La prueba tiene su propia API y su propia web (`prueba-api`, `prueba-web`), en una red aparte: no alcanza
+la base ni la API de la clínica. `PRUEBA_IMAGE_TAG` en `.env` decide qué versión corre la prueba
+(vacío = la misma que la clínica).
+
+1. PC: publicar la versión nueva (`publicar-imagenes.ps1 -Tag v0.4.4`).
+2. Servidor: `uywa exec backup backup.sh`, luego en `.env` `PRUEBA_IMAGE_TAG=v0.4.4` y
+   `uywa pull prueba-api prueba-web && uywa up -d`. La clínica sigue en su versión.
+3. Probar en la prueba (`uywa exec -e DEMO_REFRESH=1 prueba-api node scripts/demo-data.mjs` y revisar).
+4. Si todo bien: `IMAGE_TAG=v0.4.4` y `uywa pull && uywa up -d`. Si algo falla, la clínica nunca se tocó:
+   se corrige y se publica otra versión.
+
+⚠ `prueba-web` necesita v0.4.3 o más nueva (desde ahí sabe a qué API hablar). No pongas
+`PRUEBA_IMAGE_TAG` en una versión anterior.
+

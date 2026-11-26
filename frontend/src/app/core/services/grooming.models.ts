@@ -186,6 +186,26 @@ export function nextStatus(from: GroomingStatus): BoardStatus | null {
   return i >= 0 && i < BOARD_STATUSES.length - 1 ? BOARD_STATUSES[i + 1] : null;
 }
 
+/**
+ * Siguiente paso según lo que se pidió: solo baño salta Corte; solo corte (uñas, oídos…) salta Baño.
+ * Se decide por el nombre del servicio; la movilidad no cuenta. Sin servicios, paso a paso.
+ */
+export function nextStatusFor(card: {
+  status: GroomingStatus;
+  services: { description: string; status?: string }[];
+}): BoardStatus | null {
+  const work = card.services.filter(
+    (s) => s.status !== 'VOID' && !/^movilidad/i.test(s.description.trim()),
+  );
+  const next = nextStatus(card.status);
+  if (!work.length || !next) return next;
+  const bath = work.some((s) => /baño/i.test(s.description));
+  const cut = work.some((s) => !/baño/i.test(s.description));
+  if (next === 'BATHING' && !bath) return cut ? 'CUTTING' : 'READY';
+  if (next === 'CUTTING' && !cut) return 'READY';
+  return next;
+}
+
 /** Celular peruano válido para WhatsApp: 9 dígitos que empiezan con 9 */
 export function whatsappPhone(phone: string): string | null {
   const digits = phone.replace(/\D/g, '').replace(/^51(?=9\d{8}$)/, '');

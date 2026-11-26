@@ -1,5 +1,37 @@
 # Pendientes y observaciones (10 nov 2026)
 
+## 0. Inicio por rol (revisión del 25 nov) · en espera
+
+Propuesta en el lienzo "Uywa · propuestas", página **Inicio** (tableros I1–I4 y R1–R5). **Esperando la
+respuesta de Mitchel** antes de construir.
+
+**Gomez Medic trabaja así:** Mitchel es el dueño **y el médico** (administrador); hay **2 practicantes**
+y **otra persona hace el grooming**. No hay cajero ni otro veterinario.
+
+**Preguntar a Mitchel:** ¿qué harán los practicantes? ¿Reciben clientes, cola y citas? ¿Cobran y
+emiten boletas? ¿Ayudan en consultas (peso, vacunas)? ¿Pueden ver lo cobrado en el día?
+
+**Decidido:**
+- Solo se arma el Inicio de los roles que usa Gomez Medic: **Mitchel** (R1), **practicantes**
+  (con el de Recepción, R3, hasta que responda) y **Grooming** (R5). Caja (R4) y Veterinario (R2)
+  quedan diseñados para otras clínicas, sin construir.
+- Montos (regla: cada uno ve lo que necesita para su trabajo): cobrado del mes y Reportes solo el
+  administrador (acordado); cobrado hoy también recepción; **te deben** con monto para el
+  administrador y "N clientes por cobrar" sin total para recepción; grooming sin montos.
+
+**Cambios propuestos:**
+1. "Clientes 265" → **Te deben** (S/ y clientes, lleva a Caja → Por cobrar).
+2. Contraste de la próxima cita (fila resaltada): texto a 4.5:1 (falla de axe).
+3. "En atención hace 6 h" → etiqueta ámbar "Abierta hace 6 h" si pasa de 2 h.
+4. Refuerzos: en Inicio solo los **vencidos de los últimos 30 días** (el total sigue en Refuerzos).
+5. Mitchel: su cola se llama **"Te toca atender"** (es el médico), con alergias a la vista.
+6. Administrador sin "Clientes recientes"; en su lugar, resumen de **Grooming de hoy**.
+7. Grooming: su tablero del día (por recibir, en proceso, listos, entregados) y WhatsApp para
+   los listos; sin la cola clínica (motivos de consulta).
+8. Error: el saludo toma "Dra." como nombre → se saltan Dr., Dra., Lic., Mg.
+9. Celular: etiquetas cortas ("ATENDIDOS", "EN CLÍNICA") a la misma altura; tablet: los 3 botones
+   del saludo debajo del título.
+
 Todo lo observado en la revisión del sistema, de la competencia, de Atenciones y de las pruebas.
 Antes de hacer cualquier punto: plan → visto bueno → construir (ver `CLAUDE.md`).
 

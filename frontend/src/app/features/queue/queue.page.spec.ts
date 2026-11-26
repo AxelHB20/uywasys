@@ -92,7 +92,7 @@ describe('QueuePage (cola de hoy)', () => {
       (b) => b.textContent?.trim(),
     );
     expect(buttons).not.toContain('Atender');
-    expect(buttons).toContain('Esperar');
+    expect(buttons).toContain('Pasar a espera');
   });
 
   it('"Atender" abre la atención y lleva a su pantalla', () => {
@@ -121,7 +121,7 @@ describe('QueuePage (cola de hoy)', () => {
   });
 
   it('en atención con una atención abierta: "Continuar atención" y no se mueve por fuera', () => {
-    const fixture = render('RECEPTION', [
+    const fixture = render('VET', [
       item(1, {
         status: 'IN_PROGRESS',
         startedAt: '2026-10-27T14:10:00Z',
@@ -130,9 +130,54 @@ describe('QueuePage (cola de hoy)', () => {
     ]);
     const el: HTMLElement = fixture.nativeElement;
     const link = el.querySelector<HTMLAnchorElement>('a[href="/atenciones/7"]');
-    expect(link?.textContent).toMatch(/Continuar\s+atención/);
+    expect(link?.textContent?.replace(/\s+/g, ' ')).toContain('Continuar atención');
     const labels = [...el.querySelectorAll('article button')].map((b) => b.textContent?.trim());
     expect(labels).not.toContain('Terminar');
+  });
+
+  it('recepción ve quién atiende la consulta, sin un botón que no puede usar', () => {
+    const el: HTMLElement = render('RECEPTION', [
+      item(1, {
+        status: 'IN_PROGRESS',
+        startedAt: '2026-10-27T14:10:00Z',
+        attendedBy: { id: 2, fullName: 'Dra. Ruiz' },
+        visit: { id: 7, status: 'OPEN' },
+      }),
+    ]).nativeElement;
+    expect(el.querySelector('a[href="/atenciones/7"]')).toBeNull();
+    expect(el.querySelector('[aria-labelledby="col-IN_PROGRESS"]')!.textContent).toContain(
+      'Con Dra. Ruiz',
+    );
+  });
+
+  it('abierta hace más de 2 horas: se avisa en ámbar', () => {
+    const el: HTMLElement = render('VET', [
+      item(1, {
+        status: 'IN_PROGRESS',
+        startedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+      }),
+      item(2, {
+        status: 'IN_PROGRESS',
+        startedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+      }),
+    ]).nativeElement;
+    const text = el.querySelector('[aria-labelledby="col-IN_PROGRESS"]')!.textContent!;
+    expect(text).toContain('Abierta hace 3 h');
+    expect(text).toContain('En atención hace 20 min');
+  });
+
+  it('urgente, movilidad y sacar de la cola van en el menú ⋯', () => {
+    const fixture = render('VET', [item(1)]);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[aria-label="Sacar a Mascota 1 de la cola"]')).toBeNull();
+    el.querySelector<HTMLButtonElement>('[aria-label="Más acciones para Mascota 1"]')!.click();
+    fixture.detectChanges();
+    const items = [...el.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent?.trim());
+    expect(items).toEqual(['Marcar urgente', 'Movilidad (recojo o entrega)', 'Sacar de la cola…']);
+    (el.querySelector('[role="menuitem"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url === '/api/queue/1' && r.method === 'PATCH').flush({});
+    expect(el.querySelector('[role="menu"]')).toBeNull();
   });
 
   it('el groomer ve la cola pero sin botones de acción', () => {
@@ -217,7 +262,11 @@ describe('QueuePage (cola de hoy)', () => {
     ]);
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toContain('Lo recogemos · S/ 10.00');
-    el.querySelector<HTMLButtonElement>('[title="Sacar de la cola"]')!.click();
+    el.querySelector<HTMLButtonElement>('[aria-label="Más acciones para Mascota 1"]')!.click();
+    fixture.detectChanges();
+    [...el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find((b) => b.textContent?.includes('Sacar de la cola'))!
+      .click();
     fixture.detectChanges();
     const dialog = el.querySelector('dialog[open]')!;
     expect(dialog.textContent).toContain('Cobrar la movilidad igual');

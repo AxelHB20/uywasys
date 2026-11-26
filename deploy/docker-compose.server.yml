@@ -107,6 +107,8 @@ services:
       - caddy-config:/config
       # Sitios extra (sistema de prueba): archivos .caddy en ~/uywa/sites. Vacía = solo la clínica.
       - ./sites:/etc/caddy/sites:ro
+    # Está en las dos redes: la de la clínica y la de la prueba (para servir prueba-web)
+    networks: [default, prueba]
     logging: *logging
 
   backup:
@@ -155,10 +157,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [prueba]
     logging: *logging
 
   prueba-api:
-    image: ghcr.io/${IMAGE_OWNER}/uywasys-api:${IMAGE_TAG:-latest}
+    # PRUEBA_IMAGE_TAG permite probar una versión nueva aquí antes que en la clínica (vacío = la misma)
+    image: ghcr.io/${IMAGE_OWNER}/uywasys-api:${PRUEBA_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     profiles: ["prueba"]
     restart: unless-stopped
     depends_on:
@@ -180,7 +184,27 @@ services:
       # Comprobantes con sello "Simulación · sin valor tributario"
       BILLING_ALLOW_SIMULATED: "true"
       APP_URL: https://${PRUEBA_DOMAIN:-}
+    networks: [prueba]
     logging: *logging
+
+  # La web de la prueba (misma versión que su API). La sirve el web principal por PRUEBA_DOMAIN.
+  prueba-web:
+    image: ghcr.io/${IMAGE_OWNER}/uywasys-web:${PRUEBA_IMAGE_TAG:-${IMAGE_TAG:-latest}}
+    profiles: ["prueba"]
+    restart: unless-stopped
+    depends_on:
+      - prueba-api
+    environment:
+      DOMAIN: ":80"
+      API_UPSTREAM: prueba-api:3000
+      TRUSTED_PROXIES: private_ranges
+    networks: [prueba]
+    logging: *logging
+
+# La prueba va en su propia red: no alcanza la base ni la API de la clínica aunque algo se configure mal
+networks:
+  default:
+  prueba:
 
 volumes:
   prueba-db-data:

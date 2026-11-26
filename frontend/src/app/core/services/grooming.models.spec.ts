@@ -2,6 +2,7 @@ import {
   canMove,
   checklistFlags,
   nextStatus,
+  nextStatusFor,
   priceForSize,
   readyMessageLink,
   sizeForWeight,
@@ -55,5 +56,36 @@ describe('grooming.models', () => {
       'Pulgas',
       'Nudos',
     ]);
+  });
+
+  describe('nextStatusFor (salta el paso que no se pidió)', () => {
+    const card = (status: 'WAITING' | 'BATHING' | 'CUTTING', ...names: string[]) => ({
+      status,
+      services: names.map((description) => ({ description })),
+    });
+    it('solo baño: de Baño pasa a Listo', () => {
+      expect(nextStatusFor(card('WAITING', 'Baño completo', 'Movilidad · Recojo'))).toBe('BATHING');
+      expect(nextStatusFor(card('BATHING', 'Baño completo', 'Movilidad · Recojo'))).toBe('READY');
+    });
+    it('solo uñas: de En espera pasa a Corte', () => {
+      expect(nextStatusFor(card('WAITING', 'Corte de uñas'))).toBe('CUTTING');
+    });
+    it('baño y corte: paso a paso', () => {
+      expect(nextStatusFor(card('BATHING', 'Baño medicado', 'Corte de pelo (mediano)'))).toBe(
+        'CUTTING',
+      );
+    });
+    it('sin servicios o anulados: paso a paso', () => {
+      expect(nextStatusFor(card('WAITING'))).toBe('BATHING');
+      expect(
+        nextStatusFor({
+          status: 'BATHING',
+          services: [
+            { description: 'Corte de pelo', status: 'VOID' },
+            { description: 'Baño completo' },
+          ],
+        }),
+      ).toBe('READY');
+    });
   });
 });

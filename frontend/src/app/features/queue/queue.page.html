@@ -1,7 +1,7 @@
 <section class="space-y-6">
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
-      <p class="text-sm font-medium text-slate-500">{{ todayLabel() }}</p>
+      <p class="text-sm font-medium text-slate-600">{{ todayLabel() }}</p>
       <h1 class="font-display text-2xl font-semibold text-slate-900">Cola de hoy</h1>
       <p class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600 tabular-nums">
         <span>{{ openCount() }} en la clínica</span>
@@ -57,7 +57,7 @@
           (click)="tab.set(col.status)"
         >
           {{ col.short }}
-          <span class="text-[11px] tabular-nums text-slate-500">{{ count(col.status) }}</span>
+          <span class="text-[11px] tabular-nums text-slate-600">{{ count(col.status) }}</span>
         </button>
       }
       <button
@@ -67,8 +67,8 @@
         [attr.aria-selected]="tab() === 'CLOSED'"
         (click)="tab.set('CLOSED')"
       >
-        Listos
-        <span class="text-[11px] tabular-nums text-slate-500">{{ count('CLOSED') }}</span>
+        Terminados
+        <span class="text-[11px] tabular-nums text-slate-600">{{ count('CLOSED') }}</span>
       </button>
     </div>
 
@@ -76,7 +76,7 @@
     <div class="grid gap-4 lg:grid-cols-3 lg:items-start">
       @for (col of columns; track col.status) {
         <section
-          class="rounded-2xl bg-slate-100/70 p-3 ring-1 ring-slate-200/60 lg:block"
+          class="min-w-0 rounded-2xl bg-slate-100/70 p-3 ring-1 ring-slate-200/60 lg:block"
           [class.hidden]="tab() !== col.status"
           [attr.aria-labelledby]="'col-' + col.status"
         >
@@ -92,7 +92,7 @@
               class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200 tabular-nums"
               >{{ count(col.status) }}</span
             >
-            <span class="ml-auto hidden text-xs text-slate-500 xl:inline">{{ col.hint }}</span>
+            <span class="ml-auto hidden text-xs text-slate-600 xl:inline">{{ col.hint }}</span>
           </header>
           <ul class="space-y-3">
             @for (item of byStatus()[col.status]; track item.id) {
