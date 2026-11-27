@@ -123,19 +123,16 @@ const text = (max: number, required = false) =>
             autocomplete="off"
             maxlength="150"
             (keydown.enter)="$event.preventDefault(); addFree()"
-            role="combobox"
-            aria-controls="rx-results"
-            [attr.aria-expanded]="options().length > 0"
+            [attr.aria-controls]="options().length ? 'rx-results' : null"
           />
         </div>
         @if (search.value.trim().length >= 2) {
           <ul
             id="rx-results"
-            role="listbox"
             class="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200"
           >
             @for (o of options(); track o.key) {
-              <li role="option" aria-selected="false">
+              <li>
                 <button
                   type="button"
                   class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-slate-50"
@@ -161,7 +158,7 @@ const text = (max: number, required = false) =>
                 </button>
               </li>
             }
-            <li role="option" aria-selected="false">
+            <li>
               <button
                 type="button"
                 class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-anil-700 hover:bg-anil-50"
@@ -514,7 +511,21 @@ export class PrescriptionFormComponent {
     (lookups.length ? forkJoin(lookups) : of([] as (ProductDetail | null)[])).subscribe(
       (products) => {
         let pharmacy = 0;
+        let repeated = 0;
+        const key = (s: string) =>
+          s
+            .normalize('NFD')
+            .replace(/\p{Diacritic}/gu, '')
+            .trim()
+            .toLowerCase();
+        const already = new Set(this.items.controls.map((g) => key(g.controls.drug.value)));
         for (const item of content.items) {
+          // Un toque de más (o una receta que repite un medicamento) no lo duplica
+          const product0 = products.find((p) => p?.id === item.productId) ?? null;
+          if (already.has(key(item.drug)) || (product0 && already.has(key(product0.name)))) {
+            repeated++;
+            continue;
+          }
           const product = products.find((p) => p?.id === item.productId) ?? null;
           const presentation = product?.presentations.find(
             (pr) => pr.id === item.presentationId && pr.active && pr.price !== null,
@@ -548,11 +559,18 @@ export class PrescriptionFormComponent {
         if (content.notes && !this.form.controls.notes.value.trim())
           this.form.controls.notes.setValue(content.notes);
         this.applying.set(false);
+        if (repeated === content.items.length) {
+          this.toast.info(`Los medicamentos de «${t.name}» ya están en la receta.`);
+          return;
+        }
         this.templates.used(t.id).subscribe({ error: () => undefined });
+        const skipped = repeated
+          ? ` ${repeated === 1 ? '1 ya estaba' : `${repeated} ya estaban`} en la receta y no se repitió.`
+          : '';
         this.toast.success(
-          pharmacy
+          (pharmacy
             ? `Receta «${t.name}» agregada. ${pharmacy} medicamento(s) ya no está(n) en inventario: quedan para farmacia.`
-            : `Receta «${t.name}» agregada: ajusta la dosis al peso si hace falta.`,
+            : `Receta «${t.name}» agregada: ajusta la dosis al peso si hace falta.`) + skipped,
         );
       },
     );

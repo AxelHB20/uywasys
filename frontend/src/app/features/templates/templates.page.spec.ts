@@ -111,7 +111,7 @@ describe('TemplatesPage', () => {
       .expectOne((r) => r.url === '/api/inventory/products' && r.params.get('q') === 'metro')
       .flush({ items: [product], total: 1, page: 1, pageSize: 20 });
     fixture.detectChanges();
-    [...el.querySelectorAll<HTMLButtonElement>('[role="listbox"] button')][0].click();
+    [...el.querySelectorAll<HTMLButtonElement>('#rx-options-0 button')][0].click();
     fixture.detectChanges();
     expect(el.textContent).toContain('se entrega y cobra en la clínica');
 
@@ -179,7 +179,9 @@ describe('TemplatesPage', () => {
     const { fixture, el, button } = await render();
     button('Recetas frecuentes').click();
     fixture.detectChanges();
-    el.querySelector<HTMLButtonElement>(`[aria-label="Editar ${rxTemplate.name}"]`)!.click();
+    el.querySelector<HTMLButtonElement>(
+      `[aria-label="Abrir plantilla ${rxTemplate.name}"]`,
+    )!.click();
     http.expectOne('/api/inventory/products/9').flush('', { status: 404, statusText: 'No' });
     fixture.detectChanges();
     expect(el.textContent).toContain('Ya no está en el inventario');

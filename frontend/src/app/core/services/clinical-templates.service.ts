@@ -61,6 +61,35 @@ export const CONSULTATION_FIELDS: { key: keyof ConsultationContent; label: strin
   { key: 'plan', label: 'Plan (P)' },
 ];
 
+/** Letra SOAP de cada campo (igual que en la Atención); el motivo no lleva */
+export const SOAP_LETTER: Partial<Record<keyof ConsultationContent, string>> = {
+  anamnesis: 'S',
+  physicalExam: 'O',
+  diagnosis: 'A',
+  plan: 'P',
+};
+
+/** Espacio para completar que dejan las plantillas: "___" (2 o más guiones bajos) */
+export const TEMPLATE_BLANK = /_{2,}/g;
+
+/** Cuántos "___" quedan por llenar en una plantilla de consulta */
+export function templateBlankCount(t: ClinicalTemplate): number {
+  const c = t.consultation;
+  if (!c) return 0;
+  return CONSULTATION_FIELDS.map((f) => (c[f.key] ?? '').match(TEMPLATE_BLANK)?.length ?? 0).reduce(
+    (a, b) => a + b,
+    0,
+  );
+}
+
+/** "5 gotas · Ótica · Cada 12 horas · 7 días" */
+export function rxDosage(i: TemplateRxItem): string {
+  return [i.dose, i.route, i.frequency, i.duration].filter((v) => v?.trim()).join(' · ');
+}
+
+/** Nombre del campo sin la letra: "Anamnesis (S)" → "Anamnesis" */
+export const fieldName = (label: string): string => label.replace(/ \(.\)$/, '');
+
 /** Resumen de una línea para listas y chips */
 export function templateSummary(t: ClinicalTemplate): string {
   if (t.prescription) return t.prescription.items.map((i) => `${i.drug} ${i.dose}`).join(' · ');

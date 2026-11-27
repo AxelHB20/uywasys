@@ -133,7 +133,14 @@ interface CloseCheck {
   text: string;
   /** Campo al que lleva "Completar" */
   field?: string;
+  /** "Completar" lleva al primer "___" de la plantilla */
+  blank?: boolean;
 }
+
+/** Espacio para completar que dejan las plantillas: "___" (2 o más guiones bajos) */
+const BLANK_RE = /_{2,}/g;
+/** Campos de la consulta donde se buscan los "___", en orden */
+const BLANK_FIELDS = ['v-reason', 'v-anamnesis', 'v-exam', 'v-dx', 'v-notes'];
 
 const STATUS_TONE: Record<VisitDetail['status'], BadgeTone> = {
   OPEN: 'info',
@@ -746,12 +753,31 @@ export class VisitPage {
       changed++;
     }
     this.modal.set(null);
-    if (changed)
+    if (!changed) {
+      this.toast.info('No se cambió nada: esos campos ya tenían texto.');
+      return;
+    }
+    // Se guarda solo (como todo lo de la consulta). Si dejó "___", se va directo al primero
+    const blanks = this.blanks().total;
+    if (blanks) {
       this.toast.success(
-        `Plantilla «${event.template.name}» aplicada: revisa y guarda la consulta.`,
+        `Plantilla «${event.template.name}» aplicada. Completa ${blanks === 1 ? 'el dato marcado' : `los ${blanks} datos marcados`} con ___.`,
       );
-    else this.toast.info('No se cambió nada: todos esos campos ya tenían texto.');
+      this.goToBlank(true);
+    } else this.toast.success(`Plantilla «${event.template.name}» aplicada.`);
   }
+
+  /** Lo ya escrito, para que la plantilla pregunte solo si va a pisar algo */
+  protected readonly templateCurrent = computed(() => {
+    const v = this.notesValues();
+    return {
+      reason: v.reason,
+      anamnesis: v.anamnesis,
+      physicalExam: v.physicalExam,
+      diagnosis: v.diagnosis,
+      plan: v.notes,
+    };
+  });
 
   // ── Internar ──
 
@@ -975,10 +1001,80 @@ export class VisitPage {
   }
 
   /** 2.13: lo que conviene revisar antes de cerrar (no bloquea) */
+  /** Espacios "___" de una plantilla que siguen sin llenar (campo por campo, en orden) */
+  private readonly notesValues = toSignal(this.notesForm.valueChanges, {
+    initialValue: this.notesForm.getRawValue(),
+  });
+  protected readonly blanks = computed(() => {
+    const v = this.notesValues();
+    const fields: [string, string | undefined][] = [
+      ['v-reason', v.reason],
+      ['v-anamnesis', v.anamnesis],
+      ['v-exam', v.physicalExam],
+      ['v-dx', v.diagnosis],
+      ['v-notes', v.notes],
+    ];
+    const found = fields
+      .map(([id, text]) => ({ id, count: (text ?? '').match(BLANK_RE)?.length ?? 0 }))
+      .filter((f) => f.count > 0);
+    return { total: found.reduce((s, f) => s + f.count, 0), first: found[0]?.id ?? null };
+  });
+
+  /** Dónde estaba escribiendo (para que "Siguiente ___" siga desde ahí) */
+  private lastCaret: { id: string; pos: number } | null = null;
+
+  protected rememberCaret(event: FocusEvent): void {
+    const el = event.target as HTMLInputElement | HTMLTextAreaElement;
+    if (BLANK_FIELDS.includes(el?.id)) this.lastCaret = { id: el.id, pos: el.selectionEnd ?? 0 };
+  }
+
+  /**
+   * Lleva al siguiente "___" (desde donde se estaba escribiendo; si no hay más, vuelve al primero)
+   * y lo deja seleccionado para escribir encima.
+   */
+  protected goToBlank(fromStart = false): void {
+    if (!this.blanks().total) return;
+    const active = this.document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    const from =
+      !fromStart && active && BLANK_FIELDS.includes(active.id)
+        ? { id: active.id, pos: active.selectionEnd ?? 0 }
+        : fromStart
+          ? null
+          : this.lastCaret;
+    this.modal.set(null);
+    setTimeout(() => {
+      const fields = BLANK_FIELDS.map((id) => this.document.getElementById(id)) as (
+        HTMLInputElement | HTMLTextAreaElement | null
+      )[];
+      const start = from ? Math.max(0, BLANK_FIELDS.indexOf(from.id)) : 0;
+      // Dos vueltas: desde el cursor hasta el final, y luego desde el principio
+      for (let k = 0; k <= fields.length; k++) {
+        const idx = (start + k) % fields.length;
+        const el = fields[idx];
+        if (!el) continue;
+        const re = new RegExp(BLANK_RE.source, 'g');
+        re.lastIndex = k === 0 && from ? from.pos : 0;
+        const hit = re.exec(el.value);
+        if (hit) {
+          el.focus();
+          el.setSelectionRange(hit.index, hit.index + hit[0].length);
+          this.lastCaret = { id: el.id, pos: hit.index + hit[0].length };
+          return;
+        }
+      }
+    });
+  }
+
   protected readonly closeChecks = computed<CloseCheck[]>(() => {
     const v = this.visit();
     if (!v) return [];
     const checks: CloseCheck[] = [];
+    const blanks = this.blanks().total;
+    if (blanks)
+      checks.push({
+        text: `${blanks === 1 ? 'Queda 1 espacio ___' : `Quedan ${blanks} espacios ___`} de la plantilla sin llenar.`,
+        blank: true,
+      });
     if (this.isConsultation() && !v.diagnosis?.trim())
       checks.push({ text: 'Falta el diagnóstico.', field: 'v-dx' });
     if (this.isConsultation() && v.weightKg === null)

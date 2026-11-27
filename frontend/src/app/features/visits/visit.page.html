@@ -30,7 +30,7 @@
           <app-icon [name]="speciesIcons[v.pet.species]" class="size-7" />
         </span>
         <div class="min-w-0">
-          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <p class="text-xs font-semibold tracking-wide text-slate-600 uppercase">
             Historia {{ petCode(v.pet.number) }} · {{ v.openedAt | fecha: 'datetime' }}
           </p>
           <h1 class="font-display text-2xl font-semibold break-words text-slate-900">
@@ -278,7 +278,13 @@
               <p class="text-xs text-slate-500">Método SOAP</p>
             }
           </div>
-          <form [formGroup]="notesForm" (ngSubmit)="saveNotes()" novalidate class="mt-4 space-y-6">
+          <form
+            [formGroup]="notesForm"
+            (ngSubmit)="saveNotes()"
+            (focusout)="rememberCaret($event)"
+            novalidate
+            class="mt-4 space-y-6"
+          >
             @if (triageOnly() && editable()) {
               <p
                 class="flex items-start gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200"
@@ -597,6 +603,33 @@
               ></textarea>
             </fieldset>
 
+            @if (editable() && blanks().total) {
+              <!-- Plantilla: quedan "___" sin llenar (no bloquea; se recuerda también al cerrar) -->
+              <div
+                class="flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200"
+                role="status"
+              >
+                <app-icon name="pen-line" class="size-4 shrink-0 text-amber-700" />
+                <span class="min-w-0 flex-1 basis-52">
+                  {{
+                    blanks().total === 1
+                      ? 'Queda 1 espacio'
+                      : 'Quedan ' + blanks().total + ' espacios'
+                  }}
+                  <strong class="font-semibold">___</strong> de la plantilla sin llenar.
+                </span>
+                <button
+                  type="button"
+                  class="btn btn-secondary h-9 shrink-0 px-3"
+                  (mousedown)="$event.preventDefault()"
+                  (click)="goToBlank()"
+                  aria-label="Ir al siguiente dato por llenar"
+                >
+                  Siguiente <span aria-hidden="true">___</span>
+                  <app-icon name="chevron-right" class="size-4" />
+                </button>
+              </div>
+            }
             @if (editable()) {
               <div class="flex flex-wrap items-center justify-end gap-3">
                 <p class="flex items-center gap-1.5 text-sm" role="status" aria-live="polite">
@@ -1376,11 +1409,11 @@
           >
             <app-icon name="alert" class="size-4 shrink-0 text-amber-700" />
             <span class="flex-1">{{ c.text }}</span>
-            @if (c.field && editable()) {
+            @if ((c.field || c.blank) && editable()) {
               <button
                 type="button"
                 class="btn btn-secondary h-9 shrink-0 px-3"
-                (click)="fixCheck(c.field)"
+                (click)="c.blank ? goToBlank(true) : fixCheck(c.field!)"
               >
                 Completar
               </button>
@@ -1485,6 +1518,7 @@
 <app-template-picker
   kind="CONSULTATION"
   [open]="modal() === 'template'"
+  [current]="templateCurrent()"
   (picked)="applyTemplate($event)"
   (closed)="closeModal()"
 />

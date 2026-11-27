@@ -185,6 +185,25 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   al usarla en la receta se entrega y se cobra (cantidad guardada). Escrito a mano → receta externa.
 - Si el producto se desactiva después, al usar la plantilla queda para farmacia (y se avisa).
 
+### Plantillas clínicas: uso rápido en la Atención (27 nov)
+
+- **Página Plantillas:** cada tarjeta muestra todo lo que escribe (Motivo y S·O·A·P, o los
+  medicamentos con dosis completa y "Del inventario"/"Externa"), los ___ resaltados y "N datos por
+  llenar". Toda la tarjeta abre la plantilla; **Eliminar** (con confirmación) y **Duplicar** (abre una
+  copia sin guardar, "Nombre (copia)") están dentro. Con muchas: 12 más usadas + "Ver 12 más"; buscar
+  muestra todas.
+- **Usar plantilla (consulta) / Ver todas (recetas):** lista a la izquierda y vista previa a la derecha
+  (PC y tablet acostada); en celular y tablet parada, lista → vista previa → "Todas las plantillas".
+  En PC la más usada ya está elegida. Busca en todo el texto; la vista previa sigue a los resultados.
+- **Solo pregunta si pisa algo escrito:** "Ya escribiste en Motivo y Anamnesis" → **Dejar lo mío**
+  (por defecto: solo llena lo vacío) o **Usar la plantilla** (borra lo escrito en esos campos). Con la
+  consulta vacía no pregunta.
+- **Datos por llenar (___):** al aplicar, el cursor queda en el primero, seleccionado. Aviso bajo la
+  consulta con **Siguiente ___** (salta al próximo desde donde se escribe; desaparece al completar).
+  No bloquea: al **cerrar la atención** se recuerda con "Completar". La consulta se guarda sola.
+- **Recetas frecuentes no duplican:** si un medicamento ya está en la receta no se repite (un toque de
+  más tampoco); se avisa.
+
 ### Facturación protegida (18 nov)
 
 - **Configurar facturación, token y RUC (con PSE activo): solo soporte técnico.** Desde el 21 nov el

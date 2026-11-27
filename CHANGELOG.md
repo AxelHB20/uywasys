@@ -4,6 +4,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Plantillas clínicas: revisión completa y uso rápido (27 nov)
+- **Página Plantillas:** tarjetas con toda la información, ordenada como en la Atención (letras S·O·A·P), con los ___ resaltados y "N datos por llenar"; recetas con dosis completa (dosis · vía · frecuencia · duración) y "Del inventario"/"Externa"; quién la hizo y cuándo se actualizó. Toda la tarjeta abre la plantilla.
+- **Eliminar y Duplicar dentro de la plantilla** (ya no hay papelera en cada tarjeta). Duplicar abre una copia sin guardar: "Nombre (copia)".
+- **Muchas plantillas:** se muestran las 12 más usadas y "Ver 12 más"; buscar muestra todas. Buscador más ancho.
+- **"Cómo funciona":** el paso 3 ya no dice "nada se guarda solo" (la Atención sí se guarda sola); ahora explica los ___.
+- **Usar plantilla en la Atención (rediseño):** ventana ancha con lista y vista previa lado a lado (PC y tablet acostada); en celular y tablet parada, lista → vista previa con "Todas las plantillas". En PC la más usada ya viene elegida; flechas ↑↓ recorren la lista; doble clic aplica. Contador "36 plantillas · las más usadas primero" / "2 de 36"; en celular el buscador queda fijo arriba.
+- **Busca en todo el texto** de la plantilla (antes solo nombre y resumen) y la vista previa sigue a los resultados: ya no se puede aplicar una que no está en la lista.
+- **Solo pregunta si pisa algo escrito**, y dice en qué campos: "Dejar lo mío" (por defecto) o "Usar la plantilla" (avisa que se borra lo escrito). Con la consulta vacía no pregunta.
+- **Datos por llenar:** al aplicar, el cursor queda en el primer ___ seleccionado; aviso bajo la consulta con "Siguiente ___" (salta al próximo); al cerrar la atención se recuerda con "Completar". No bloquea.
+- **Recetas frecuentes:** ya no duplican medicamentos que ya están en la receta (un toque de más los repetía y se podían cobrar doble); se avisa.
+- **Mensajes:** "Plantilla aplicada. Completa los 4 datos marcados con ___" (antes "revisa y guarda", pero se guarda solo); botón "Usar plantilla" / "Agregar a la receta" en vez de "Aplicar"; mensaje vacío propio para recetas.
+- **Componentes compartidos:** `app-template-text` (resalta ___) y ayudas `SOAP_LETTER`, `templateBlankCount`, `rxDosage`, `fieldName` en `clinical-templates.service.ts`, usados por la página y la ventana.
+- **Accesibilidad:** pestañas como grupo de botones (`aria-pressed`); listas de medicamentos sin "opciones" con botones dentro (Plantillas y Receta); `aria-controls` solo con la lista abierta; vista previa desplazable con teclado; textos grises a 4.5:1 (también el encabezado de la Atención). axe: 0 fallas en laptop 1280, tablet 1180/1024/834/820 y celular.
+- Pruebas: ventana de plantillas (sin pregunta con la consulta vacía, pregunta con campos escritos y "Usar la plantilla", búsqueda que cambia la vista previa); página ajustada a las tarjetas nuevas.
+
 ### Hospitalización: revisión completa (27 nov)
 - **Cobro flexible al dar de alta:** "Cobrar aparte" opcional en cada indicación (servicio o producto del inventario); el alta propone cobrar las dosis dadas menos lo ya cargado, con cantidad editable, y muestra el total. La **estancia es obligatoria de elegir** (incluye "No cobrar"), así no se cobra doble en una cirugía corta. Los cargos se crean en la misma operación del alta.
 - **Alta voluntaria** como tercera salida (queda marcada en la hoja y en "Altas recientes").

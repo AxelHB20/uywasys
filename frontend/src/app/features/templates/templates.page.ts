@@ -18,6 +18,10 @@ import {
   TemplateInput,
   TemplateKind,
   TemplateRxItem,
+  SOAP_LETTER,
+  fieldName,
+  rxDosage,
+  templateBlankCount,
 } from '../../core/services/clinical-templates.service';
 import { InventoryService } from '../../core/services/inventory.service';
 import {
@@ -25,7 +29,9 @@ import {
   FREQUENCY_OPTIONS,
   ROUTE_OPTIONS,
 } from '../../core/services/medical.models';
+import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
+import { TemplateTextComponent } from './template-text.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -97,6 +103,8 @@ const TAB_INFO: Record<TemplateKind, string> = {
 
 const HOWTO_KEY = 'uywa.templates.howto-hidden';
 const SEARCH_FROM = 6;
+/** Tarjetas por tanda cuando hay muchas plantillas */
+const PAGE = 12;
 
 /**
  * Plantillas clínicas: consultas que se repiten (motivo, SOAP) y recetas frecuentes. Se aplican
@@ -105,7 +113,14 @@ const SEARCH_FROM = 6;
  */
 @Component({
   selector: 'app-templates-page',
-  imports: [ReactiveFormsModule, IconComponent, ModalComponent, FechaPipe],
+  imports: [
+    ReactiveFormsModule,
+    IconComponent,
+    ModalComponent,
+    BadgeComponent,
+    FechaPipe,
+    TemplateTextComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="space-y-6">
@@ -158,15 +173,14 @@ const SEARCH_FROM = 6;
 
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div
-          role="tablist"
+          role="group"
           aria-label="Tipo de plantilla"
           class="flex gap-1 border-b border-slate-200 sm:flex-1"
         >
           @for (k of kinds; track k) {
             <button
               type="button"
-              role="tab"
-              [attr.aria-selected]="tab() === k"
+              [attr.aria-pressed]="tab() === k"
               class="-mb-px inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors"
               [class]="
                 tab() === k
@@ -184,7 +198,7 @@ const SEARCH_FROM = 6;
           }
         </div>
         @if (count(tab()) > searchFrom) {
-          <div class="relative sm:w-64">
+          <div class="relative sm:w-80">
             <label for="tpl-search" class="sr-only">Buscar plantilla</label>
             <app-icon
               name="search"
@@ -244,73 +258,121 @@ const SEARCH_FROM = 6;
           Ninguna plantilla coincide con «{{ filter.value.trim() }}».
         </p>
       } @else {
-        <ul class="grid gap-4 md:grid-cols-2">
-          @for (t of visible(); track t.id) {
-            <li class="card flex flex-col p-5">
-              <div class="flex items-start justify-between gap-3">
-                <h2 class="font-display text-base font-semibold text-slate-900">{{ t.name }}</h2>
-                <span class="shrink-0 text-xs text-slate-500 tabular-nums">
-                  {{ t.usageCount }} {{ t.usageCount === 1 ? 'uso' : 'usos' }}
+        <!-- Tarjeta completa: todo lo que escribe la plantilla, ordenado como en la Atención (SOAP).
+             Toda la tarjeta abre la plantilla; Duplicar y Eliminar están adentro -->
+        <ul class="grid gap-4 lg:grid-cols-2">
+          @for (t of shown(); track t.id) {
+            <li
+              class="card group relative flex flex-col p-5 transition-shadow focus-within:ring-2 focus-within:ring-anil-500 hover:shadow-md"
+            >
+              <div class="flex items-start gap-3">
+                <span
+                  class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700"
+                  aria-hidden="true"
+                >
+                  <app-icon
+                    [name]="t.kind === 'CONSULTATION' ? 'stethoscope' : 'pill'"
+                    class="size-5"
+                  />
                 </span>
+                <div class="min-w-0 flex-1">
+                  <h2 class="font-display text-base leading-snug font-semibold text-slate-900">
+                    <button
+                      type="button"
+                      class="text-left outline-none group-hover:text-anil-700 after:absolute after:inset-0 after:rounded-2xl"
+                      (click)="askEdit(t)"
+                      [attr.data-tpl-id]="t.id"
+                      [attr.aria-label]="'Abrir plantilla ' + t.name"
+                    >
+                      {{ t.name }}
+                    </button>
+                  </h2>
+                  <p
+                    class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600"
+                  >
+                    <span class="tabular-nums"
+                      >{{ t.usageCount }} {{ t.usageCount === 1 ? 'uso' : 'usos' }}</span
+                    >
+                    @if (blankCount(t); as n) {
+                      <span aria-hidden="true">·</span>
+                      <app-badge tone="warning"
+                        >{{ n }} {{ n === 1 ? 'dato' : 'datos' }} por llenar</app-badge
+                      >
+                    }
+                  </p>
+                </div>
               </div>
+
               @if (t.consultation; as c) {
-                <dl class="mt-2 space-y-1 text-sm">
+                <dl class="mt-4 space-y-2.5 text-sm">
                   @for (f of fields; track f.key) {
                     @if (c[f.key]) {
-                      <div class="flex gap-2">
-                        <dt class="w-24 shrink-0 text-slate-500">{{ short(f.label) }}</dt>
-                        <dd class="line-clamp-2 min-w-0 text-slate-800">{{ c[f.key] }}</dd>
+                      <div
+                        class="grid grid-cols-[7.5rem_1fr] gap-3 max-sm:grid-cols-1 max-sm:gap-0.5"
+                      >
+                        <dt class="flex items-center gap-2 self-start text-slate-600">
+                          @if (soap[f.key]; as l) {
+                            <span class="soap-letter shrink-0" aria-hidden="true">{{ l }}</span>
+                          } @else {
+                            <span class="size-6 shrink-0 max-sm:hidden" aria-hidden="true"></span>
+                          }
+                          {{ short(f.label) }}
+                        </dt>
+                        <dd class="line-clamp-2 min-w-0 text-slate-800">
+                          <app-template-text [text]="c[f.key]!" />
+                        </dd>
                       </div>
                     }
                   }
                 </dl>
               } @else if (t.prescription; as p) {
-                <ul class="mt-2 space-y-1.5 text-sm">
+                <ul class="mt-4 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
                   @for (item of p.items; track $index) {
-                    <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span class="font-medium text-slate-900">{{ item.drug }}</span>
-                      <span class="text-slate-600">{{ item.dose }} · {{ item.frequency }}</span>
-                      @if (item.productId) {
-                        <span
-                          class="rounded-md bg-emerald-50 px-1.5 py-px text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-200"
-                          >Del inventario</span
-                        >
-                      } @else {
-                        <span
-                          class="rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-medium text-slate-600 ring-1 ring-slate-200"
-                          >Externa</span
-                        >
-                      }
+                    <li class="px-3.5 py-2.5 text-sm">
+                      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <span class="font-medium text-slate-900">{{ item.drug }}</span>
+                        @if (item.productId) {
+                          <app-badge tone="success">Del inventario</app-badge>
+                        } @else {
+                          <app-badge tone="neutral">Externa</app-badge>
+                        }
+                      </div>
+                      <p class="mt-0.5 text-slate-600">{{ dosage(item) }}</p>
                     </li>
                   }
                 </ul>
               }
-              <div class="mt-auto flex items-center justify-between gap-2 pt-4">
-                <p class="truncate text-xs text-slate-500">
-                  {{ t.createdBy.fullName }} · {{ t.updatedAt | fecha }}
-                </p>
-                <div class="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    class="btn btn-ghost size-10 px-0"
-                    (click)="askEdit(t)"
-                    [attr.aria-label]="'Editar ' + t.name"
+
+              <div class="mt-auto pt-5">
+                <div
+                  class="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600"
+                >
+                  <span class="truncate"
+                    >{{ t.createdBy.fullName }} · actualizada {{ t.updatedAt | fecha }}</span
                   >
-                    <app-icon name="pencil" class="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-ghost size-10 px-0 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                    (click)="deleting.set(t)"
-                    [attr.aria-label]="'Eliminar ' + t.name"
+                  <span
+                    class="flex shrink-0 items-center gap-1 font-medium text-anil-700"
+                    aria-hidden="true"
                   >
-                    <app-icon name="trash" class="size-4" />
-                  </button>
+                    <app-icon name="pencil" class="size-3.5" /> Abrir
+                  </span>
                 </div>
               </div>
             </li>
           }
         </ul>
+        <!-- Muchas plantillas: se muestran de a 12 (las más usadas primero); buscar muestra todas -->
+        @if (visible().length > shown().length) {
+          <div class="flex flex-col items-center gap-2 pt-1">
+            <p class="text-sm text-slate-600" aria-live="polite">
+              Mostrando {{ shown().length }} de {{ visible().length }}
+            </p>
+            <button type="button" class="btn btn-secondary" (click)="showMore()">
+              <app-icon name="chevron-down" class="size-4" />
+              Ver {{ nextBatch() }} más
+            </button>
+          </div>
+        }
       }
     </section>
 
@@ -319,7 +381,9 @@ const SEARCH_FROM = 6;
       [open]="editing() !== null"
       [title]="
         editing()?.id
-          ? 'Editar plantilla'
+          ? editing()?.kind === 'CONSULTATION'
+            ? 'Plantilla de consulta'
+            : 'Receta frecuente'
           : editing()?.kind === 'CONSULTATION'
             ? 'Nueva plantilla de consulta'
             : 'Nueva receta frecuente'
@@ -439,10 +503,9 @@ const SEARCH_FROM = 6;
                     placeholder="Busca en el inventario o escribe el nombre"
                     maxlength="150"
                     autocomplete="off"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    [attr.aria-expanded]="activeRow() === i && options().length > 0"
-                    [attr.aria-controls]="'rx-options-' + i"
+                    [attr.aria-controls]="
+                      activeRow() === i && options().length ? 'rx-options-' + i : null
+                    "
                     aria-required="true"
                     [attr.aria-invalid]="bad(g.controls.drug)"
                     (input)="onDrugInput(i)"
@@ -458,12 +521,12 @@ const SEARCH_FROM = 6;
                 ) {
                   <ul
                     [id]="'rx-options-' + i"
-                    role="listbox"
+                    [attr.aria-label]="'Resultados para ' + g.controls.drug.value.trim()"
                     class="mt-1 space-y-0.5 rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200"
                     (mousedown)="$event.preventDefault()"
                   >
                     @for (o of options(); track o.key) {
-                      <li role="option" aria-selected="false">
+                      <li>
                         <button
                           type="button"
                           class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-50"
@@ -471,18 +534,15 @@ const SEARCH_FROM = 6;
                         >
                           <span class="min-w-0">
                             <span class="block font-medium text-slate-900">{{ o.drug }}</span>
-                            <span class="block text-xs text-slate-500"
+                            <span class="block text-xs text-slate-600"
                               >{{ o.presentation }} · {{ o.stock }}</span
                             >
                           </span>
-                          <span
-                            class="shrink-0 rounded-md bg-emerald-50 px-1.5 py-px text-[11px] font-medium text-emerald-800"
-                            >Inventario</span
-                          >
+                          <app-badge tone="success">Inventario</app-badge>
                         </button>
                       </li>
                     }
-                    <li role="option" aria-selected="false">
+                    <li>
                       <button
                         type="button"
                         class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
@@ -674,6 +734,26 @@ const SEARCH_FROM = 6;
           </button>
           <button type="button" class="btn btn-danger" (click)="discard()">Descartar</button>
         } @else {
+          @if (editing()?.id) {
+            <div class="flex gap-2 sm:mr-auto">
+              <button
+                type="button"
+                class="btn btn-ghost flex-1 text-rose-700 hover:bg-rose-50 hover:text-rose-800 sm:flex-none"
+                [disabled]="saving()"
+                (click)="askDelete()"
+              >
+                <app-icon name="trash" class="size-4" /> Eliminar
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost flex-1 sm:flex-none"
+                [disabled]="saving()"
+                (click)="duplicate()"
+              >
+                <app-icon name="copy" class="size-4" /> Duplicar
+              </button>
+            </div>
+          }
           <button
             type="button"
             class="btn btn-secondary"
@@ -736,7 +816,11 @@ export class TemplatesPage {
       title: 'Úsala',
       text: 'en la Atención con «Usar plantilla», o al recetar con «Recetas frecuentes».',
     },
-    { n: 3, title: 'Revisa y guarda:', text: 'completa lo del paciente; nada se guarda solo.' },
+    {
+      n: 3,
+      title: 'Completa:',
+      text: 'lo de cada paciente. Si dejas ___ en la plantilla, la Atención te avisa qué falta.',
+    },
   ];
 
   protected readonly tab = signal<TemplateKind>('CONSULTATION');
@@ -758,6 +842,26 @@ export class TemplatesPage {
       (t) => t.kind === this.tab() && (!q || normalize(searchable(t)).includes(q)),
     );
   });
+
+  /** Cuántas tarjetas se ven (de a 12); al buscar o cambiar de pestaña vuelve a 12 */
+  protected readonly limit = signal(PAGE);
+  protected readonly shown = computed(() =>
+    this.filterText().trim() ? this.visible() : this.visible().slice(0, this.limit()),
+  );
+  protected readonly nextBatch = computed(() =>
+    Math.min(PAGE, this.visible().length - this.shown().length),
+  );
+
+  protected showMore(): void {
+    const from = this.shown().length;
+    this.limit.update((n) => n + PAGE);
+    // El foco pasa a la primera tarjeta nueva (teclado y lector de pantalla siguen el hilo)
+    const next = this.visible()[from];
+    if (next)
+      setTimeout(() =>
+        this.document.querySelector<HTMLButtonElement>(`[data-tpl-id="${next.id}"]`)?.focus(),
+      );
+  }
 
   protected readonly name = new FormControl('', {
     nonNullable: true,
@@ -831,14 +935,37 @@ export class TemplatesPage {
   protected selectTab(k: TemplateKind): void {
     this.tab.set(k);
     this.filter.setValue('');
+    this.limit.set(PAGE);
   }
 
   protected count(kind: TemplateKind): number {
     return this.templates().filter((t) => t.kind === kind).length;
   }
 
-  protected short(label: string): string {
-    return label.replace(/ \(.\)$/, '');
+  protected readonly soap = SOAP_LETTER;
+  protected readonly blankCount = templateBlankCount;
+  protected readonly dosage = rxDosage;
+  protected readonly short = fieldName;
+
+  /** Eliminar se pide desde la plantilla abierta (no está a la vista en cada tarjeta) */
+  protected askDelete(): void {
+    const id = this.editing()?.id;
+    const t = this.templates().find((x) => x.id === id);
+    if (!t) return;
+    this.confirmDiscard.set(false);
+    this.editing.set(null);
+    this.deleting.set(t);
+  }
+
+  /** Duplicar: misma plantilla como nueva, para ajustarla (ej. la versión para gato) */
+  protected duplicate(): void {
+    const e = this.editing();
+    if (!e?.id) return;
+    this.editing.set({ id: null, kind: e.kind });
+    this.name.setValue(`${this.name.value.trim()} (copia)`.slice(0, 80));
+    this.name.markAsDirty();
+    this.toast.info('Copia lista: cambia el nombre y lo que haga falta, y guarda.');
+    this.focus('tpl-name');
   }
 
   protected bad(c: { invalid: boolean; touched: boolean }): boolean {
