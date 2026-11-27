@@ -4,6 +4,8 @@ import { Observable } from 'rxjs';
 import {
   ControlledMovement,
   InitialStockInput,
+  PendingStockProduct,
+  StockLoadItem,
   InventoryAlerts,
   Movement,
   OutflowInput,
@@ -44,6 +46,18 @@ export class InventoryService {
     if (query.chargeable) params = params.set('chargeable', 'true');
     if (query.page && query.page > 1) params = params.set('page', query.page);
     return this.http.get<ProductPage>('/api/inventory/products', { params });
+  }
+
+  /** Productos activos sin stock (para "Cargar stock") */
+  pendingStock(): Observable<{ items: PendingStockProduct[]; total: number }> {
+    return this.http.get<{ items: PendingStockProduct[]; total: number }>(
+      '/api/inventory/stock-load',
+    );
+  }
+
+  /** Stock de varios productos de una vez: si una fila está mal, no entra nada */
+  loadStock(items: StockLoadItem[]): Observable<{ loaded: number }> {
+    return this.http.post<{ loaded: number }>('/api/inventory/stock-load', { items });
   }
 
   get(id: number): Observable<ProductDetail> {

@@ -13,6 +13,7 @@
           <a routerLink="/inventario/importar" class="btn btn-secondary">Importar Excel</a>
         }
         <a routerLink="/inventario/controlados" class="btn btn-secondary">Controlados</a>
+        <a routerLink="/inventario/cargar-stock" class="btn btn-secondary">Cargar stock</a>
         <a routerLink="/inventario/nuevo" class="btn btn-primary">
           <app-icon name="plus" class="size-4" /> Agregar producto
         </a>
@@ -21,6 +22,21 @@
   </div>
 
   <app-inventory-tabs />
+
+  @if (pendingStock(); as n) {
+    <div
+      class="flex flex-wrap items-center gap-3 rounded-2xl bg-anil-50 px-5 py-3.5 text-sm text-anil-950 ring-1 ring-anil-200"
+    >
+      <app-icon name="package" class="size-5 shrink-0 text-anil-700" />
+      <p class="min-w-0 flex-1">
+        <strong class="font-semibold"
+          >{{ n }} {{ n === 1 ? 'producto' : 'productos' }} sin stock.</strong
+        >
+        Carga lo que tienes de todos en una sola tabla, sin entrar a cada uno.
+      </p>
+      <a routerLink="/inventario/cargar-stock" class="btn btn-primary h-10">Cargar stock</a>
+    </div>
+  }
 
   <!-- Alertas: cada una filtra la lista -->
   <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Alertas de inventario">

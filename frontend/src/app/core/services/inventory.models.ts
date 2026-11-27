@@ -60,6 +60,33 @@ export const BASE_UNITS = Object.keys(BASE_UNIT_LABELS) as BaseUnit[];
  */
 export const NEW_PRODUCT_UNITS: BaseUnit[] = ['UNIT', 'TABLET', 'BOX', 'BOTTLE'];
 
+/** Textos que explican el inventario, iguales en todas las pantallas (sin jerga) */
+export const INVENTORY_HELP = {
+  controlled:
+    'Solo estupefacientes y psicotrópicos (ketamina, tramadol, diazepam, fenobarbital). Pide lote al comprar, y receta, paciente y veterinario colegiado en cada uso. Si no es uno de estos, no lo marques.',
+  supply:
+    'Para lo que se gasta al atender y no se le vende al cliente: jeringas, guantes, gasas, alcohol. No aparece al cobrar (Caja, atención ni presupuestos). Su stock baja al anotarlo en la atención («Insumos usados»), con un servicio que lo usa o en «Registrar salida».',
+  cost: 'Lo que pagaste al proveedor, sin IGV.',
+  price: 'Lo que paga el cliente, con IGV incluido.',
+  expiry: 'Como en la caja: 08/2027.',
+} as const;
+
+/** Por qué se pide (o no) el lote, en palabras de la clínica */
+export function lotHint(category: ProductCategory | null, controlled: boolean): string {
+  if (controlled) return 'Obligatorio: DIGEMID pide el lote de los controlados.';
+  if (category === 'VACCINE') return 'Obligatorio: el lote va en el carné de vacunación.';
+  return 'Opcional: anótalo si la caja lo trae.';
+}
+
+/** Mensaje cuando falta un lote obligatorio */
+export function lotMissingText(category: ProductCategory | null, controlled: boolean): string {
+  return controlled
+    ? 'Falta el lote: DIGEMID lo pide en los controlados'
+    : category === 'VACCINE'
+      ? 'Falta el lote: va en el carné de vacunación'
+      : 'Falta el lote';
+}
+
 /** Vacunas (carné) y controlados (DIGEMID) piden lote; lo demás que vence, solo la fecha */
 export function lotRequired(category: ProductCategory | null, controlled: boolean): boolean {
   return category === 'VACCINE' || controlled;
@@ -74,7 +101,7 @@ export const IGV_LABELS: Record<IgvAffectation, string> = {
 export const MOVEMENT_LABELS: Record<MovementType, string> = {
   PURCHASE: 'Compra',
   WASTE: 'Merma',
-  TREATMENT: 'Uso interno',
+  TREATMENT: 'Usado en la clínica',
   COUNT_ADJUST: 'Ajuste por conteo',
   RETURN: 'Devolución',
   SALE: 'Venta',
@@ -225,6 +252,28 @@ export interface ProductInput {
   sunatUnit: string;
   igv: IgvAffectation;
   notes: string | null;
+}
+
+/** "Cargar stock": producto activo sin stock */
+export interface PendingStockProduct {
+  id: number;
+  name: string;
+  category: ProductCategory;
+  baseUnit: BaseUnit;
+  controlled: boolean;
+  tracksExpiry: boolean;
+  /** De la más grande a la más chica */
+  presentations: { id: number; name: string; factor: number }[];
+}
+
+export interface StockLoadItem {
+  productId: number;
+  presentationId: number;
+  quantity: number;
+  lotNumber: string | null;
+  expiresAt: string | null;
+  costPerPresentation: number | null;
+  controlled?: boolean;
 }
 
 /** Stock con el que entra el producto al agregarlo (misma operación) */

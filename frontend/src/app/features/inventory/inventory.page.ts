@@ -143,6 +143,14 @@ export class InventoryPage {
   );
 
   protected readonly alerts = rxResource({ stream: () => this.inventory.alerts() });
+  /** Productos activos sin stock (aviso "Cargar stock"); solo quien maneja el inventario */
+  private readonly pending = rxResource({
+    params: () => (this.canManage() ? true : undefined),
+    stream: () => this.inventory.pendingStock(),
+  });
+  protected readonly pendingStock = computed(() =>
+    this.pending.hasValue() ? (this.pending.value()?.total ?? 0) : 0,
+  );
   protected readonly alertData = computed(() =>
     this.alerts.hasValue() ? this.alerts.value() : null,
   );

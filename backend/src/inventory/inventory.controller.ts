@@ -26,6 +26,8 @@ import {
   UpdateProductDto,
 } from './dto/inventory.dto.js';
 import { InventoryService, withoutCosts } from './inventory.service.js';
+import { StockLoadService } from './stock-load.service.js';
+import { StockLoadDto } from './dto/stock-load.dto.js';
 import type { PresentationView, ProductDetail } from './inventory.service.js';
 
 /**
@@ -36,7 +38,27 @@ const STOCK_ROLES = ['ADMIN', 'VET'] as const;
 
 @Controller('inventory')
 export class InventoryController {
-  constructor(private readonly inventory: InventoryService) {}
+  constructor(
+    private readonly inventory: InventoryService,
+    private readonly stockLoad: StockLoadService,
+  ) {}
+
+  /** "Cargar stock": productos activos sin stock, para llenarlos todos en una tabla */
+  @Roles(...STOCK_ROLES)
+  @Get('stock-load')
+  pendingStock(@CurrentUser() user: AuthUser) {
+    return this.stockLoad.pending(user.clinicId);
+  }
+
+  @Roles(...STOCK_ROLES)
+  @Post('stock-load')
+  loadStock(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: StockLoadDto,
+    @Req() req: Request,
+  ) {
+    return this.stockLoad.load(user, dto, req.ip);
+  }
 
   @Get('products')
   list(@CurrentUser() user: AuthUser, @Query() query: ListProductsQuery) {

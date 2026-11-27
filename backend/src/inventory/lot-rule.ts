@@ -11,3 +11,15 @@ export function lotRequired(
 ): boolean {
   return category === 'VACCINE' || controlled;
 }
+
+/** Por qué falta el lote, dicho para que se entienda */
+export function lotMissingMessage(
+  category: ProductCategory,
+  controlled: boolean,
+): string {
+  return controlled
+    ? 'Ingresa el lote: DIGEMID lo pide en los controlados'
+    : category === 'VACCINE'
+      ? 'Ingresa el lote: va en el carné de vacunación'
+      : 'Ingresa el lote';
+}

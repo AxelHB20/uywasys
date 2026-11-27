@@ -29,6 +29,9 @@ import {
   STOCK_ROLES,
   defaultTracksExpiry,
   lotRequired,
+  INVENTORY_HELP,
+  lotHint,
+  lotMissingText,
 } from '../../core/services/inventory.models';
 import { InventoryService } from '../../core/services/inventory.service';
 import { Supplier } from '../../core/services/purchases.models';
@@ -51,6 +54,7 @@ import {
 import { apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 import { ExpiryChoiceComponent } from './expiry-choice.component';
+import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 const RECEIVED = new Intl.DateTimeFormat('es-PE', {
@@ -84,6 +88,7 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
     ModalComponent,
     PetPickerComponent,
     ExpiryChoiceComponent,
+    MonthInputComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-detail.page.html',
@@ -178,6 +183,15 @@ export class ProductDetailPage {
   });
   /** Lo que vence pide lote y fecha; camas, juguetes y similares no */
   protected readonly needsLot = computed(() => this.product()?.tracksExpiry ?? true);
+  protected readonly help = INVENTORY_HELP;
+  protected readonly lotHintMsg = computed(() => {
+    const p = this.product();
+    return p ? lotHint(p.category, p.controlled) : '';
+  });
+  protected readonly lotMissingMsg = computed(() => {
+    const p = this.product();
+    return p ? lotMissingText(p.category, p.controlled) : 'Falta el lote';
+  });
   /** Vacunas y controlados piden lote; lo demás que vence, basta la fecha */
   protected readonly lotMandatory = computed(() => {
     const p = this.product();

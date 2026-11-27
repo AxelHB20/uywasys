@@ -179,6 +179,39 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   presupuestos pendientes se cobran igual con su precio.
 - El precio se copia al cobrar; subirlo después no cambia cobros ni presupuestos ya emitidos.
 
+### Inventario: textos que se entienden (27 nov)
+
+Las mismas palabras en todas las pantallas del inventario:
+
+- **Lote:** dice por qué. "Obligatorio: el lote va en el carné de vacunación" (vacunas), "Obligatorio:
+  DIGEMID pide el lote de los controlados" (controlados) u "Opcional: anótalo si la caja lo trae".
+- **Controlado:** "Solo estupefacientes y psicotrópicos (ketamina, tramadol, diazepam, fenobarbital)…
+  Si no es uno de estos, no lo marques".
+- **"No se vende: se gasta en la clínica (insumo)"** en vez de "uso interno": no aparece al cobrar; su
+  stock baja con "Insumos usados" en la atención, un servicio que lo usa o "Registrar salida". La salida
+  "Uso interno" pasa a **"Usado en la clínica"** (eran dos cosas distintas con el mismo nombre).
+- **"Trae (tabletas)"** en vez de "Equivalencia"; **"¿Cómo se cuenta el stock?"** en vez de "Unidad mínima".
+- **Costo** = lo que pagaste, sin IGV; **precio** = lo que paga el cliente, con IGV.
+- **Vence 08/2027** también en "Registrar compra" (antes calendario).
+- "Cargar stock" explica cada columna arriba de la tabla.
+- **Aviso de stock bajo:** "Avísame cuando queden pocas" (opcional): con 20, al quedar 20 o menos sale en
+  «Con stock bajo» (Inventario e Inicio); vacío no avisa.
+
+### Cargar stock de varios productos (27 nov)
+
+Para los productos que ya se crearon sin stock (la clínica los agregó antes de tener "stock inicial").
+
+- **Inventario → Cargar stock** (o el aviso "24 productos sin stock · Cargar stock"). Admin y
+  veterinario.
+- Tabla con los productos activos sin stock (buscador y categoría). Por fila: cantidad +
+  presentación (la más grande por defecto), vence 08/2027, lote (obligatorio solo vacunas y
+  controlados), costo opcional, y **"Controlado"** (solo Medicamento) para corregir los marcados por
+  error en la misma pasada.
+- Las filas vacías no se tocan. **"Guardar stock (N)"**: se revisan todas; si una está mal se marca
+  en rojo y **no entra nada** hasta corregirla. Al guardar, esas filas salen de la tabla.
+- Si solo se cambia "Controlado" (sin cantidad), se guarda ese cambio.
+- Hasta 300 a la vista; con más, guardar y volver a abrir.
+
 ### Agregar producto con su stock (27 nov)
 
 Pedido de la clínica (cargando su inventario por primera vez): llenar productos y stock sin vueltas.

@@ -7,6 +7,7 @@ import { PurchasesController } from './purchases.controller.js';
 import { PurchasesService } from './purchases.service.js';
 import { SuppliersService } from './suppliers.service.js';
 import { StockService } from './stock.service.js';
+import { StockLoadService } from './stock-load.service.js';
 
 @Module({
   controllers: [
@@ -20,6 +21,7 @@ import { StockService } from './stock.service.js';
     ProductImportService,
     PurchasesService,
     SuppliersService,
+    StockLoadService,
   ],
   // Caja (Fase 4) y el módulo médico (Fase 5) descuentan stock solo por StockService
   exports: [StockService, InventoryService],

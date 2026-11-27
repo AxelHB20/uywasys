@@ -24,7 +24,7 @@
           <app-icon [name]="categoryIcon[p.category]" class="size-7" />
         </span>
         <div class="min-w-0">
-          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <p class="text-xs font-semibold tracking-wide text-slate-600 uppercase">
             {{ categoryLabels[p.category] }}
             @if (p.code) {
               · {{ p.code }}
@@ -43,8 +43,8 @@
               <app-badge><app-icon name="package" class="size-3" />No vence</app-badge>
             }
             @if (p.chargeable === false) {
-              <app-badge title="Insumo: no sale al cobrar; se descuenta con el servicio"
-                >No se cobra</app-badge
+              <app-badge title="Se gasta en la clínica: no aparece al cobrar"
+                >No se vende (insumo)</app-badge
               >
             }
             @if (!p.active) {
@@ -100,7 +100,7 @@
       [class]="canManage() ? 'xl:grid-cols-4' : 'xl:grid-cols-3'"
     >
       <li class="card p-4 sm:col-span-2 xl:col-span-1">
-        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Stock</p>
+        <p class="text-xs font-semibold tracking-wide text-slate-600 uppercase">Stock</p>
         <p
           class="mt-1 font-display text-lg font-semibold"
           [class]="p.totalStock <= 0 ? 'text-rose-700' : 'text-slate-900'"
@@ -112,7 +112,7 @@
         }
       </li>
       <li class="card p-4">
-        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+        <p class="text-xs font-semibold tracking-wide text-slate-600 uppercase">
           {{ p.tracksExpiry ? 'Próximo vencimiento' : 'Vencimiento' }}
         </p>
         @if (!p.tracksExpiry) {
@@ -135,17 +135,19 @@
         }
       </li>
       <li class="card p-4">
-        <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Stock mínimo</p>
+        <p class="text-xs font-semibold tracking-wide text-slate-600 uppercase">
+          Aviso de stock bajo
+        </p>
         <p class="mt-1 font-display text-lg font-semibold text-slate-900 tabular-nums">
-          {{ p.minStock ? units(p.minStock) : 'Sin alerta' }}
+          {{ p.minStock ? 'Al quedar ' + units(p.minStock) : 'Sin aviso' }}
         </p>
         @if (p.lowStock) {
-          <p class="text-sm font-medium text-amber-800">Por debajo del mínimo: toca comprar</p>
+          <p class="text-sm font-medium text-amber-800">Quedan pocas: toca comprar</p>
         }
       </li>
       @if (canManage()) {
         <li class="card p-4">
-          <p class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Valor al costo</p>
+          <p class="text-xs font-semibold tracking-wide text-slate-600 uppercase">Valor al costo</p>
           <p class="mt-1 font-display text-lg font-semibold text-slate-900 tabular-nums">
             {{ money(stockValue()) }}
           </p>
@@ -371,7 +373,7 @@
           <div class="flex items-center justify-between gap-3">
             <h2
               id="pres-title"
-              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+              class="text-xs font-semibold tracking-wide text-slate-600 uppercase"
             >
               Presentaciones y precios
             </h2>
@@ -419,7 +421,7 @@
           <section class="card p-5" aria-labelledby="used-title">
             <h2
               id="used-title"
-              class="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+              class="text-xs font-semibold tracking-wide text-slate-600 uppercase"
             >
               Se usa en estos servicios
             </h2>
@@ -436,7 +438,7 @@
 
         @if (p.notes) {
           <section class="card p-5">
-            <h2 class="text-xs font-semibold tracking-wide text-slate-500 uppercase">Notas</h2>
+            <h2 class="text-xs font-semibold tracking-wide text-slate-600 uppercase">Notas</h2>
             <p class="mt-2 text-sm text-slate-700">{{ p.notes }}</p>
           </section>
         }
@@ -500,8 +502,6 @@
             >Lote
             @if (lotMandatory()) {
               <span class="text-rose-600" aria-hidden="true">*</span>
-            } @else {
-              <span class="font-normal text-slate-600">(opcional)</span>
             }
           </label>
           <input
@@ -510,25 +510,32 @@
             class="field-input"
             autocomplete="off"
             [attr.aria-invalid]="lotMissing()"
+            aria-describedby="pu-lot-hint"
           />
           @if (lotMissing()) {
-            <p class="field-error">Ingresa el lote que figura en la caja</p>
+            <p class="field-error">{{ lotMissingMsg() }}</p>
+          } @else {
+            <p id="pu-lot-hint" class="field-hint">{{ lotHintMsg() }}</p>
           }
         </div>
         <div>
           <label for="pu-exp" class="field-label"
             >Vencimiento <span class="text-rose-600" aria-hidden="true">*</span></label
           >
-          <input
-            id="pu-exp"
-            type="date"
+          <app-month-input
+            inputId="pu-exp"
             formControlName="expiresAt"
-            [min]="today"
-            class="field-input"
-            [attr.aria-invalid]="expiryMissing()"
+            describedBy="pu-exp-hint"
+            [invalid]="expiryMissing() || purchaseForm.controls.expiresAt.invalid"
           />
-          @if (expiryMissing()) {
-            <p class="field-error">Ingresa la fecha de vencimiento</p>
+          @if (purchaseForm.controls.expiresAt.hasError('expiryPast')) {
+            <p class="field-error" role="alert">Ese lote ya está vencido</p>
+          } @else if (purchaseForm.controls.expiresAt.hasError('expiryFormat')) {
+            <p class="field-error" role="alert">Escríbelo como 08/2027</p>
+          } @else if (expiryMissing()) {
+            <p class="field-error">Escribe el vencimiento (como en la caja: 08/2027)</p>
+          } @else {
+            <p id="pu-exp-hint" class="field-hint">Como en la caja: 08/2027</p>
           }
         </div>
       </div>
@@ -663,9 +670,9 @@
           class="flex h-auto min-h-11 cursor-pointer flex-col justify-center rounded-xl px-3 py-2 text-sm ring-1 ring-slate-300 has-checked:bg-anil-50 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2"
         >
           <input type="radio" class="sr-only" formControlName="type" value="TREATMENT" />
-          <span class="font-medium text-slate-900">Uso interno</span>
-          <span class="text-xs text-slate-500"
-            >Guantes, algodón o gasas al abrir una caja, o lo usado en consultorio</span
+          <span class="font-medium text-slate-900">Usado en la clínica</span>
+          <span class="text-xs text-slate-600"
+            >Lo que se gastó en consultorio o al abrir una caja (sin cobrarlo)</span
           >
         </label>
       </div>
@@ -887,7 +894,7 @@
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
-        <label for="pf-factor" class="field-label">Equivalencia ({{ unitName() }})</label>
+        <label for="pf-factor" class="field-label">Trae ({{ unitName() }})</label>
         <input
           id="pf-factor"
           type="number"
@@ -970,7 +977,7 @@
         </select>
       </div>
       <div>
-        <label for="ed-min" class="field-label">Stock mínimo ({{ unitName() }})</label>
+        <label for="ed-min" class="field-label">Avísame cuando queden ({{ unitName() }})</label>
         <input
           id="ed-min"
           type="number"
@@ -979,9 +986,15 @@
           formControlName="minStock"
           class="field-input tabular-nums"
           [attr.aria-invalid]="editForm.controls.minStock.hasError('decimals')"
+          aria-describedby="ed-min-hint"
+          placeholder="Ej.: 20"
         />
         @if (editForm.controls.minStock.hasError('decimals')) {
           <p class="field-error" role="alert">Hasta 3 decimales</p>
+        } @else {
+          <p id="ed-min-hint" class="field-hint">
+            Sale en «Con stock bajo» (Inventario e Inicio). Vacío o 0: no avisa.
+          </p>
         }
       </div>
       <div>
@@ -1042,13 +1055,16 @@
       </p>
     }
     <div class="space-y-1">
-      <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
+      <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
         ><input
           type="checkbox"
           formControlName="controlled"
-          class="size-5 rounded accent-rose-600"
+          class="mt-0.5 size-5 shrink-0 rounded accent-rose-600"
         />
-        Medicamento controlado</label
+        <span
+          >Medicamento controlado
+          <span class="block text-xs text-slate-600">{{ help.controlled }}</span></span
+        ></label
       >
       <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
         ><input
@@ -1058,10 +1074,8 @@
           (change)="setInternal($any($event.target).checked)"
         />
         <span
-          >Es de uso interno (no se vende)
-          <span class="block text-xs text-slate-600"
-            >Jeringas, guantes, algodón: no salen al cobrar.</span
-          ></span
+          >No se vende: se gasta en la clínica (insumo)
+          <span class="block text-xs text-slate-600">{{ help.supply }}</span></span
         ></label
       >
       <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
@@ -1070,7 +1084,8 @@
       >
     </div>
     <p class="text-xs text-slate-500">
-      La unidad mínima no se cambia aquí: si cambió, crea un producto nuevo.
+      Cómo se cuenta el stock (tableta, caja, frasco…) no se cambia aquí: si cambió, crea un
+      producto nuevo.
     </p>
   </form>
   <ng-container modal-actions>

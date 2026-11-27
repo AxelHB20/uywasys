@@ -12,7 +12,10 @@ import { normalizeSearch } from '../../common/text/search.js';
 import { clinicToday } from '../../common/time/clinic-today.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { defaultChargeable, defaultTracksExpiry } from '../inventory.service.js';
+import {
+  defaultChargeable,
+  defaultTracksExpiry,
+} from '../inventory.service.js';
 import { StockService } from '../stock.service.js';
 import {
   PRODUCT_COLUMNS,
@@ -265,7 +268,7 @@ export class ProductImportService {
       'Higiene',
       'Insumo',
     ]);
-    addList(sheet, col('baseUnit'), ['Unidad', 'Tableta', 'ml', 'g']);
+    addList(sheet, col('baseUnit'), ['Unidad', 'Tableta', 'Caja', 'Frasco']);
     addList(sheet, col('igv'), ['Gravado', 'Exonerado', 'Inafecto']);
     addList(sheet, col('requiresPrescription'), ['Sí', 'No']);
     addList(sheet, col('controlled'), ['Sí', 'No']);
@@ -273,7 +276,7 @@ export class ProductImportService {
       'Cómo llenar la plantilla de productos de Uywa',
       '',
       '• Una fila = una presentación. Si un producto se vende en caja y por tableta, escribe dos filas con el mismo nombre (o el mismo código).',
-      '• Unidad mínima: en la que se cuenta el stock (Tableta, ml, g o Unidad). Equivalencia: cuántas unidades mínimas trae la presentación (Caja x 100 = 100).',
+      '• Unidad mínima: en la que se cuenta el stock (Unidad, Tableta, Caja o Frasco; se vende entero). Equivalencia: cuántas unidades mínimas trae la presentación (Caja x 100 = 100).',
       '• Precio con IGV incluido, el de la etiqueta. IGV: Gravado si lo dejas vacío (Exonerado o Inafecto solo si tu contador lo indica).',
       '• Código de barras (opcional): el de la caja o del producto, si usan lector.',
       '• Stock inicial (opcional): cantidad en esa presentación y su vencimiento (AAAA-MM-DD). El lote es obligatorio en vacunas y controlados; en lo demás, si no lo tienes, déjalo vacío. Los accesorios no llevan lote ni vencimiento.',

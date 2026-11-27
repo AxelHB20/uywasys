@@ -280,6 +280,13 @@ export const routes: Routes = [
           import('./features/inventory/new-product.page').then((m) => m.NewProductPage),
       },
       {
+        path: 'inventario/cargar-stock',
+        title: 'Cargar stock · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/inventory/stock-load.page').then((m) => m.StockLoadPage),
+      },
+      {
         path: 'inventario/controlados',
         title: 'Libro de controlados · Uywa',
         canActivate: [roleGuard('ADMIN', 'VET')],

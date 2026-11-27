@@ -129,7 +129,7 @@ describe('ProductDetailPage (ficha de producto)', () => {
     };
     set('#pu-qty', '5');
     set('#pu-lot', 'L-Z');
-    set('#pu-exp', '2027-06-30');
+    set('#pu-exp', '06/2027');
     set('#pu-cost', '90');
     fixture.detectChanges();
     expect(el.textContent).toContain('= 500 tabletas');
@@ -213,7 +213,7 @@ describe('ProductDetailPage (ficha de producto)', () => {
     fixture.detectChanges();
     await tick();
     const treatment = [...el.querySelectorAll('label')].find((l) =>
-      l.textContent?.includes('Uso interno'),
+      l.textContent?.includes('Usado en la clínica'),
     )!;
     treatment.querySelector('input')!.click();
     fixture.detectChanges();

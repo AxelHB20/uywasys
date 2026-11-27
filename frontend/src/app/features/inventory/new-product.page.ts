@@ -15,6 +15,9 @@ import {
   ProductSummary,
   defaultChargeable,
   defaultTracksExpiry,
+  INVENTORY_HELP,
+  lotHint,
+  lotMissingText,
   lotRequired,
 } from '../../core/services/inventory.models';
 import { SessionService } from '../../core/auth/session.service';
@@ -90,6 +93,7 @@ export class NewProductPage {
   protected readonly unitLabels = BASE_UNIT_LABELS;
   protected readonly igvTypes = Object.keys(IGV_LABELS) as IgvAffectation[];
   protected readonly igvLabels = IGV_LABELS;
+  protected readonly help = INVENTORY_HELP;
   protected readonly saving = signal(false);
   protected readonly added = signal<Added[]>([]);
   protected readonly tried = signal(false);
@@ -150,6 +154,12 @@ export class NewProductPage {
   protected readonly hasStock = computed(() => !!this.value().stock?.quantity);
   protected readonly needsLot = computed(() =>
     lotRequired(this.category(), this.value().controlled ?? false),
+  );
+  protected readonly lotHintText = computed(() =>
+    lotHint(this.category(), this.value().controlled ?? false),
+  );
+  protected readonly lotMissingText = computed(() =>
+    lotMissingText(this.category(), this.value().controlled ?? false),
   );
   protected readonly stockPreview = computed(() => {
     const s = this.value().stock;

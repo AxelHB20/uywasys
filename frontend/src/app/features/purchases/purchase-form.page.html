@@ -289,7 +289,13 @@
                     [attr.aria-invalid]="showErr && e.lot"
                   />
                   @if (showErr && e.lot) {
-                    <p class="field-error">Falta el lote</p>
+                    <p class="field-error">
+                      {{
+                        p.controlled
+                          ? 'Falta el lote (controlado: DIGEMID)'
+                          : 'Falta el lote (vacuna: carné)'
+                      }}
+                    </p>
                   }
                 } @else {
                   <p class="mt-1.5 flex h-11 items-center text-sm text-slate-500 xl:mt-0">—</p>

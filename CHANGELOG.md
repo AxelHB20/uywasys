@@ -4,12 +4,31 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Inventario: textos claros en todas las pantallas (27 nov)
+- **Lote con su motivo:** "Obligatorio: el lote va en el carné de vacunación", "Obligatorio: DIGEMID pide el lote de los controlados" u "Opcional: anótalo si la caja lo trae", bajo el campo en Agregar producto, Cargar stock y Registrar compra. Los errores dicen lo mismo (también los del servidor).
+- **Controlado explicado** donde se marca (agregar y editar): solo estupefacientes y psicotrópicos, qué exige y "si no es uno de estos, no lo marques".
+- **"No se vende: se gasta en la clínica (insumo)"** (antes "Es de uso interno"), con la explicación de qué es (jeringas, guantes, gasas, alcohol), que no aparece al cobrar y cómo baja su stock (Insumos usados en la atención, un servicio que lo usa o Registrar salida). Insignia "No se vende (insumo)" (antes "No se cobra"). La salida "Uso interno" pasa a **"Usado en la clínica"**, también en el kardex: eran dos cosas distintas con el mismo nombre.
+- **"Trae (tabletas)"** en lugar de "Equivalencia", **"¿Cómo se cuenta el stock?"** en lugar de "Unidad mínima"; costo "lo que pagaste, sin IGV".
+- **Registrar compra:** vencimiento como en la caja (08/2027) en vez del calendario.
+- **Cargar stock:** recuadro que explica cada columna (cantidad, vence, lote, costo, controlado).
+- **Aviso de stock bajo explicado:** "Avísame cuando queden pocas (opcional)" con "Ej.: 20" y debajo qué pasa ("Cuando queden 20 tabletas o menos, sale en «Con stock bajo» (Inventario e Inicio)…"; vacío: no avisa). En la ficha, "Aviso de stock bajo: Al quedar 6 unidades" y "Quedan pocas: toca comprar" (antes "Stock mínimo" y "Por debajo del mínimo"). Contraste de los títulos de la ficha a 4.5:1.
+
+### Cargar stock de varios productos en una tabla (27 nov)
+- **Pedido de la clínica:** tenían 24 productos creados sin stock y entrar a cada uno era tedioso.
+- **Inventario → Cargar stock** y aviso "N productos sin stock · Cargar stock" en Inventario (admin y veterinario).
+- **Una tabla con todos los productos activos sin stock:** cantidad y presentación (la más grande por defecto, con "= 30 tabletas"), vence como en la caja (08/2027), lote (obligatorio solo en vacunas y controlados), costo opcional. Buscador y filtro por categoría. En celular, una tarjeta por producto.
+- **Corregir "Controlado"** en la misma fila (solo Medicamento): varios productos se habían marcado como controlados por error, y eso pide receta, paciente y veterinario en cada uso.
+- **Todo o nada:** el servidor revisa todas las filas antes de guardar; si una está mal la marca y no entra ninguna. Las filas vacías no se tocan. Al guardar salen de la tabla.
+- **API:** `GET /api/inventory/stock-load` y `POST /api/inventory/stock-load` (hasta 200 por vez; errores por fila en `details.rows`). Sin cambios en la base de datos.
+- **Agregar producto:** el enlace al Excel solo se muestra al administrador (es quien puede importar).
+- Pruebas: e2e de carga por tabla (fila mal → no entra nada; corregir controlado → entra todo; recepción no entra).
+
 ### Agregar producto: stock y vencimiento en la misma pantalla (27 nov)
 - **Pedido de la clínica** (cargando su inventario): el alta tenía varios pasos y preguntas de más.
 - **Stock inicial en la misma pantalla** (opcional): cantidad y presentación, vencimiento, lote y costo. Se guarda junto con el producto en una sola operación (si el stock está mal, no se crea el producto a medias).
 - **Vencimiento como en la caja:** se escribe 08/2027 (o 08/27) y se guarda el último día del mes; también acepta la fecha completa. Avisa si ya venció o si no se entiende.
 - **Se queda en la pantalla al agregar:** mensaje con el stock, formulario limpio (se mantienen categoría y unidad), foco en el nombre y lista "Agregados ahora" con enlace a cada producto. "Cancelar" pasa a "Terminar".
-- **Unidad mínima: unidad, tableta, caja y frasco** (nuevos valores `BOX` y `BOTTLE`). ml y g ya no se ofrecen al agregar; los productos que los usan siguen igual. El Excel acepta "caja", "frasco" y "fco".
+- **Unidad mínima: unidad, tableta, caja y frasco** (nuevos valores `BOX` y `BOTTLE`). ml y g ya no se ofrecen al agregar; los productos que los usan siguen igual. El Excel acepta "caja", "frasco" y "fco", y la plantilla ofrece Unidad, Tableta, Caja y Frasco.
 - **La categoría decide si vence** (sin la pregunta "Vence / No vence"): nota bajo la categoría con "Cambiar" para casos raros. "Medicamento controlado" solo en Medicamento.
 - **"Es de uso interno (no se vende)"**, siempre desmarcado salvo Insumo, en lugar de "Se cobra al cliente" (que venía marcado y confundía). También en Editar producto.
 - **Lote obligatorio solo en vacunas y controlados** en el alta, "Registrar compra", "Recibir compra" (igual que ya hacía el Excel); lo demás que vence pide solo el vencimiento.

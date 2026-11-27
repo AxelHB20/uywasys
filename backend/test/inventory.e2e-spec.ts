@@ -229,6 +229,81 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     expect(list.body.total).toBe(0);
   });
 
+  it('cargar stock: varios productos de una vez; si una fila está mal no entra nada', async () => {
+    const make = async (name: string, category: string, controlled = false) =>
+      (
+        await http()
+          .post('/api/inventory/products')
+          .set('Cookie', cookies.vet)
+          .send({
+            name,
+            category,
+            baseUnit: 'BOX',
+            controlled,
+            presentations: [{ name: 'Caja', factor: 1, price: 20 }],
+          })
+          .expect(201)
+      ).body as { id: number; presentations: { id: number }[] };
+    const a = await make('Carga A', 'MEDICINE', true);
+    const b = await make('Carga B', 'ACCESSORY');
+    const pending = await http()
+      .get('/api/inventory/stock-load')
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(pending.body.items.map((p: { name: string }) => p.name)).toEqual(
+      expect.arrayContaining(['Carga A', 'Carga B']),
+    );
+    // A es controlado sin lote: no se guarda nada (tampoco B)
+    const rowA = {
+      productId: a.id,
+      presentationId: a.presentations[0].id,
+      quantity: 3,
+      expiresAt: addDays(today, 200),
+    };
+    const rowB = {
+      productId: b.id,
+      presentationId: b.presentations[0].id,
+      quantity: 7,
+    };
+    const bad = await http()
+      .post('/api/inventory/stock-load')
+      .set('Cookie', cookies.vet)
+      .send({ items: [rowA, rowB] })
+      .expect(400);
+    expect(bad.body.details.rows).toEqual([
+      {
+        productId: a.id,
+        message: 'Ingresa el lote: DIGEMID lo pide en los controlados',
+      },
+    ]);
+    const stockB = async () =>
+      (
+        await http()
+          .get(`/api/inventory/products/${b.id}`)
+          .set('Cookie', cookies.vet)
+      ).body.totalStock;
+    expect(await stockB()).toBe(0);
+    // Se corrige "controlado" en la misma pasada: ya no pide lote y entra todo
+    const ok = await http()
+      .post('/api/inventory/stock-load')
+      .set('Cookie', cookies.vet)
+      .send({ items: [{ ...rowA, controlled: false }, rowB] })
+      .expect(201);
+    expect(ok.body.loaded).toBe(2);
+    const detailA = (
+      await http()
+        .get(`/api/inventory/products/${a.id}`)
+        .set('Cookie', cookies.vet)
+    ).body;
+    expect(detailA.totalStock).toBe(3);
+    expect(detailA.controlled).toBe(false);
+    expect(await stockB()).toBe(7);
+    await http()
+      .get('/api/inventory/stock-load')
+      .set('Cookie', cookies.reception)
+      .expect(403);
+  });
+
   it('la compra exige vencimiento (el lote solo en vacunas y controlados) y no acepta lotes vencidos', async () => {
     const url = `/api/inventory/products/${productId}/purchases`;
     const noExpiry = await http()

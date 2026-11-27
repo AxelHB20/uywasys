@@ -38,7 +38,7 @@ import { addDays, expiryStatus } from './expiry.js';
 import type { ExpiryStatus } from './expiry.js';
 import { lastUnitCosts } from './last-cost.js';
 import { StockService } from './stock.service.js';
-import { lotRequired } from './lot-rule.js';
+import { lotMissingMessage, lotRequired } from './lot-rule.js';
 
 const D = Prisma.Decimal;
 const PAGE_SIZE = 20;
@@ -389,7 +389,7 @@ export class InventoryService {
         );
       if (lotRequired(dto.category, controlled) && !stock.lotNumber)
         throw new BadRequestException(
-          'Ingresa el lote del stock inicial (vacunas y controlados)',
+          lotMissingMessage(dto.category, controlled),
         );
       if (tracksExpiry) {
         if (!stock.expiresAt)
@@ -691,7 +691,9 @@ export class InventoryService {
       );
     // Vacunas y controlados (DIGEMID): lote obligatorio. Lo demás que vence: basta la fecha
     if (lotRequired(product.category, product.controlled) && !dto.lotNumber)
-      throw new BadRequestException('Ingresa el número de lote');
+      throw new BadRequestException(
+        lotMissingMessage(product.category, product.controlled),
+      );
     const supplier = dto.supplierId
       ? await this.prisma.supplier.findFirst({
           where: { id: dto.supplierId, clinicId: actor.clinicId },
