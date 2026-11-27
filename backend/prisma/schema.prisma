@@ -5,6 +5,8 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "esm"
+  // Explícito: en Docker se genera antes de copiar tsconfig y Prisma pondría ".ts"
+  importFileExtension = "js"
 }
 
 datasource db {
