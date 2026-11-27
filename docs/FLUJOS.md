@@ -374,6 +374,22 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
 - Solo cuentas activas de clínicas activas. En la base se guarda solo el hash del enlace.
 - Respaldo si el correo no llega: el otro administrador (o soporte) le restablece la clave desde Usuarios (⋯ → Restablecer contraseña).
 
+### Hospitalización: revisión (27 nov)
+- **Quién hace qué:** el veterinario (o administrador) interna, indica, suspende y da de alta; recepción (practicantes) registra dosis, signos y notas.
+- **Tablero:** una franja "N internados · N dosis atrasadas · N toca ahora" (la de atrasadas lleva al paciente). Cada tarjeta: nombre, especie y peso, dueño, motivo, lo que toca y **Registrar** (abre directo la dosis atrasada más antigua o la que toca: `?registrar=1`).
+- **Sin jaula:** ya no se pide ni se muestra (el dato queda guardado por si una clínica lo pide).
+- **Hoja:** las horas pendientes muestran solo la hora; con texto solo Dada, Atrasada, Toca ahora y Omitida. "Qué significa cada color" abre la leyenda. Cada indicación con ícono de su tipo.
+- **Registrar dosis:** "Se dio a las" (por defecto ahora; si se registra tarde, se pone la hora real; no futura ni de más de 24 h). Si la hora queda en el futuro se toma la de ayer (registro pasada la medianoche).
+- **Suspender** pide confirmación (no se deshace; para volver a darla, nueva indicación).
+- **Evolución** muestra por defecto **Notas y signos** (las dosis ya están en la hoja; filtros Dosis y Todo).
+- **Celular/tablet de pie:** Signos vitales antes de Evolución; en tablet de pie el gráfico va al lado de los datos.
+- **Cobro flexible** (sirve para paquete por día, día + lo caro aparte o todo detallado):
+  - Nueva indicación → **Cobrar aparte (opcional)**: un servicio o un producto en una presentación del inventario. No: estancia (se elige al alta), grooming ni controlados (esos van en Atención y cuenta con su receta).
+  - **Dar de alta → Cobro:** la **estancia es obligatoria de elegir** ("No cobrar (incluida en la cirugía o el paquete)" o un servicio por día × días: evita el cobro doble en una cirugía corta). **Se cobra aparte:** cada indicación con cobro propone las dosis dadas menos lo ya cargado a mano en la cuenta ("ya en la cuenta ×N"); se marca/desmarca y se corrige la cantidad (ej. el suero por frasco). Lo que no tiene cobro aparte sale como "incluido en el día". Total antes de confirmar.
+  - Los cargos se crean al confirmar el alta, en la misma operación (o todo o nada), con su stock (FEFO y faltante como cualquier cargo).
+- **Alta voluntaria** (el dueño lo retira antes del alta médica): queda como alta marcada "Alta voluntaria", con el motivo en las indicaciones; la mascota sigue activa y con sus recordatorios.
+- **Receta:** si la atención aún no tiene receta, el alta avisa "hazla antes del alta" (después la atención se cierra) con el enlace.
+
 ### Usuarios y Refuerzos: acciones de cada fila (26 nov)
 - **Usuarios:** en cada fila queda a la vista solo **Editar** (lápiz). **Restablecer contraseña** y **Desactivar usuario…** (en rojo, pide confirmación) van en el menú ⋯; cerca del borde de abajo el menú se abre hacia arriba; Escape lo cierra y el foco vuelve al ⋯. Un usuario inactivo muestra **Activar** a la vista. Uno mismo no tiene ⋯ (no puede desactivarse).
 - Usuario inactivo: fila con fondo gris y etiqueta "Inactivo" (antes se atenuaba toda la fila y el texto no se leía bien).

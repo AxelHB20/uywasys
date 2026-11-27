@@ -455,5 +455,100 @@ describe('Plantillas clínicas y hospitalización (e2e)', () => {
       expect(pet.deceasedAt).not.toBeNull();
       expect(pet.active).toBe(false);
     });
+
+    it('cobra aparte lo dado en la hoja, guarda la hora real de la dosis y registra el alta voluntaria', async () => {
+      const injection = (
+        await http()
+          .post('/api/care-services')
+          .set('Cookie', cookies.admin)
+          .send({ name: 'Inyección', category: 'CONSULTATION', price: 10 })
+          .expect(201)
+      ).body.id as number;
+      const pet = await newPet('Max');
+      const hosp = await http()
+        .post('/api/hospitalizations')
+        .set('Cookie', cookies.vet)
+        .send({ petId: pet, reason: 'Recuperación post castración' })
+        .expect(201);
+      await prisma.hospitalization.update({
+        where: { id: hosp.body.id },
+        data: { admittedAt: new Date(Date.now() - 5 * 3_600_000) },
+      });
+      const base = `/api/hospitalizations/${hosp.body.id}`;
+      // La estancia no se cobra por dosis
+      await http()
+        .post(`${base}/orders`)
+        .set('Cookie', cookies.vet)
+        .send({
+          kind: 'MEDICATION',
+          description: 'Estancia',
+          careServiceId: ids.stay,
+        })
+        .expect(400);
+      const withOrder = await http()
+        .post(`${base}/orders`)
+        .set('Cookie', cookies.vet)
+        .send({
+          kind: 'MEDICATION',
+          description: 'Meloxicam',
+          everyHours: null,
+          startsAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          careServiceId: injection,
+        })
+        .expect(201);
+      const order = withOrder.body.orders[0];
+      expect(order.bill).toMatchObject({
+        careServiceId: injection,
+        description: 'Inyección',
+        unitPrice: 10,
+        alreadyCharged: 0,
+      });
+      // Hora real: no futura; se guarda la que dijo quien la registró
+      await http()
+        .post(`${base}/entries`)
+        .set('Cookie', cookies.reception)
+        .send({
+          kind: 'DOSE',
+          orderId: order.id,
+          scheduledAt: order.slots[0].at,
+          givenAt: new Date(Date.now() + 3_600_000).toISOString(),
+        })
+        .expect(400);
+      const givenAt = new Date(Date.now() - 2 * 3_600_000);
+      const dosed = await http()
+        .post(`${base}/entries`)
+        .set('Cookie', cookies.reception)
+        .send({
+          kind: 'DOSE',
+          orderId: order.id,
+          scheduledAt: order.slots[0].at,
+          givenAt: givenAt.toISOString(),
+        })
+        .expect(201);
+      const dose = dosed.body.entries.find(
+        (e: { kind: string }) => e.kind === 'DOSE',
+      );
+      expect(new Date(dose.at).getTime()).toBe(givenAt.getTime());
+      expect(dosed.body.prescriptions).toBe(0);
+
+      const res = await http()
+        .post(`${base}/discharge`)
+        .set('Cookie', cookies.vet)
+        .send({
+          outcome: 'VOLUNTARY',
+          careServiceId: null,
+          extras: [{ orderId: order.id, quantity: 1 }],
+        })
+        .expect(201);
+      expect(res.body.status).toBe('DISCHARGED');
+      expect(res.body.voluntary).toBe(true);
+      expect(res.body.daysCharged).toBeNull();
+      expect(res.body.account).toEqual({ total: 10, pending: 10, lines: 1 });
+      expect(res.body.orders[0].bill.alreadyCharged).toBe(1);
+      const stillActive = await prisma.pet.findUniqueOrThrow({
+        where: { id: pet },
+      });
+      expect(stillActive.active).toBe(true);
+    });
   });
 });

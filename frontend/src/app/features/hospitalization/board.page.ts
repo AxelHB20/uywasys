@@ -9,7 +9,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { SPECIES_LABELS } from '../../core/services/clients.models';
 import {
-  HOSP_STATUS_LABELS,
+  statusLabel,
   HospitalizationCard,
   relativeTime,
   temperatureFlag,
@@ -18,6 +18,7 @@ import {
 import { HospitalizationService } from '../../core/services/hospitalization.service';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
+import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { apiErrorMessage } from '../../shared/utils/validators';
 import { SPECIES_ICONS } from '../../shared/utils/records';
 
@@ -29,7 +30,7 @@ const REFRESH_MS = 60_000;
  */
 @Component({
   selector: 'app-hospitalization-board',
-  imports: [RouterLink, IconComponent, FechaPipe],
+  imports: [RouterLink, IconComponent, FechaPipe, BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="space-y-6">
@@ -40,7 +41,7 @@ const REFRESH_MS = 60_000;
             Pacientes internados, su hoja de tratamiento y lo que toca a cada hora.
           </p>
         </div>
-        <p class="text-xs text-slate-500" aria-live="polite">
+        <p class="text-xs text-slate-600" aria-live="polite">
           @if (updatedAt(); as t) {
             Actualizado {{ t | fecha: 'time' }} · se actualiza solo
           }
@@ -64,43 +65,43 @@ const REFRESH_MS = 60_000;
           <button type="button" class="btn btn-secondary mt-5" (click)="load()">Reintentar</button>
         </div>
       } @else {
-        <!-- Resumen -->
-        <ul class="grid grid-cols-3 gap-3" aria-label="Resumen de hospitalización">
-          <li class="card px-4 py-3.5">
-            <p class="text-xs font-medium text-slate-500 sm:text-sm">Internados</p>
-            <p class="mt-1 font-display text-2xl font-semibold text-slate-900 tabular-nums">
-              {{ active().length }}
-            </p>
-          </li>
-          <li class="card px-4 py-3.5" [class]="overdue() ? 'bg-rose-50 ring-rose-200' : ''">
-            <p
-              class="text-xs font-medium sm:text-sm"
-              [class]="overdue() ? 'text-rose-800' : 'text-slate-500'"
-            >
-              Dosis atrasadas
-            </p>
-            <p
-              class="mt-1 font-display text-2xl font-semibold tabular-nums"
-              [class]="overdue() ? 'text-rose-700' : 'text-slate-900'"
-            >
-              {{ overdue() }}
-            </p>
-          </li>
-          <li class="card px-4 py-3.5" [class]="due() ? 'bg-amber-50 ring-amber-200' : ''">
-            <p
-              class="text-xs font-medium sm:text-sm"
-              [class]="due() ? 'text-amber-900' : 'text-slate-500'"
-            >
-              Tocan ahora
-            </p>
-            <p
-              class="mt-1 font-display text-2xl font-semibold tabular-nums"
-              [class]="due() ? 'text-amber-800' : 'text-slate-900'"
-            >
-              {{ due() }}
-            </p>
-          </li>
-        </ul>
+        <!-- Resumen en una línea: lo urgente lleva al paciente -->
+        @if (active().length) {
+          <p
+            class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"
+            aria-label="Resumen de hospitalización"
+          >
+            <span class="font-medium text-slate-900">
+              <span class="font-display text-lg font-semibold tabular-nums">{{
+                active().length
+              }}</span>
+              {{ active().length === 1 ? 'internado' : 'internados' }}
+            </span>
+            @if (overdue(); as n) {
+              <a
+                [routerLink]="['/hospitalizacion', active()[0].id]"
+                [queryParams]="{ registrar: 1 }"
+                class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-rose-50 px-3 font-medium text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100"
+              >
+                <app-icon name="alert" class="size-4" /> {{ n }}
+                {{ n === 1 ? 'dosis atrasada' : 'dosis atrasadas' }}
+              </a>
+            }
+            @if (due(); as n) {
+              <span
+                class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-amber-50 px-3 font-medium text-amber-900 ring-1 ring-amber-200"
+              >
+                <app-icon name="clock" class="size-4" /> {{ n }}
+                {{ n === 1 ? 'toca ahora' : 'tocan ahora' }}
+              </span>
+            }
+            @if (!overdue() && !due()) {
+              <span class="inline-flex items-center gap-1.5 text-emerald-800">
+                <app-icon name="check" class="size-4" /> Todo al día
+              </span>
+            }
+          </p>
+        }
 
         @if (!active().length) {
           <div class="card flex flex-col items-center px-6 py-14 text-center">
@@ -123,42 +124,35 @@ const REFRESH_MS = 60_000;
           >
             @for (c of active(); track c.id) {
               <li class="min-w-0">
-                <a
-                  [routerLink]="['/hospitalizacion', c.id]"
-                  class="card group flex h-full flex-col p-5 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-anil-500"
+                <!-- Toda la tarjeta abre la hoja; "Registrar" va encima, aparte -->
+                <article
+                  class="card relative flex h-full flex-col p-5 transition-shadow hover:shadow-md"
                   [class.ring-rose-300]="c.overdue > 0"
                 >
                   <div class="flex items-start gap-3">
-                    <span
-                      class="grid size-11 shrink-0 place-items-center rounded-xl bg-anil-600 text-white"
-                      aria-hidden="true"
-                    >
-                      <app-icon [name]="icons[c.pet.species]" class="size-6" />
-                    </span>
                     <div class="min-w-0 flex-1">
                       <p class="flex items-center gap-2">
-                        <span
-                          class="truncate font-display text-lg font-semibold text-slate-900 group-hover:text-anil-700"
-                          >{{ c.pet.name }}</span
+                        <a
+                          [routerLink]="['/hospitalizacion', c.id]"
+                          class="truncate font-display text-lg font-semibold text-slate-900 after:absolute after:inset-0 after:rounded-2xl hover:text-anil-700 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-anil-500"
+                          >{{ c.pet.name }}</a
                         >
-                        @if (c.cage) {
-                          <span
-                            class="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-700"
-                            >{{ c.cage }}</span
-                          >
-                        }
                       </p>
-                      <p class="truncate text-sm text-slate-600">
+                      <p class="mt-0.5 flex items-center gap-1.5 text-sm text-slate-600">
+                        <app-icon
+                          [name]="icons[c.pet.species]"
+                          class="size-4 shrink-0 text-slate-500"
+                        />
                         {{ species[c.pet.species]
-                        }}{{ c.pet.weightKg ? ' · ' + c.pet.weightKg + ' kg' : '' }} ·
-                        {{ c.client.name }}
+                        }}{{ c.pet.weightKg ? ' · ' + c.pet.weightKg + ' kg' : '' }}
                       </p>
+                      <p class="truncate text-sm text-slate-600">{{ c.client.name }}</p>
                     </div>
                     <span class="shrink-0 text-right">
-                      <span class="block text-xs text-slate-500">{{ c.code }}</span>
                       <span class="block text-sm font-semibold text-slate-900"
                         >Día {{ c.days }}</span
                       >
+                      <span class="block text-xs text-slate-600">{{ c.code }}</span>
                     </span>
                   </div>
 
@@ -167,87 +161,93 @@ const REFRESH_MS = 60_000;
                   </p>
 
                   @if (c.pet.aggressive || c.pet.allergies) {
-                    <p class="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    <p class="mt-2 flex flex-wrap gap-1.5">
                       @if (c.pet.aggressive) {
-                        <span
-                          class="rounded-md bg-rose-50 px-1.5 py-0.5 font-medium text-rose-800 ring-1 ring-rose-200"
-                          >Agresivo</span
-                        >
+                        <app-badge tone="danger">Agresivo</app-badge>
                       }
                       @if (c.pet.allergies) {
-                        <span
-                          class="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-900 ring-1 ring-amber-200"
-                          >Alergias: {{ c.pet.allergies }}</span
-                        >
+                        <app-badge tone="warning">Alergias: {{ c.pet.allergies }}</app-badge>
                       }
                     </p>
                   }
 
                   <div class="mt-auto space-y-2 pt-4">
-                    @if (c.overdue) {
-                      <p
-                        class="flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800"
-                      >
-                        <app-icon name="alert" class="size-4 shrink-0" />
-                        {{ c.overdue }} {{ c.overdue === 1 ? 'dosis atrasada' : 'dosis atrasadas' }}
-                      </p>
-                    }
-                    @if (c.next; as n) {
-                      <p
-                        class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                    @if (c.overdue || c.next) {
+                      <div
+                        class="relative z-10 flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
                         [class]="
-                          c.due ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-700'
+                          c.overdue
+                            ? 'bg-rose-50 text-rose-900'
+                            : c.due
+                              ? 'bg-amber-50 text-amber-900'
+                              : 'bg-slate-50 text-slate-700'
                         "
                       >
-                        <app-icon name="clock" class="size-4 shrink-0" />
-                        <span class="min-w-0 truncate">
-                          <span class="font-semibold tabular-nums">{{ when(n.at) }}</span>
-                          · {{ n.description }}
+                        <app-icon [name]="c.overdue ? 'alert' : 'clock'" class="size-4 shrink-0" />
+                        <span class="min-w-0 flex-1 line-clamp-2">
+                          @if (c.overdue) {
+                            <span class="font-semibold"
+                              >{{ c.overdue }}
+                              {{ c.overdue === 1 ? 'dosis atrasada' : 'dosis atrasadas' }}</span
+                            >
+                            @if (c.due) {
+                              · {{ c.due }} toca ahora
+                            }
+                          } @else if (c.next; as n) {
+                            <span class="font-semibold tabular-nums">{{ when(n.at) }}</span> ·
+                            {{ n.description }}
+                          }
                         </span>
-                        <span class="ml-auto shrink-0 text-xs">{{ relative(n.at) }}</span>
-                      </p>
+                        @if (c.overdue || c.due) {
+                          <a
+                            [routerLink]="['/hospitalizacion', c.id]"
+                            [queryParams]="{ registrar: 1 }"
+                            class="btn h-9 shrink-0 bg-white px-3 text-sm ring-1 pointer-coarse:h-11"
+                            [class]="
+                              c.overdue
+                                ? 'text-rose-800 ring-rose-300 hover:bg-rose-100'
+                                : 'text-amber-900 ring-amber-300 hover:bg-amber-100'
+                            "
+                            [attr.aria-label]="'Registrar dosis de ' + c.pet.name"
+                            >Registrar</a
+                          >
+                        } @else if (c.next; as n) {
+                          <span class="shrink-0 text-xs">{{ relative(n.at) }}</span>
+                        }
+                      </div>
                     } @else if (!c.activeOrders) {
-                      <p class="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      <p class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
                         Sin indicaciones activas
                       </p>
                     }
                     <div
-                      class="flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-sm"
+                      class="flex items-center gap-3 border-t border-slate-100 pt-3 text-sm tabular-nums text-slate-700"
                     >
                       @if (c.lastVitals; as v) {
-                        <span class="flex items-center gap-3 tabular-nums text-slate-700">
-                          @if (v.temperatureC !== null) {
-                            <span
-                              class="inline-flex items-center gap-1"
-                              [class]="tempClass(c)"
-                              [attr.aria-label]="
-                                'Temperatura ' + v.temperatureC + ' grados' + tempText(c)
-                              "
+                        @if (v.temperatureC !== null) {
+                          <span class="inline-flex items-center gap-1" [class]="tempClass(c)">
+                            <app-icon name="thermometer" class="size-4" aria-hidden="true" />
+                            <span class="sr-only">Temperatura</span>{{ v.temperatureC }}°<span
+                              class="sr-only"
+                              >{{ tempText(c) }}</span
                             >
-                              <app-icon name="thermometer" class="size-4" />{{ v.temperatureC }}°
-                            </span>
-                          }
-                          @if (v.heartRate !== null) {
-                            <span
-                              class="inline-flex items-center gap-1"
-                              [attr.aria-label]="'Frecuencia cardiaca ' + v.heartRate"
-                            >
-                              <app-icon name="heart-pulse" class="size-4" />{{ v.heartRate }}
-                            </span>
-                          }
-                          <span class="text-xs whitespace-nowrap text-slate-500">{{
-                            relative(v.at)
-                          }}</span>
-                        </span>
+                          </span>
+                        }
+                        @if (v.heartRate !== null) {
+                          <span class="inline-flex items-center gap-1">
+                            <app-icon name="heart-pulse" class="size-4" aria-hidden="true" />
+                            <span class="sr-only">Frecuencia cardiaca</span>{{ v.heartRate }}
+                          </span>
+                        }
+                        <span class="ml-auto text-xs text-slate-600"
+                          >signos {{ relative(v.at) }}</span
+                        >
                       } @else {
-                        <span class="text-slate-500">Sin signos registrados</span>
+                        <span class="text-slate-600">Sin signos registrados</span>
                       }
-                      <span class="min-w-0 truncate text-xs text-slate-500">{{
-                        c.vet.fullName
-                      }}</span>
                     </div>
                   </div>
-                </a>
+                </article>
               </li>
             }
           </ul>
@@ -273,14 +273,11 @@ const REFRESH_MS = 60_000;
                       <span class="font-medium text-slate-900">{{ c.pet.name }}</span>
                       <span class="text-slate-600"> · {{ c.diagnosis || c.reason }}</span>
                     </span>
-                    <span
-                      class="shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium"
-                      [class]="
-                        c.status === 'DECEASED'
-                          ? 'bg-slate-100 text-slate-700'
-                          : 'bg-emerald-50 text-emerald-800'
+                    <app-badge
+                      [tone]="
+                        c.status === 'DECEASED' ? 'neutral' : c.voluntary ? 'warning' : 'success'
                       "
-                      >{{ statusLabels[c.status] }}</span
+                      >{{ statusLabel(c) }}</app-badge
                     >
                     <span class="hidden shrink-0 text-xs text-slate-500 sm:inline">{{
                       c.dischargedAt | fecha: 'datetime'
@@ -300,7 +297,7 @@ export class HospitalizationBoardPage {
 
   protected readonly icons = SPECIES_ICONS;
   protected readonly species = SPECIES_LABELS;
-  protected readonly statusLabels = HOSP_STATUS_LABELS;
+  protected readonly statusLabel = statusLabel;
   protected readonly cards = signal<HospitalizationCard[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);

@@ -68,20 +68,7 @@ import { apiErrorMessage } from '../../shared/utils/validators';
             autocomplete="off"
           />
         </div>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label for="ad-cage" class="field-label"
-              >Jaula o box <span class="font-normal text-slate-500">(opcional)</span></label
-            >
-            <input
-              id="ad-cage"
-              formControlName="cage"
-              class="field-input"
-              maxlength="30"
-              autocomplete="off"
-              placeholder="Ej.: J-3"
-            />
-          </div>
+        <div>
           <div>
             <label for="ad-vet" class="field-label">Veterinario responsable</label>
             <select
@@ -145,7 +132,6 @@ export class AdmitModalComponent {
       validators: [Validators.required, Validators.minLength(3), Validators.maxLength(200)],
     }),
     diagnosis: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(300)] }),
-    cage: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(30)] }),
     vetId: new FormControl<number | null>(null, Validators.required),
   });
 
@@ -156,7 +142,6 @@ export class AdmitModalComponent {
       this.form.reset({
         reason: this.reason().slice(0, 200),
         diagnosis: this.diagnosis().slice(0, 300),
-        cage: '',
         vetId: me && this.session.role() === 'VET' ? me.id : null,
       });
       if (!this.staff().length)
@@ -203,7 +188,6 @@ export class AdmitModalComponent {
         vetId: v.vetId ?? undefined,
         reason: v.reason.trim(),
         diagnosis: v.diagnosis.trim() || null,
-        cage: v.cage.trim() || null,
       })
       .subscribe({
         next: (h) => {

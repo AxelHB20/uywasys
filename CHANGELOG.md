@@ -4,6 +4,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Hospitalización: revisión completa (27 nov)
+- **Cobro flexible al dar de alta:** "Cobrar aparte" opcional en cada indicación (servicio o producto del inventario); el alta propone cobrar las dosis dadas menos lo ya cargado, con cantidad editable, y muestra el total. La **estancia es obligatoria de elegir** (incluye "No cobrar"), así no se cobra doble en una cirugía corta. Los cargos se crean en la misma operación del alta.
+- **Alta voluntaria** como tercera salida (queda marcada en la hoja y en "Altas recientes").
+- **"Se dio a las"** al registrar una dosis (hora real si se registra tarde).
+- **Suspender pide confirmación.**
+- **Aviso de receta** en el alta si la atención aún no tiene una.
+- **Tablero:** franja de resumen en vez de 3 tarjetas, botón **Registrar** que abre la dosis que toca, dueño sin cortar, etiquetas del sistema.
+- **Hoja:** pendientes solo con la hora, leyenda plegable, ícono por tipo, textos de 12 px o más, evolución con "Notas y signos" primero; en celular los signos antes de la evolución; gráfico de temperatura normal en tablet de pie.
+- **Sin jaula** en pantallas (el dato queda guardado).
+- **Accesibilidad:** contraste del encabezado y "Actualizado", "Editar" fuera de la lista de datos, separadores de día y filtros bien marcados (axe: 0 fallas en tablero y hoja, PC y celular).
+- **Base de datos:** migración `20261127010000_hospitalizacion_cobro` (columnas nuevas opcionales; no cambia datos existentes).
+- Pruebas: alta con estancia obligatoria y cobro aparte, registrar desde el tablero, confirmación al suspender, hora real (`givenAtIso`); e2e de cobro aparte, hora real y alta voluntaria.
+
 ### Usuarios y Refuerzos: acciones más claras (26 nov)
 - **Usuarios:** "Desactivar" ya no está a la vista en cada fila. Restablecer contraseña y Desactivar usuario… (rojo, con confirmación) van en el menú ⋯; queda a la vista Editar (y Activar en los inactivos). El menú de la última fila ya no se corta.
 - **Usuarios inactivos:** fondo gris en lugar de atenuar la fila (el texto no pasaba contraste). "N activos" con contraste 4.5:1 (axe: 0 fallas).

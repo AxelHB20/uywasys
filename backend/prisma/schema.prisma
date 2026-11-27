@@ -496,6 +496,7 @@ model Product {
   charges       Charge[]
   shortages     StockShortage[]
   prescribed    PrescriptionItem[]
+  hospOrders    HospitalizationOrder[]
   estimated     EstimateItem[]
   purchaseLines PurchaseLine[]
 
@@ -521,6 +522,7 @@ model ProductPresentation {
   clinic     Clinic             @relation(fields: [clinicId], references: [id])
   product    Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   charges    Charge[]
+  hospOrders HospitalizationOrder[]
   prescribed PrescriptionItem[]
   estimated  EstimateItem[]
   purchased  PurchaseLine[]
@@ -625,6 +627,7 @@ model CareService {
   clinic     Clinic                 @relation(fields: [clinicId], references: [id])
   supplies   CareServiceSupply[]
   charges    Charge[]
+  hospOrders HospitalizationOrder[]
   estimated  EstimateItem[]
   sizePrices CareServiceSizePrice[]
 
@@ -1653,6 +1656,8 @@ model Hospitalization {
   dischargeNotes String?               @map("discharge_notes") @db.VarChar(1000)
   /// Días cobrados al dar de alta
   daysCharged    Int?                  @map("days_charged")
+  /// Alta voluntaria: el dueño lo retiró antes del alta médica (status DISCHARGED)
+  voluntary      Boolean               @default(false)
   updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   clinic       Clinic                 @relation(fields: [clinicId], references: [id])
@@ -1685,6 +1690,10 @@ model HospitalizationOrder {
   startsAt          DateTime      @map("starts_at") @db.Timestamptz(3)
   endsAt            DateTime?     @map("ends_at") @db.Timestamptz(3)
   notes             String?       @db.VarChar(300)
+  /// Cobrar aparte (opcional): al dar de alta se propone cobrar las dosis dadas
+  careServiceId     Int?          @map("care_service_id")
+  productId         Int?          @map("product_id")
+  presentationId    Int?          @map("presentation_id")
   createdById       Int           @map("created_by_id")
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   stoppedAt         DateTime?     @map("stopped_at") @db.Timestamptz(3)
@@ -1694,6 +1703,9 @@ model HospitalizationOrder {
   hospitalization Hospitalization        @relation(fields: [hospitalizationId], references: [id])
   createdBy       User                   @relation("HospOrderCreatedBy", fields: [createdById], references: [id])
   stoppedBy       User?                  @relation("HospOrderStoppedBy", fields: [stoppedById], references: [id])
+  careService     CareService?           @relation(fields: [careServiceId], references: [id])
+  product         Product?               @relation(fields: [productId], references: [id])
+  presentation    ProductPresentation?   @relation(fields: [presentationId], references: [id])
   entries         HospitalizationEntry[]
 
   @@index([hospitalizationId])

@@ -4,7 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { SessionService } from '../../core/auth/session.service';
 import { HospitalizationDetail } from '../../core/services/hospitalization.models';
-import { HospitalizationDetailPage } from './detail.page';
+import { HospitalizationDetailPage, givenAtIso } from './detail.page';
 
 const NOW = Date.now();
 const at = (minutes: number) => new Date(NOW + minutes * 60_000).toISOString();
@@ -15,7 +15,8 @@ function detail(overrides: Partial<HospitalizationDetail> = {}): Hospitalization
     number: 3,
     code: 'HZ-00003',
     status: 'ACTIVE',
-    cage: 'J-1',
+    voluntary: false,
+    cage: null,
     homeDelivery: null,
     reason: 'Gastroenteritis',
     diagnosis: 'Gastroenteritis hemorrágica',
@@ -67,6 +68,14 @@ function detail(overrides: Partial<HospitalizationDetail> = {}): Hospitalization
           { at: at(-60), state: 'OVERDUE', doneAt: null },
           { at: at(180), state: 'PENDING', doneAt: null },
         ],
+        bill: {
+          careServiceId: null,
+          productId: 5,
+          presentationId: 9,
+          description: 'Metronidazol 500 mg · Frasco',
+          unitPrice: 8,
+          alreadyCharged: 0,
+        },
       },
     ],
     entries: [
@@ -97,6 +106,7 @@ function detail(overrides: Partial<HospitalizationDetail> = {}): Hospitalization
       },
     ],
     account: { total: 180, pending: 180, lines: 2 },
+    prescriptions: 0,
     dischargeNotes: null,
     daysCharged: null,
     dischargedBy: null,
@@ -117,7 +127,7 @@ describe('HospitalizationDetailPage (hoja de tratamiento)', () => {
   });
   afterEach(() => http?.verify());
 
-  function render(role: 'VET' | 'RECEPTION' = 'VET') {
+  function render(role: 'VET' | 'RECEPTION' = 'VET', registrar?: string) {
     TestBed.configureTestingModule({
       imports: [HospitalizationDetailPage],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -126,6 +136,7 @@ describe('HospitalizationDetailPage (hoja de tratamiento)', () => {
     TestBed.inject(SessionService).user.set({ id: 3, fullName: 'Dra. Lucía Ruiz', role } as never);
     const fixture = TestBed.createComponent(HospitalizationDetailPage);
     fixture.componentRef.setInput('id', '7');
+    if (registrar) fixture.componentRef.setInput('registrar', registrar);
     fixture.detectChanges();
     http.expectOne('/api/hospitalizations/7').flush(detail());
     fixture.detectChanges();
@@ -156,7 +167,67 @@ describe('HospitalizationDetailPage (hoja de tratamiento)', () => {
     const req = http.expectOne({ method: 'POST', url: '/api/hospitalizations/7/entries' });
     expect(req.request.body).toMatchObject({ kind: 'DOSE', orderId: 11, skipped: false });
     expect(req.request.body.scheduledAt).toBe(detail().orders[0].slots[2].at);
+    // La hora real en que se dio (por defecto, ahora)
+    expect(Math.abs(new Date(req.request.body.givenAt).getTime() - Date.now())).toBeLessThan(
+      2 * 60_000,
+    );
     req.flush(detail());
+  });
+
+  it('desde el tablero (?registrar=1) abre directo la dosis atrasada', () => {
+    const fixture = render('RECEPTION', '1');
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('dialog[open]');
+    expect(dialog?.textContent).toContain('Registrar dosis');
+    expect(dialog?.textContent).toContain('Se dio a las');
+  });
+
+  it('suspender pide confirmación antes de enviar', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    el.querySelector<HTMLButtonElement>('[aria-label="Suspender Metronidazol"]')!.click();
+    fixture.detectChanges();
+    http.expectNone('/api/hospitalizations/7/orders/11/stop');
+    expect(el.querySelector('dialog[open]')?.textContent).toContain('¿Suspender Metronidazol?');
+    [...el.querySelectorAll<HTMLButtonElement>('dialog[open] button')]
+      .find((b) => b.textContent?.trim() === 'Suspender')!
+      .click();
+    http
+      .expectOne({ method: 'POST', url: '/api/hospitalizations/7/orders/11/stop' })
+      .flush(detail());
+  });
+
+  it('el alta obliga a elegir la estancia y cobra aparte lo dado en la hoja', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    [...el.querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent?.trim() === 'Dar de alta' && !b.closest('dialog'))!
+      .click();
+    http
+      .expectOne((r) => r.url === '/api/care-services')
+      .flush([{ id: 4, name: 'Hospitalización (día)', category: 'HOSPITALIZATION', price: 120 }]);
+    fixture.detectChanges();
+    const dialog = el.querySelector('dialog[open]')!;
+    expect(dialog.textContent).toContain('Metronidazol 500 mg · Frasco');
+    expect(dialog.textContent).toContain('Aún no tiene receta');
+    const submit = el.querySelector<HTMLButtonElement>('button[form="discharge-form"]')!;
+    submit.click();
+    fixture.detectChanges();
+    http.expectNone('/api/hospitalizations/7/discharge');
+    expect(dialog.textContent).toContain('Elige si se cobra la estancia');
+
+    const stay = el.querySelector<HTMLSelectElement>('#dc-service')!;
+    stay.value = 'none';
+    stay.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    submit.click();
+    const req = http.expectOne({ method: 'POST', url: '/api/hospitalizations/7/discharge' });
+    expect(req.request.body).toMatchObject({
+      outcome: 'DISCHARGED',
+      careServiceId: null,
+      days: null,
+      extras: [{ orderId: 11, quantity: 1 }],
+    });
+    req.flush(detail({ status: 'DISCHARGED' }));
   });
 
   it('recepción registra pero no indica ni da de alta', () => {
@@ -167,5 +238,14 @@ describe('HospitalizationDetailPage (hoja de tratamiento)', () => {
     expect(buttons).not.toContain('Nueva indicación');
     expect(buttons).not.toContain('Dar de alta');
     expect(buttons.some((t) => t?.includes('Registrar'))).toBe(true);
+  });
+});
+
+describe('givenAtIso (hora real de la dosis)', () => {
+  it('usa la hora de hoy en Lima y, si queda en el futuro, la de ayer', () => {
+    const now = new Date('2026-11-27T05:30:00Z'); // 00:30 en Lima
+    expect(givenAtIso('00:10', now)).toBe('2026-11-27T05:10:00.000Z');
+    expect(givenAtIso('23:50', now)).toBe('2026-11-27T04:50:00.000Z');
+    expect(givenAtIso('', now)).toBeUndefined();
   });
 });

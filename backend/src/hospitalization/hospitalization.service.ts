@@ -35,6 +35,7 @@ const CARD_SELECT = {
   id: true,
   number: true,
   status: true,
+  voluntary: true,
   cage: true,
   reason: true,
   diagnosis: true,
@@ -68,6 +69,12 @@ const CARD_SELECT = {
       notes: true,
       createdAt: true,
       createdBy: { select: { id: true, fullName: true } },
+      careServiceId: true,
+      productId: true,
+      presentationId: true,
+      careService: { select: { name: true, price: true } },
+      product: { select: { name: true } },
+      presentation: { select: { name: true, price: true } },
     },
     orderBy: { createdAt: 'asc' },
   },
@@ -95,6 +102,8 @@ export interface HospitalizationCard {
   number: number;
   code: string;
   status: CardRow['status'];
+  /** Alta voluntaria (el dueño lo retiró antes del alta médica) */
+  voluntary: boolean;
   cage: string | null;
   reason: string;
   diagnosis: string | null;
@@ -126,6 +135,15 @@ export interface OrderView {
   active: boolean;
   createdBy: { id: number; fullName: string };
   slots: SlotView[];
+  /** Cobrar aparte: qué se cobra y cuánto ya está en la cuenta de la atención */
+  bill: {
+    careServiceId: number | null;
+    productId: number | null;
+    presentationId: number | null;
+    description: string;
+    unitPrice: number;
+    alreadyCharged: number;
+  } | null;
 }
 
 export interface EntryView {
@@ -150,6 +168,8 @@ export interface HospitalizationDetail extends HospitalizationCard {
   entries: EntryView[];
   vitals: VitalsView[];
   account: { total: number; pending: number; lines: number };
+  /** Recetas vigentes de la atención (al dar de alta: "¿receta para casa?") */
+  prescriptions: number;
   dischargeNotes: string | null;
   daysCharged: number | null;
   dischargedBy: { id: number; fullName: string } | null;
@@ -263,7 +283,16 @@ export class HospitalizationService {
           select: {
             charges: {
               where: { status: { not: 'VOID' } },
-              select: { total: true, paidAmount: true },
+              select: {
+                total: true,
+                paidAmount: true,
+                quantity: true,
+                careServiceId: true,
+                productId: true,
+              },
+            },
+            _count: {
+              select: { prescriptions: { where: { voidedAt: null } } },
             },
           },
         },
@@ -312,6 +341,7 @@ export class HospitalizationService {
         stoppedAt: o.stoppedAt,
         notes: o.notes,
         createdBy: o.createdBy,
+        bill: billOf(o, charges),
         active: row.status === 'ACTIVE' && this.isActive(o, now),
         slots: slotsOf(
           o,
@@ -347,6 +377,7 @@ export class HospitalizationService {
         ),
         lines: charges.length,
       },
+      prescriptions: row.visit._count.prescriptions,
       dischargeNotes: row.dischargeNotes,
       daysCharged: row.daysCharged,
       dischargedBy: row.dischargedBy,
@@ -454,6 +485,7 @@ export class HospitalizationService {
     ip?: string,
   ): Promise<HospitalizationDetail> {
     await this.active(actor.clinicId, id);
+    const bill = await this.checkBill(actor.clinicId, dto);
     const startsAt = dto.startsAt ? new Date(dto.startsAt) : new Date();
     if (startsAt.getTime() < Date.now() - 24 * HOUR)
       throw new BadRequestException(
@@ -473,6 +505,7 @@ export class HospitalizationService {
           ? new Date(startsAt.getTime() + dto.durationDays * 24 * HOUR)
           : null,
         notes: dto.notes ?? null,
+        ...bill,
         createdById: actor.id,
       },
       select: { id: true },
@@ -488,6 +521,7 @@ export class HospitalizationService {
         orderId: order.id,
         description: dto.description,
         everyHours: dto.everyHours ?? null,
+        ...bill,
       },
     });
     return this.get(actor.clinicId, id);
@@ -528,8 +562,24 @@ export class HospitalizationService {
     id: number,
     dto: EntryDto,
   ): Promise<HospitalizationDetail> {
-    await this.active(actor.clinicId, id);
+    const current = await this.active(actor.clinicId, id);
     let scheduledAt: Date | null = null;
+    let at: Date | undefined;
+    if (dto.kind === 'DOSE' && dto.givenAt) {
+      at = new Date(dto.givenAt);
+      const now = Date.now();
+      if (at.getTime() > now + 2 * 60_000)
+        throw new BadRequestException(
+          'La hora en que se dio no puede ser futura',
+        );
+      if (
+        at.getTime() < now - 24 * HOUR ||
+        at.getTime() < current.admittedAt.getTime() - 60_000
+      )
+        throw new BadRequestException(
+          'La hora en que se dio debe ser de las últimas 24 horas',
+        );
+    }
     if (dto.kind === 'DOSE') {
       const order = await this.prisma.hospitalizationOrder.findFirst({
         where: { id: dto.orderId, hospitalizationId: id },
@@ -583,6 +633,7 @@ export class HospitalizationService {
         weightKg: dto.kind === 'VITALS' ? (dto.weightKg ?? null) : null,
         mucosa: dto.kind === 'VITALS' ? (dto.mucosa ?? null) : null,
         notes: dto.notes ?? null,
+        ...(at ? { at } : {}),
         byId: actor.id,
       },
     });
@@ -618,7 +669,16 @@ export class HospitalizationService {
           `${service.name} no es un servicio de hospitalización`,
         );
     }
-    const prep = dto.careServiceId ? await this.charges.prepare(actor) : null;
+    // Lo que se cobra aparte: solo indicaciones de este internamiento con su cobro elegido
+    const extras = await this.extrasOf(id, dto.extras ?? []);
+    const items: CreateChargesDto['items'] = [
+      ...(dto.careServiceId
+        ? [{ careServiceId: dto.careServiceId, quantity: days }]
+        : []),
+      ...extras,
+    ];
+    const prep = items.length ? await this.charges.prepare(actor) : null;
+    const status = dto.outcome === 'DECEASED' ? 'DECEASED' : 'DISCHARGED';
     const tz =
       dto.outcome === 'DECEASED' ? await this.timezone(actor.clinicId) : null;
 
@@ -629,14 +689,11 @@ export class HospitalizationService {
         if (locked?.status !== 'ACTIVE')
           throw new ConflictException('El paciente ya fue dado de alta');
         const created =
-          dto.careServiceId && prep
+          items.length && prep
             ? await this.charges.createInTx(
                 tx,
                 actor,
-                {
-                  visitId: current.visitId,
-                  items: [{ careServiceId: dto.careServiceId, quantity: days }],
-                } as CreateChargesDto,
+                { visitId: current.visitId, items } as CreateChargesDto,
                 prep,
               )
             : null;
@@ -647,7 +704,8 @@ export class HospitalizationService {
         await tx.hospitalization.update({
           where: { id },
           data: {
-            status: dto.outcome,
+            status,
+            voluntary: dto.outcome === 'VOLUNTARY',
             dischargedAt: now,
             dischargedById: actor.id,
             dischargeNotes: dto.notes ?? null,
@@ -689,6 +747,7 @@ export class HospitalizationService {
         outcome: dto.outcome,
         days,
         careServiceId: dto.careServiceId ?? null,
+        extras: extras.length,
       },
     });
     if (created)
@@ -697,6 +756,117 @@ export class HospitalizationService {
   }
 
   // ─── Internos ──────────────────────────────────────────────────────────────
+
+  /** Cobrar aparte: el servicio o la presentación existen, se pueden cobrar y no son controlados */
+  private async checkBill(
+    clinicId: number,
+    dto: OrderDto,
+  ): Promise<{
+    careServiceId: number | null;
+    productId: number | null;
+    presentationId: number | null;
+  }> {
+    const none = { careServiceId: null, productId: null, presentationId: null };
+    if (dto.careServiceId && dto.productId)
+      throw new BadRequestException(
+        'Elige un servicio o un producto, no ambos',
+      );
+    if (dto.careServiceId) {
+      const service = await this.prisma.careService.findFirst({
+        where: { id: dto.careServiceId, clinicId, active: true },
+        select: {
+          name: true,
+          category: true,
+          supplies: { select: { product: { select: { controlled: true } } } },
+        },
+      });
+      if (!service)
+        throw new NotFoundException('El servicio no existe o está inactivo');
+      if (
+        service.category === 'GROOMING' ||
+        service.category === 'HOSPITALIZATION'
+      )
+        throw new BadRequestException(
+          `${service.name} no se cobra por dosis (la estancia se elige al dar de alta)`,
+        );
+      if (service.supplies.some((x) => x.product.controlled))
+        throw new BadRequestException(
+          `${service.name} usa un controlado: cárgalo en Atención y cuenta con su receta`,
+        );
+      return { ...none, careServiceId: dto.careServiceId };
+    }
+    if (dto.productId) {
+      const presentation = await this.prisma.productPresentation.findFirst({
+        where: {
+          id: dto.presentationId ?? 0,
+          productId: dto.productId,
+          clinicId,
+          active: true,
+          price: { not: null },
+        },
+        select: {
+          product: {
+            select: {
+              name: true,
+              active: true,
+              chargeable: true,
+              controlled: true,
+            },
+          },
+        },
+      });
+      if (
+        !presentation ||
+        !presentation.product.active ||
+        !presentation.product.chargeable
+      )
+        throw new NotFoundException('El producto no existe o no se vende');
+      if (presentation.product.controlled)
+        throw new BadRequestException(
+          `${presentation.product.name} es controlado: cárgalo en Atención y cuenta con su receta`,
+        );
+      return {
+        careServiceId: null,
+        productId: dto.productId,
+        presentationId: dto.presentationId ?? null,
+      };
+    }
+    return none;
+  }
+
+  /** Líneas de cobro de lo dado en la hoja (solo indicaciones de este internamiento con cobro) */
+  private async extrasOf(
+    hospitalizationId: number,
+    extras: { orderId: number; quantity: number }[],
+  ): Promise<CreateChargesDto['items']> {
+    if (!extras.length) return [];
+    const ids = [...new Set(extras.map((e) => e.orderId))];
+    if (ids.length !== extras.length)
+      throw new BadRequestException('Una indicación se repite en el cobro');
+    const orders = await this.prisma.hospitalizationOrder.findMany({
+      where: { id: { in: ids }, hospitalizationId },
+      select: {
+        id: true,
+        description: true,
+        careServiceId: true,
+        productId: true,
+        presentationId: true,
+      },
+    });
+    return extras.map((e) => {
+      const o = orders.find((x) => x.id === e.orderId);
+      if (!o) throw new NotFoundException('Indicación no encontrada');
+      if (o.careServiceId)
+        return { careServiceId: o.careServiceId, quantity: e.quantity };
+      if (o.productId && o.presentationId)
+        return {
+          productId: o.productId,
+          presentationId: o.presentationId,
+          quantity: e.quantity,
+        };
+      throw new BadRequestException(`«${o.description}» no tiene cobro aparte`);
+    });
+  }
 
   private toCard(
     row: CardRow,
@@ -733,6 +903,7 @@ export class HospitalizationService {
       number: row.number,
       code: hospitalizationCode(row.number),
       status: row.status,
+      voluntary: row.voluntary,
       cage: row.cage,
       reason: row.reason,
       diagnosis: row.diagnosis,
@@ -881,4 +1052,44 @@ export class HospitalizationService {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/** Cobro aparte de una indicación, con lo que ya está en la cuenta (cargado a mano) */
+function billOf(
+  o: CardRow['orders'][number],
+  charges: {
+    quantity: Prisma.Decimal;
+    careServiceId: number | null;
+    productId: number | null;
+  }[],
+): OrderView['bill'] {
+  if (o.careServiceId && o.careService)
+    return {
+      careServiceId: o.careServiceId,
+      productId: null,
+      presentationId: null,
+      description: o.careService.name,
+      unitPrice: Number(o.careService.price),
+      alreadyCharged: sumQty(
+        charges.filter((c) => c.careServiceId === o.careServiceId),
+      ),
+    };
+  if (o.productId && o.product && o.presentation)
+    return {
+      careServiceId: null,
+      productId: o.productId,
+      presentationId: o.presentationId,
+      description: `${o.product.name} · ${o.presentation.name}`,
+      unitPrice: Number(o.presentation.price ?? 0),
+      alreadyCharged: sumQty(
+        charges.filter((c) => c.productId === o.productId),
+      ),
+    };
+  return null;
+}
+
+function sumQty(rows: { quantity: Prisma.Decimal }[]): number {
+  return (
+    Math.round(rows.reduce((s, r) => s + Number(r.quantity), 0) * 1000) / 1000
+  );
 }

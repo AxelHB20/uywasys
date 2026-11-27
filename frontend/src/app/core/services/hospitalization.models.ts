@@ -19,6 +19,8 @@ export interface HospitalizationCard {
   number: number;
   code: string;
   status: HospitalizationStatus;
+  /** Alta voluntaria: el dueño lo retiró antes del alta médica */
+  voluntary: boolean;
   cage: string | null;
   reason: string;
   diagnosis: string | null;
@@ -64,6 +66,15 @@ export interface HospOrder {
   active: boolean;
   createdBy: { id: number; fullName: string };
   slots: Slot[];
+  /** Cobrar aparte (opcional) y cuánto ya está en la cuenta */
+  bill: {
+    careServiceId: number | null;
+    productId: number | null;
+    presentationId: number | null;
+    description: string;
+    unitPrice: number;
+    alreadyCharged: number;
+  } | null;
 }
 
 export interface HospEntry {
@@ -88,6 +99,8 @@ export interface HospitalizationDetail extends HospitalizationCard {
   entries: HospEntry[];
   vitals: Vitals[];
   account: { total: number; pending: number; lines: number };
+  /** Recetas vigentes de la atención */
+  prescriptions: number;
   dischargeNotes: string | null;
   daysCharged: number | null;
   dischargedBy: { id: number; fullName: string } | null;
@@ -118,12 +131,17 @@ export interface OrderInput {
   startsAt?: string;
   durationDays?: number | null;
   notes?: string | null;
+  careServiceId?: number | null;
+  productId?: number | null;
+  presentationId?: number | null;
 }
 
 export interface EntryInput {
   kind: 'DOSE' | 'VITALS' | 'NOTE';
   orderId?: number;
   scheduledAt?: string;
+  /** Dosis: hora real en que se dio */
+  givenAt?: string;
   skipped?: boolean;
   temperatureC?: number | null;
   heartRate?: number | null;
@@ -134,10 +152,12 @@ export interface EntryInput {
 }
 
 export interface DischargeInput {
-  outcome: 'DISCHARGED' | 'DECEASED';
+  outcome: 'DISCHARGED' | 'VOLUNTARY' | 'DECEASED';
   careServiceId?: number | null;
   days?: number | null;
   notes?: string | null;
+  /** Lo dado en la hoja que se cobra aparte */
+  extras?: { orderId: number; quantity: number }[];
 }
 
 export const HOSP_STATUS_LABELS: Record<HospitalizationStatus, string> = {
@@ -145,6 +165,13 @@ export const HOSP_STATUS_LABELS: Record<HospitalizationStatus, string> = {
   DISCHARGED: 'De alta',
   DECEASED: 'Fallecido',
 };
+
+/** "De alta", "Alta voluntaria", "Fallecido" o "Internado" */
+export function statusLabel(c: Pick<HospitalizationCard, 'status' | 'voluntary'>): string {
+  return c.status === 'DISCHARGED' && c.voluntary
+    ? 'Alta voluntaria'
+    : HOSP_STATUS_LABELS[c.status];
+}
 
 export const ORDER_KIND_LABELS: Record<HospOrderKind, string> = {
   MEDICATION: 'Medicamento',

@@ -13,6 +13,14 @@ import {
   signal,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { catchError, debounceTime, distinctUntilChanged, map, of, switchMap } from 'rxjs';
+import { InventoryService } from '../../core/services/inventory.service';
+import {
+  CatalogOption,
+  toProductOptions,
+  toServiceOptions,
+} from '../../shared/catalog/catalog-options';
 import { RouterLink } from '@angular/router';
 import { SessionService } from '../../core/auth/session.service';
 import { SPECIES_LABELS } from '../../core/services/clients.models';
@@ -21,6 +29,7 @@ import {
   EVERY_HOURS_OPTIONS,
   HOSP_ROUTES,
   HOSP_STATUS_LABELS,
+  statusLabel,
   HospEntry,
   HospOrder,
   HospOrderKind,
@@ -55,16 +64,19 @@ import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component
 const REFRESH_MS = 60_000;
 const MUCOSA_OPTIONS = ['Rosadas', 'Pálidas', 'Congestivas', 'Ictéricas', 'Cianóticas'];
 
-type Modal = 'order' | 'dose' | 'vitals' | 'discharge' | 'edit' | null;
+type Modal = 'order' | 'dose' | 'vitals' | 'discharge' | 'edit' | 'stop' | null;
 
 /** Estilo de cada casilla de la hoja: color, icono y texto (nunca solo color) */
 export const SLOT_STYLE: Record<SlotState, { chip: string; icon: IconName | null }> = {
   GIVEN: { chip: 'bg-emerald-50 text-emerald-800 ring-emerald-200', icon: 'check' },
   SKIPPED: { chip: 'bg-slate-100 text-slate-600 ring-slate-200 line-through', icon: 'minus' },
   // Tinte, no bloque sólido: con varias atrasadas la hoja no "grita" y el aviso de arriba resume
-  OVERDUE: { chip: 'bg-rose-50 text-rose-800 ring-rose-300 hover:bg-rose-100', icon: 'alert' },
+  OVERDUE: {
+    chip: 'bg-rose-50 font-semibold text-rose-800 ring-rose-300 hover:bg-rose-100',
+    icon: 'alert',
+  },
   DUE: { chip: 'bg-amber-100 text-amber-900 ring-amber-300 hover:bg-amber-200', icon: 'clock' },
-  PENDING: { chip: 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50', icon: null },
+  PENDING: { chip: 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50', icon: null },
 };
 
 const STATUS_TONE: Record<HospitalizationDetail['status'], BadgeTone> = {
@@ -92,6 +104,14 @@ function localInput(date = new Date()): string {
       .map((x) => [x.type, x.value]),
   );
   return `${p['year']}-${p['month']}-${p['day']}T${p['hour'] === '24' ? '00' : p['hour']}:${p['minute']}`;
+}
+
+/** "HH:mm" de hoy en Lima → ISO; si queda en el futuro, era de ayer (se registra pasada la medianoche) */
+export function givenAtIso(time: string, now = new Date()): string | undefined {
+  if (!/^\d{2}:\d{2}$/.test(time)) return undefined;
+  const at = new Date(`${localInput(now).slice(0, 10)}T${time}:00-05:00`);
+  if (at.getTime() > now.getTime() + 2 * 60_000) at.setTime(at.getTime() - 24 * 3_600_000);
+  return at.toISOString();
 }
 
 /** "2026-11-02T14:30" (hora de Lima, UTC-5 sin horario de verano) → ISO */
@@ -124,13 +144,25 @@ export class HospitalizationDetailPage {
   private readonly session = inject(SessionService);
   private readonly toast = inject(ToastService);
   private readonly queueApi = inject(QueueService);
+  private readonly inventory = inject(InventoryService);
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 
   readonly id = input.required<string>();
+  /** ?registrar=1 (desde el tablero): abre la dosis atrasada más antigua o la que toca */
+  readonly registrar = input<string>();
+  protected readonly showLegend = signal(false);
+  protected readonly kindIcons: Record<HospOrderKind, IconName> = {
+    MEDICATION: 'pill',
+    FLUIDS: 'droplets',
+    FEEDING: 'paw',
+    PROCEDURE: 'stethoscope',
+    MONITORING: 'activity',
+  };
 
   protected readonly icons = SPECIES_ICONS;
   protected readonly species = SPECIES_LABELS;
   protected readonly statusLabels = HOSP_STATUS_LABELS;
+  protected readonly statusLabel = statusLabel;
   protected readonly statusTone = STATUS_TONE;
   protected readonly kindLabels = ORDER_KIND_LABELS;
   protected readonly kinds = Object.keys(ORDER_KIND_LABELS) as HospOrderKind[];
@@ -189,18 +221,20 @@ export class HospitalizationDetailPage {
     () => this.data()?.orders.filter((o) => !o.active) ?? [],
   );
   protected readonly lastVitals = computed(() => this.data()?.lastVitals ?? null);
+  // Por defecto lo clínico (notas y signos); las dosis ya se ven en la hoja
   protected readonly filters = [
-    { value: 'all', label: 'Todo' },
-    { value: 'NOTE', label: 'Notas' },
-    { value: 'VITALS', label: 'Signos' },
+    { value: 'main', label: 'Notas y signos' },
     { value: 'DOSE', label: 'Dosis' },
+    { value: 'all', label: 'Todo' },
   ] as const;
-  protected readonly filter = signal<'all' | 'NOTE' | 'VITALS' | 'DOSE'>('all');
+  protected readonly filter = signal<'main' | 'all' | 'DOSE'>('main');
   protected readonly showAll = signal(false);
   protected readonly timeline = computed(() => {
     const f = this.filter();
     const all = this.data()?.entries ?? [];
-    return f === 'all' ? all : all.filter((e) => e.kind === f);
+    if (f === 'all') return all;
+    if (f === 'main') return all.filter((e) => e.kind !== 'DOSE');
+    return all.filter((e) => e.kind === f);
   });
   protected readonly shown = computed(() =>
     this.showAll() ? this.timeline() : this.timeline().slice(0, 12),
@@ -225,6 +259,8 @@ export class HospitalizationDetailPage {
   protected readonly dosing = signal<{ order: HospOrder; slot: Slot } | null>(null);
   protected readonly doseForm = new FormGroup({
     skipped: new FormControl(false, { nonNullable: true }),
+    /** Hora en que se dio (por defecto, ahora): si se registra tarde, queda la hora real */
+    givenAt: new FormControl('', { nonNullable: true }),
     notes: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(500)] }),
   });
 
@@ -246,22 +282,24 @@ export class HospitalizationDetailPage {
 
   // ── Editar ──
   protected readonly editForm = new FormGroup({
-    cage: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(30)] }),
     diagnosis: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(300)] }),
   });
 
   // ── Alta ──
   protected readonly stayServices = signal<CareService[]>([]);
   protected readonly dischargeForm = new FormGroup({
-    outcome: new FormControl<'DISCHARGED' | 'DECEASED'>('DISCHARGED', { nonNullable: true }),
-    careServiceId: new FormControl<number | null>(null),
+    outcome: new FormControl<'DISCHARGED' | 'VOLUNTARY' | 'DECEASED'>('DISCHARGED', {
+      nonNullable: true,
+    }),
+    /** '' = sin elegir (obligatorio) · 'none' = no se cobra estancia · id del servicio */
+    stay: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     days: new FormControl<number | null>(1, [Validators.min(1), Validators.max(90)]),
     notes: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(1000)] }),
   });
   private readonly dischargeValues = signal(this.dischargeForm.getRawValue());
   protected readonly stayCharge = computed(() => {
     const v = this.dischargeValues();
-    const service = this.stayServices().find((s) => s.id === Number(v.careServiceId));
+    const service = this.stayServices().find((s) => String(s.id) === v.stay);
     return service ? Math.round(service.price * (Number(v.days) || 0) * 100) / 100 : 0;
   });
 
@@ -282,9 +320,9 @@ export class HospitalizationDetailPage {
       this.dischargeValues.set(this.dischargeForm.getRawValue()),
     );
     // Sin servicio de estancia no hay días que cobrar
-    this.dischargeForm.controls.careServiceId.valueChanges.subscribe((id) => {
+    this.dischargeForm.controls.stay.valueChanges.subscribe((stay) => {
       const days = this.dischargeForm.controls.days;
-      if (id) days.enable({ emitEvent: false });
+      if (stay && stay !== 'none') days.enable({ emitEvent: false });
       else days.disable({ emitEvent: false });
     });
     const timer = setInterval(() => {
@@ -303,6 +341,7 @@ export class HospitalizationDetailPage {
         this.now.set(new Date());
         this.loading.set(false);
         this.loadError.set(null);
+        if (!silent && this.registrar()) this.openNextDose();
       },
       error: (e: unknown) => {
         if (!silent) this.loadError.set(apiErrorMessage(e, 'No se pudo cargar el internamiento.'));
@@ -416,6 +455,15 @@ export class HospitalizationDetailPage {
 
   // ── Acciones ──
 
+  private openNextDose(): void {
+    const first = this.overdue()[0];
+    if (first) return this.askDose(first.o, first.s);
+    for (const o of this.activeOrders()) {
+      const due = o.slots.find((s) => s.state === 'DUE');
+      if (due) return this.askDose(o, due);
+    }
+  }
+
   protected askOrder(): void {
     this.orderForm.reset({
       kind: 'MEDICATION',
@@ -427,6 +475,9 @@ export class HospitalizationDetailPage {
       durationDays: null,
       notes: '',
     });
+    this.billOpen.set(false);
+    this.billChoice.set(null);
+    this.billSearch.setValue('');
     this.modal.set('order');
   }
 
@@ -448,21 +499,121 @@ export class HospitalizationDetailPage {
         startsAt: fromLocalInput(v.startsAt),
         durationDays: toNum(v.durationDays),
         notes: v.notes.trim() || null,
+        careServiceId: this.billChoice()?.careServiceId ?? null,
+        productId: this.billChoice()?.productId ?? null,
+        presentationId: this.billChoice()?.presentationId ?? null,
       }),
       'Indicación agregada a la hoja.',
     );
   }
 
-  protected stopOrder(order: HospOrder): void {
+  // ── Suspender (con confirmación: no se puede deshacer) ──
+  protected readonly stopping = signal<HospOrder | null>(null);
+
+  protected askStop(order: HospOrder): void {
+    this.stopping.set(order);
+    this.modal.set('stop');
+  }
+
+  protected stopOrder(): void {
     const d = this.data();
-    if (!d || this.saving()) return;
-    this.run(this.api.stopOrder(d.id, order.id), `«${order.description}» suspendida.`, false);
+    const order = this.stopping();
+    if (!d || !order || this.saving()) return;
+    this.run(this.api.stopOrder(d.id, order.id), `«${order.description}» suspendida.`);
+  }
+
+  // ── Cobrar aparte (Nueva indicación): un servicio o un producto del inventario ──
+  protected readonly billOpen = signal(false);
+  protected readonly billChoice = signal<CatalogOption | null>(null);
+  protected readonly billSearch = new FormControl('', { nonNullable: true });
+  private readonly catalog = signal<CareService[]>([]);
+  private readonly billTerm = toSignal(this.billSearch.valueChanges, { initialValue: '' });
+  /** La estancia se elige al dar de alta y el grooming va por su tablero; los controlados, con receta */
+  protected readonly billServices = computed(() =>
+    toServiceOptions(
+      this.catalog().filter((x) => x.category !== 'GROOMING' && x.category !== 'HOSPITALIZATION'),
+      this.billTerm(),
+      4,
+    ).filter((o) => !o.controlled),
+  );
+  protected readonly billProducts = toSignal(
+    this.billSearch.valueChanges.pipe(
+      map((q) => q.trim()),
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap((q) =>
+        q.length < 2
+          ? of<CatalogOption[]>([])
+          : this.inventory.list({ q, chargeable: true }).pipe(
+              map((page) =>
+                toProductOptions(page.items)
+                  .filter((o) => !o.controlled)
+                  .slice(0, 6),
+              ),
+              catchError(() => of<CatalogOption[]>([])),
+            ),
+      ),
+    ),
+    { initialValue: [] as CatalogOption[] },
+  );
+
+  protected readonly billOptions = computed(() => [...this.billServices(), ...this.billProducts()]);
+
+  protected toggleBill(): void {
+    this.billOpen.update((v) => !v);
+    if (this.billOpen() && !this.catalog().length)
+      this.careServices.list('active').subscribe({
+        next: (list) => this.catalog.set(list),
+        error: () => undefined,
+      });
+  }
+
+  protected pickBill(option: CatalogOption): void {
+    this.billChoice.set(option);
+    this.billSearch.setValue('');
+  }
+
+  // ── Alta: cobro de la estancia y de lo dado en la hoja ──
+  protected readonly extraLines = signal<
+    {
+      orderId: number;
+      name: string;
+      unitPrice: number;
+      given: number;
+      already: number;
+      include: boolean;
+      qty: number;
+    }[]
+  >([]);
+  /** Se dio pero va incluido en el día (sin cobro aparte) */
+  protected readonly includedInDay = computed(() =>
+    (this.data()?.orders ?? [])
+      .filter((o) => !o.bill && this.givenCount(o) > 0)
+      .map((o) => o.description),
+  );
+  protected readonly extrasTotal = computed(
+    () =>
+      Math.round(
+        this.extraLines()
+          .filter((l) => l.include && l.qty > 0)
+          .reduce((s, l) => s + l.unitPrice * l.qty, 0) * 100,
+      ) / 100,
+  );
+
+  protected setExtra(orderId: number, patch: { include?: boolean; qty?: number }): void {
+    this.extraLines.update((lines) =>
+      lines.map((l) =>
+        l.orderId === orderId
+          ? { ...l, ...patch, qty: Math.max(0, Math.min(9999, Number(patch.qty ?? l.qty) || 0)) }
+          : l,
+      ),
+    );
   }
 
   protected askDose(order: HospOrder, slot: Slot): void {
     if (!this.canRecord(slot)) return;
     this.dosing.set({ order, slot });
-    this.doseForm.reset({ skipped: false, notes: '' });
+    this.doseForm.reset({ skipped: false, notes: '', givenAt: localInput().slice(11) });
     this.modal.set('dose');
   }
 
@@ -482,6 +633,7 @@ export class HospitalizationDetailPage {
         orderId: dosing.order.id,
         scheduledAt: dosing.slot.at,
         skipped: v.skipped,
+        ...(v.skipped ? {} : { givenAt: givenAtIso(v.givenAt) }),
         notes: v.notes.trim() || null,
       }),
       v.skipped ? 'Dosis marcada como omitida.' : 'Dosis registrada.',
@@ -545,7 +697,7 @@ export class HospitalizationDetailPage {
   protected askEdit(): void {
     const d = this.data();
     if (!d) return;
-    this.editForm.reset({ cage: d.cage ?? '', diagnosis: d.diagnosis ?? '' });
+    this.editForm.reset({ diagnosis: d.diagnosis ?? '' });
     this.modal.set('edit');
   }
 
@@ -558,7 +710,7 @@ export class HospitalizationDetailPage {
     }
     const v = this.editForm.getRawValue();
     this.run(
-      this.api.update(d.id, { cage: v.cage.trim() || null, diagnosis: v.diagnosis.trim() || null }),
+      this.api.update(d.id, { diagnosis: v.diagnosis.trim() || null }),
       'Datos actualizados.',
     );
   }
@@ -567,13 +719,27 @@ export class HospitalizationDetailPage {
     const d = this.data();
     if (!d) return;
     const open = () => {
-      const service = this.stayServices()[0] ?? null;
-      this.dischargeForm.reset({
-        outcome: 'DISCHARGED',
-        careServiceId: service?.id ?? null,
-        days: d.days,
-        notes: '',
-      });
+      this.dischargeForm.reset({ outcome: 'DISCHARGED', stay: '', days: d.days, notes: '' });
+      this.dischargeForm.controls.days.disable({ emitEvent: false });
+      // Lo que se cobra aparte: sugiere las dosis dadas menos lo ya cargado a mano
+      this.extraLines.set(
+        d.orders
+          .filter((o) => o.bill && this.givenCount(o) > 0)
+          .map((o) => {
+            const given = this.givenCount(o);
+            const already = o.bill!.alreadyCharged;
+            const qty = Math.max(0, given - already);
+            return {
+              orderId: o.id,
+              name: o.bill!.description,
+              unitPrice: o.bill!.unitPrice,
+              given,
+              already,
+              include: qty > 0,
+              qty,
+            };
+          }),
+      );
       this.modal.set('discharge');
     };
     if (this.stayServices().length) return open();
@@ -594,12 +760,16 @@ export class HospitalizationDetailPage {
       return;
     }
     const v = this.dischargeForm.getRawValue();
+    const careServiceId = v.stay && v.stay !== 'none' ? Number(v.stay) : null;
     this.run(
       this.api.discharge(d.id, {
         outcome: v.outcome,
-        careServiceId: v.careServiceId,
-        days: v.careServiceId ? toNum(v.days) : null,
+        careServiceId,
+        days: careServiceId ? toNum(v.days) : null,
         notes: v.notes.trim() || null,
+        extras: this.extraLines()
+          .filter((l) => l.include && l.qty > 0)
+          .map((l) => ({ orderId: l.orderId, quantity: l.qty })),
       }),
       v.outcome === 'DECEASED'
         ? `Se registró el fallecimiento de ${d.pet.name}.`

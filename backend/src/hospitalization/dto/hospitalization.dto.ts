@@ -1,5 +1,7 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -12,6 +14,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { emptyToNull, trim } from '../../common/validators/peru.js';
 import type {
@@ -136,6 +139,22 @@ export class OrderDto {
   @IsString()
   @MaxLength(300)
   notes?: string | null;
+
+  /** Cobrar aparte (opcional): un servicio, o un producto en una de sus presentaciones */
+  @ValidateIf(isSet)
+  @IsInt()
+  @Min(1)
+  careServiceId?: number | null;
+
+  @ValidateIf(isSet)
+  @IsInt()
+  @Min(1)
+  productId?: number | null;
+
+  @ValidateIf((o: OrderDto) => isSet(o, o.productId))
+  @IsInt({ message: 'Elige la presentación del producto' })
+  @Min(1)
+  presentationId?: number | null;
 }
 
 export class EntryDto {
@@ -151,6 +170,11 @@ export class EntryDto {
   @IsOptional()
   @IsISO8601()
   scheduledAt?: string;
+
+  /** Dosis: a qué hora se dio de verdad (si se registra más tarde); por defecto, ahora */
+  @IsOptional()
+  @IsISO8601({}, { message: 'Hora no válida' })
+  givenAt?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -193,9 +217,25 @@ export class EntryDto {
   notes?: string | null;
 }
 
+/** Lo que se dio en la hoja y se cobra aparte al dar de alta */
+export class DischargeExtraDto {
+  @IsInt()
+  @Min(1)
+  orderId: number;
+
+  @IsNumber(
+    { maxDecimalPlaces: 3 },
+    { message: 'La cantidad admite hasta 3 decimales' },
+  )
+  @Min(0.001, { message: 'La cantidad debe ser mayor a 0' })
+  @Max(9999)
+  quantity: number;
+}
+
 export class DischargeDto {
-  @IsIn(['DISCHARGED', 'DECEASED'])
-  outcome: 'DISCHARGED' | 'DECEASED';
+  /** VOLUNTARY: el dueño lo retira antes del alta médica (queda como alta, marcada voluntaria) */
+  @IsIn(['DISCHARGED', 'VOLUNTARY', 'DECEASED'])
+  outcome: 'DISCHARGED' | 'VOLUNTARY' | 'DECEASED';
 
   /** Servicio de internamiento (por día) que se cobra; vacío = no se cobra estancia */
   @ValidateIf(isSet)
@@ -217,6 +257,13 @@ export class DischargeDto {
     message: 'Las indicaciones de alta admiten hasta 1000 caracteres',
   })
   notes?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => DischargeExtraDto)
+  extras?: DischargeExtraDto[];
 }
 
 export class BoardQueryDto {
