@@ -155,17 +155,88 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     expect(res.body.presentations).toHaveLength(3);
   });
 
-  it('la compra exige lote y vencimiento, y no acepta lotes vencidos', async () => {
-    const url = `/api/inventory/products/${productId}/purchases`;
-    await http()
-      .post(url)
+  it('los errores de una presentación dicen cuál es; un controlado siempre pide receta', async () => {
+    const bad = await http()
+      .post('/api/inventory/products')
       .set('Cookie', cookies.vet)
       .send({
-        presentationId: caja,
-        quantity: 1,
-        expiresAt: addDays(today, 20),
+        name: 'Amoxicilina 250 mg',
+        category: 'MEDICINE',
+        baseUnit: 'TABLET',
+        presentations: [{ name: 'Tableta', factor: 1, price: 0.833 }],
       })
       .expect(400);
+    expect(bad.body.errors).toEqual([
+      'Presentación 1: el precio debe tener hasta 2 decimales',
+    ]);
+    const controlled = await http()
+      .post('/api/inventory/products')
+      .set('Cookie', cookies.vet)
+      .send({
+        name: 'Tramadol 50 mg',
+        category: 'MEDICINE',
+        baseUnit: 'TABLET',
+        controlled: true,
+        requiresPrescription: false,
+        presentations: [{ name: 'Tableta', factor: 1, price: 1.5 }],
+      })
+      .expect(201);
+    expect(controlled.body.requiresPrescription).toBe(true);
+  });
+
+  it('alta con stock inicial en la misma operación; si el stock está mal no se crea nada', async () => {
+    const created = await http()
+      .post('/api/inventory/products')
+      .set('Cookie', cookies.vet)
+      .send({
+        name: 'Amoxicilina susp. 60 ml',
+        category: 'MEDICINE',
+        baseUnit: 'BOTTLE',
+        presentations: [{ name: 'Frasco 60 ml', factor: 1, price: 38 }],
+        initialStock: {
+          presentationIndex: 0,
+          quantity: 5,
+          expiresAt: addDays(today, 300),
+          costPerPresentation: 22.5,
+        },
+      })
+      .expect(201);
+    expect(created.body.baseUnit).toBe('BOTTLE');
+    expect(created.body.totalStock).toBe(5);
+    expect(created.body.batches[0].lotNumber).toBeNull();
+
+    const vaccine = {
+      name: 'Vacuna sin lote',
+      category: 'VACCINE',
+      baseUnit: 'UNIT',
+      presentations: [{ name: 'Dosis', factor: 1, price: 60 }],
+      initialStock: {
+        presentationIndex: 0,
+        quantity: 10,
+        expiresAt: addDays(today, 200),
+      },
+    };
+    const noLot = await http()
+      .post('/api/inventory/products')
+      .set('Cookie', cookies.vet)
+      .send(vaccine)
+      .expect(400);
+    expect(noLot.body.message).toContain('lote');
+    const list = await http()
+      .get('/api/inventory/products?q=Vacuna%20sin%20lote')
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(list.body.total).toBe(0);
+  });
+
+  it('la compra exige vencimiento (el lote solo en vacunas y controlados) y no acepta lotes vencidos', async () => {
+    const url = `/api/inventory/products/${productId}/purchases`;
+    const noExpiry = await http()
+      .post(url)
+      .set('Cookie', cookies.vet)
+      .send({ presentationId: caja, quantity: 1, lotNumber: 'L-1' })
+      .expect(400);
+    expect(noExpiry.body.message).toBe('Ingresa la fecha de vencimiento');
     const res = await http()
       .post(url)
       .set('Cookie', cookies.vet)

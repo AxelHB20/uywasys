@@ -4,6 +4,28 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Agregar producto: stock y vencimiento en la misma pantalla (27 nov)
+- **Pedido de la clínica** (cargando su inventario): el alta tenía varios pasos y preguntas de más.
+- **Stock inicial en la misma pantalla** (opcional): cantidad y presentación, vencimiento, lote y costo. Se guarda junto con el producto en una sola operación (si el stock está mal, no se crea el producto a medias).
+- **Vencimiento como en la caja:** se escribe 08/2027 (o 08/27) y se guarda el último día del mes; también acepta la fecha completa. Avisa si ya venció o si no se entiende.
+- **Se queda en la pantalla al agregar:** mensaje con el stock, formulario limpio (se mantienen categoría y unidad), foco en el nombre y lista "Agregados ahora" con enlace a cada producto. "Cancelar" pasa a "Terminar".
+- **Unidad mínima: unidad, tableta, caja y frasco** (nuevos valores `BOX` y `BOTTLE`). ml y g ya no se ofrecen al agregar; los productos que los usan siguen igual. El Excel acepta "caja", "frasco" y "fco".
+- **La categoría decide si vence** (sin la pregunta "Vence / No vence"): nota bajo la categoría con "Cambiar" para casos raros. "Medicamento controlado" solo en Medicamento.
+- **"Es de uso interno (no se vende)"**, siempre desmarcado salvo Insumo, en lugar de "Se cobra al cliente" (que venía marcado y confundía). También en Editar producto.
+- **Lote obligatorio solo en vacunas y controlados** en el alta, "Registrar compra", "Recibir compra" (igual que ya hacía el Excel); lo demás que vence pide solo el vencimiento.
+- **Aviso de producto repetido** al escribir el nombre (sin importar tildes ni mayúsculas), con enlace para abrirlo.
+- Botón, título y botón del inventario: **"Agregar producto"**; enlace al Excel en la pantalla.
+- **Base de datos:** migración `20261127120000_unidad_caja_frasco` (solo agrega dos valores al enum; no cambia datos).
+- Pruebas: e2e de alta con stock inicial (frasco, sin lote) y vacuna sin lote que no crea nada; lote opcional en compra y Recibir compra; `parseExpiry`. Probado con 17 productos reales seguidos (todas las categorías) en PC y celular, como administrador y veterinario.
+
+### Inventario: errores al agregar medicamentos (27 nov)
+- **Causa:** la pantalla aceptaba más decimales de los que guarda el sistema. Un precio como 0.833 (S/ 25 ÷ 30 tabletas), una equivalencia de 4 decimales o un costo de 5 decimales se rechazaba recién al guardar, con un texto confuso: "presentations.0.El precio debe tener hasta 2 decimales" o "El costo debe ser un número" (aunque era un número).
+- **Ahora se avisa en el campo al escribir:** precio de venta hasta 2 decimales (ej.: 0.83), equivalencia, cantidades y stock mínimo hasta 3, costo hasta 4 (ej.: 21.6667). En Nuevo producto, la ficha (registrar compra, salida, conteo, presentación, editar) y Recibir compra (cantidad, precio y precio de venta).
+- **Mensajes del servidor legibles:** los errores de listas dicen la fila ("Presentación 1: el precio…", "Línea 3: la cantidad…", "Fila 2: …") en todo el sistema; los de decimales dicen cuántos se permiten.
+- **Controlado = pide receta** también en el servidor al crear o editar.
+- "Ahora ingresa su primera compra" → "Ahora registra su primera compra" (el botón se llama "Registrar compra").
+- Pruebas: `maxDecimals` (frontend), `readablePath` (backend), e2e de error por presentación y controlado con receta.
+
 ### Plantillas clínicas: revisión completa y uso rápido (27 nov)
 - **Página Plantillas:** tarjetas con toda la información, ordenada como en la Atención (letras S·O·A·P), con los ___ resaltados y "N datos por llenar"; recetas con dosis completa (dosis · vía · frecuencia · duración) y "Del inventario"/"Externa"; quién la hizo y cuándo se actualizó. Toda la tarjeta abre la plantilla.
 - **Eliminar y Duplicar dentro de la plantilla** (ya no hay papelera en cada tarjeta). Duplicar abre una copia sin guardar: "Nombre (copia)".

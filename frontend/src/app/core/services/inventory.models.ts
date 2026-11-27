@@ -4,7 +4,7 @@ import { Role } from '../auth/auth.models';
 
 export type ProductCategory =
   'MEDICINE' | 'VACCINE' | 'ANTIPARASITIC' | 'FOOD' | 'ACCESSORY' | 'HYGIENE' | 'SUPPLY';
-export type BaseUnit = 'UNIT' | 'TABLET' | 'ML' | 'G';
+export type BaseUnit = 'UNIT' | 'TABLET' | 'BOX' | 'BOTTLE' | 'ML' | 'G';
 export type IgvAffectation = 'TAXED' | 'EXEMPT' | 'UNAFFECTED';
 export type MovementType =
   'PURCHASE' | 'WASTE' | 'TREATMENT' | 'COUNT_ADJUST' | 'RETURN' | 'SALE' | 'PURCHASE_VOID';
@@ -48,10 +48,22 @@ export const CATEGORY_TINT: Record<ProductCategory, string> = {
 export const BASE_UNIT_LABELS: Record<BaseUnit, [string, string]> = {
   UNIT: ['unidad', 'unidades'],
   TABLET: ['tableta', 'tabletas'],
+  BOX: ['caja', 'cajas'],
+  BOTTLE: ['frasco', 'frascos'],
   ML: ['ml', 'ml'],
   G: ['g', 'g'],
 };
 export const BASE_UNITS = Object.keys(BASE_UNIT_LABELS) as BaseUnit[];
+/**
+ * Unidades que se ofrecen al agregar un producto: la clínica vende entero (no por ml ni por g).
+ * ml y g siguen existiendo para los productos que ya los usan.
+ */
+export const NEW_PRODUCT_UNITS: BaseUnit[] = ['UNIT', 'TABLET', 'BOX', 'BOTTLE'];
+
+/** Vacunas (carné) y controlados (DIGEMID) piden lote; lo demás que vence, solo la fecha */
+export function lotRequired(category: ProductCategory | null, controlled: boolean): boolean {
+  return category === 'VACCINE' || controlled;
+}
 
 export const IGV_LABELS: Record<IgvAffectation, string> = {
   TAXED: 'Gravado (10)',
@@ -213,6 +225,16 @@ export interface ProductInput {
   sunatUnit: string;
   igv: IgvAffectation;
   notes: string | null;
+}
+
+/** Stock con el que entra el producto al agregarlo (misma operación) */
+export interface InitialStockInput {
+  /** Posición de la presentación en la lista (0 = la primera) */
+  presentationIndex: number;
+  quantity: number;
+  lotNumber: string | null;
+  expiresAt: string | null;
+  costPerPresentation: number | null;
 }
 
 export interface PurchaseInput {

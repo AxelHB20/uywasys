@@ -36,6 +36,7 @@ import {
 } from './purchase-amounts.js';
 import { StockService } from './stock.service.js';
 import { canSeeTotals } from './suppliers.service.js';
+import { lotRequired } from './lot-rule.js';
 
 const D = Prisma.Decimal;
 type Decimal = Prisma.Decimal;
@@ -376,6 +377,7 @@ export class PurchasesService {
         igv: true,
         tracksExpiry: true,
         controlled: true,
+        category: true,
         presentations: { select: { id: true, name: true, factor: true } },
       },
     });
@@ -398,7 +400,8 @@ export class PurchasesService {
           `Línea ${n}: elige una presentación de ${product.name}`,
         );
       const lotNumber = line.lotNumber ?? null;
-      if ((product.tracksExpiry || product.controlled) && !lotNumber)
+      // Vacunas y controlados: lote obligatorio. Lo demás que vence: basta la fecha
+      if (lotRequired(product.category, product.controlled) && !lotNumber)
         throw new BadRequestException(
           `Línea ${n}: ingresa el lote de ${product.name}`,
         );

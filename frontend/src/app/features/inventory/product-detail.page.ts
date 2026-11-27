@@ -28,6 +28,7 @@ import {
   ProductDetail,
   STOCK_ROLES,
   defaultTracksExpiry,
+  lotRequired,
 } from '../../core/services/inventory.models';
 import { InventoryService } from '../../core/services/inventory.service';
 import { Supplier } from '../../core/services/purchases.models';
@@ -47,7 +48,7 @@ import {
   readableStock,
   unitLabel,
 } from '../../shared/utils/stock';
-import { apiErrorMessage } from '../../shared/utils/validators';
+import { apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 import { ExpiryChoiceComponent } from './expiry-choice.component';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
@@ -149,10 +150,14 @@ export class ProductDetailPage {
   // ── Compra ──
   protected readonly purchaseForm = new FormGroup({
     presentationId: new FormControl<number | null>(null, [Validators.required]),
-    quantity: new FormControl<number | null>(null, [Validators.required, Validators.min(0.001)]),
+    quantity: new FormControl<number | null>(null, [
+      Validators.required,
+      Validators.min(0.001),
+      maxDecimals(3),
+    ]),
     lotNumber: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(40)] }),
     expiresAt: new FormControl('', { nonNullable: true }),
-    costPerPresentation: new FormControl<number | null>(null, [Validators.min(0)]),
+    costPerPresentation: new FormControl<number | null>(null, [Validators.min(0), maxDecimals(4)]),
     supplier: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(120)] }),
     supplierId: new FormControl<number | null>(null),
     documentNumber: new FormControl('', {
@@ -173,9 +178,18 @@ export class ProductDetailPage {
   });
   /** Lo que vence pide lote y fecha; camas, juguetes y similares no */
   protected readonly needsLot = computed(() => this.product()?.tracksExpiry ?? true);
+  /** Vacunas y controlados piden lote; lo demás que vence, basta la fecha */
+  protected readonly lotMandatory = computed(() => {
+    const p = this.product();
+    return !!p && lotRequired(p.category, p.controlled);
+  });
   protected readonly purchaseTried = signal(false);
   protected readonly lotMissing = computed(
-    () => this.purchaseTried() && this.needsLot() && !this.purchaseValue().lotNumber?.trim(),
+    () =>
+      this.purchaseTried() &&
+      this.needsLot() &&
+      this.lotMandatory() &&
+      !this.purchaseValue().lotNumber?.trim(),
   );
   protected readonly expiryMissing = computed(
     () => this.purchaseTried() && this.needsLot() && !this.purchaseValue().expiresAt,
@@ -184,7 +198,11 @@ export class ProductDetailPage {
   // ── Salida ──
   protected readonly outflowForm = new FormGroup({
     type: new FormControl<'WASTE' | 'TREATMENT'>('WASTE', { nonNullable: true }),
-    quantity: new FormControl<number | null>(null, [Validators.required, Validators.min(0.001)]),
+    quantity: new FormControl<number | null>(null, [
+      Validators.required,
+      Validators.min(0.001),
+      maxDecimals(3),
+    ]),
     unit: new FormControl<number | 'base'>('base', { nonNullable: true }),
     batchId: new FormControl<number | 'auto'>('auto', { nonNullable: true }),
     reason: new FormControl('', {
@@ -242,8 +260,12 @@ export class ProductDetailPage {
       nonNullable: true,
       validators: [Validators.required, Validators.maxLength(60)],
     }),
-    factor: new FormControl<number | null>(null, [Validators.required, Validators.min(0.001)]),
-    price: new FormControl<number | null>(null, [Validators.min(0)]),
+    factor: new FormControl<number | null>(null, [
+      Validators.required,
+      Validators.min(0.001),
+      maxDecimals(3),
+    ]),
+    price: new FormControl<number | null>(null, [Validators.min(0), maxDecimals(2)]),
     active: new FormControl(true, { nonNullable: true }),
   });
 
@@ -259,7 +281,7 @@ export class ProductDetailPage {
       validators: [Validators.pattern(/^[\w.-]{0,30}$/)],
     }),
     barcode: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(30)] }),
-    minStock: new FormControl<number | null>(null, [Validators.min(0)]),
+    minStock: new FormControl<number | null>(null, [Validators.min(0), maxDecimals(3)]),
     requiresPrescription: new FormControl(false, { nonNullable: true }),
     controlled: new FormControl(false, { nonNullable: true }),
     igv: new FormControl<IgvAffectation>('TAXED', { nonNullable: true }),
@@ -412,12 +434,27 @@ export class ProductDetailPage {
     this.modal.set('outflow');
   }
 
+  /** "Es de uso interno" es lo contrario de "se cobra al cliente" */
+  protected setInternal(internal: boolean): void {
+    const c = this.editForm.controls.chargeable;
+    c.setValue(!internal);
+    c.markAsDirty();
+  }
+
+  protected countHasDecimals(): boolean {
+    return this.countForm.controls.items.controls.some((c) => c.hasError('decimals'));
+  }
+
   protected openCount(): void {
     const items = this.countForm.controls.items;
     items.clear();
     for (const b of this.product()?.batches ?? []) {
       items.push(
-        new FormControl<number | null>(b.quantity, [Validators.required, Validators.min(0)]),
+        new FormControl<number | null>(b.quantity, [
+          Validators.required,
+          Validators.min(0),
+          maxDecimals(3),
+        ]),
       );
     }
     this.countForm.controls.reason.reset('');
@@ -497,7 +534,7 @@ export class ProductDetailPage {
     if (!p || this.invalidForm(this.purchaseForm)) return;
     const v = this.purchaseForm.getRawValue();
     const tracks = this.needsLot();
-    if (tracks && (!v.lotNumber.trim() || !v.expiresAt)) {
+    if (tracks && ((this.lotMandatory() && !v.lotNumber.trim()) || !v.expiresAt)) {
       setTimeout(() =>
         document.querySelector<HTMLElement>('#purchase-form [aria-invalid="true"]')?.focus(),
       );

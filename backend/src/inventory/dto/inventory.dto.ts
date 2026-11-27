@@ -33,7 +33,14 @@ export const CATEGORIES: ProductCategory[] = [
   'HYGIENE',
   'SUPPLY',
 ];
-export const BASE_UNITS: BaseUnit[] = ['UNIT', 'TABLET', 'ML', 'G'];
+export const BASE_UNITS: BaseUnit[] = [
+  'UNIT',
+  'TABLET',
+  'BOX',
+  'BOTTLE',
+  'ML',
+  'G',
+];
 export const IGV_TYPES: IgvAffectation[] = ['TAXED', 'EXEMPT', 'UNAFFECTED'];
 
 const notNull = (_: unknown, v: unknown) => v !== null && v !== undefined;
@@ -49,7 +56,7 @@ export class PresentationDto {
   name: string;
 
   /** Cuántas unidades mínimas trae: "Caja x 100" = 100 */
-  @qty('La equivalencia debe ser un número')
+  @qty('La equivalencia debe ser un número con hasta 3 decimales')
   @Min(0.001, { message: 'La equivalencia debe ser mayor a 0' })
   @Max(1_000_000)
   factor: number;
@@ -75,7 +82,7 @@ export class UpdatePresentationDto {
   name?: string;
 
   @IsOptional()
-  @qty('La equivalencia debe ser un número')
+  @qty('La equivalencia debe ser un número con hasta 3 decimales')
   @Min(0.001, { message: 'La equivalencia debe ser mayor a 0' })
   factor?: number;
 
@@ -110,7 +117,7 @@ class ProductFields {
   barcode?: string | null;
 
   @ValidateIf(notNull)
-  @qty('El stock mínimo debe ser un número')
+  @qty('El stock mínimo debe ser un número con hasta 3 decimales')
   @Min(0)
   minStock?: number;
 
@@ -149,6 +156,39 @@ class ProductFields {
   notes?: string | null;
 }
 
+/** Stock con el que entra el producto al darlo de alta (opcional): una compra en la misma pantalla */
+export class InitialStockDto {
+  /** Posición de la presentación en "presentations" (0 = la primera) */
+  @IsInt({ message: 'Elige la presentación del stock inicial' })
+  @Min(0)
+  @Max(9)
+  presentationIndex: number;
+
+  @qty('La cantidad debe ser un número con hasta 3 decimales')
+  @Min(0.001, { message: 'La cantidad debe ser mayor a 0' })
+  @Max(100_000)
+  quantity: number;
+
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(40, { message: 'El lote admite hasta 40 caracteres' })
+  lotNumber?: string | null;
+
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @Matches(DATE, { message: 'La fecha de vencimiento no es válida' })
+  expiresAt?: string | null;
+
+  @ValidateIf(notNull)
+  @IsNumber(
+    { maxDecimalPlaces: 4 },
+    { message: 'El costo debe ser un número con hasta 4 decimales' },
+  )
+  @Min(0)
+  costPerPresentation?: number | null;
+}
+
 export class CreateProductDto extends ProductFields {
   @Transform(trim)
   @IsString({ message: 'Ingresa el nombre del producto' })
@@ -167,6 +207,11 @@ export class CreateProductDto extends ProductFields {
   @ValidateNested({ each: true })
   @Type(() => PresentationDto)
   presentations: PresentationDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialStockDto)
+  initialStock?: InitialStockDto | null;
 }
 
 export class UpdateProductDto extends ProductFields {
@@ -194,7 +239,7 @@ export class PurchaseDto {
   presentationId: number;
 
   /** Cantidad de presentaciones (ej.: 5 cajas) */
-  @qty('La cantidad debe ser un número')
+  @qty('La cantidad debe ser un número con hasta 3 decimales')
   @Min(0.001, { message: 'La cantidad debe ser mayor a 0' })
   @Max(100_000)
   quantity: number;
@@ -212,7 +257,10 @@ export class PurchaseDto {
 
   /** Costo de cada presentación comprada (S/) */
   @ValidateIf(notNull)
-  @IsNumber({ maxDecimalPlaces: 4 }, { message: 'El costo debe ser un número' })
+  @IsNumber(
+    { maxDecimalPlaces: 4 },
+    { message: 'El costo debe ser un número con hasta 4 decimales' },
+  )
   @Min(0)
   costPerPresentation?: number | null;
 
@@ -242,7 +290,7 @@ export class OutflowDto {
   @IsIn(OUTFLOW_TYPES, { message: 'Elige si es merma o uso interno' })
   type: OutflowType;
 
-  @qty('La cantidad debe ser un número')
+  @qty('La cantidad debe ser un número con hasta 3 decimales')
   @Min(0.001, { message: 'La cantidad debe ser mayor a 0' })
   quantity: number;
 
@@ -275,7 +323,7 @@ export class CountItemDto {
   @IsInt()
   batchId: number;
 
-  @qty('La cantidad contada debe ser un número')
+  @qty('La cantidad contada debe ser un número con hasta 3 decimales')
   @Min(0, { message: 'La cantidad contada no puede ser negativa' })
   counted: number;
 }

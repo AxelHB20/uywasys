@@ -18,7 +18,9 @@ import {
   BaseUnit,
   IgvAffectation,
   Presentation,
+  ProductCategory,
   ProductSummary,
+  lotRequired,
 } from '../../core/services/inventory.models';
 import { InventoryService } from '../../core/services/inventory.service';
 import {
@@ -37,7 +39,7 @@ import { formatDate, limaToday } from '../../shared/utils/dates';
 import { shrinkImage } from '../../shared/utils/image';
 import { loaded } from '../../shared/utils/resource';
 import { formatQty, money, unitLabel } from '../../shared/utils/stock';
-import { apiErrorMessage } from '../../shared/utils/validators';
+import { apiErrorMessage, tooManyDecimals, maxDecimals } from '../../shared/utils/validators';
 import { ProductSearchComponent } from './product-search.component';
 import { SupplierFormComponent } from './supplier-form.component';
 
@@ -56,6 +58,8 @@ export interface LineProduct {
   baseUnit: BaseUnit;
   tracksExpiry: boolean;
   controlled: boolean;
+  /** Vacunas piden lote (borradores anteriores no la traen) */
+  category?: ProductCategory;
   igv: IgvAffectation;
   presentations: Presentation[];
 }
@@ -96,6 +100,7 @@ function toLineProduct(p: ProductSummary): LineProduct {
     baseUnit: p.baseUnit,
     tracksExpiry: p.tracksExpiry,
     controlled: p.controlled,
+    category: p.category,
     igv: p.igv ?? 'TAXED',
     presentations: p.presentations.filter((x) => x.active),
   };
@@ -188,7 +193,10 @@ export class PurchaseFormPage {
   protected readonly file = signal<File | null>(null);
   protected readonly fileError = signal<string | null>(null);
   protected readonly editingPrice = signal<number | null>(null);
-  protected readonly newPrice = new FormControl<number | null>(null, [Validators.min(0)]);
+  protected readonly newPrice = new FormControl<number | null>(null, [
+    Validators.min(0),
+    maxDecimals(2),
+  ]);
   protected readonly savingPrice = signal(false);
 
   protected readonly totals = computed(() => {
@@ -223,10 +231,13 @@ export class PurchaseFormPage {
   protected readonly lineErrors = computed(() =>
     this.linesValue().map((l) => {
       const p = l.product;
-      const needsLot = !!p && (p.tracksExpiry || p.controlled);
+      // Vacunas y controlados piden lote; lo demás que vence, basta la fecha
+      const needsLot = !!p && lotRequired(p.category ?? null, p.controlled);
       return {
         quantity: !l.quantity || Number(l.quantity) <= 0,
+        quantityDecimals: tooManyDecimals(l.quantity, 3),
         price: l.unitPrice === null || l.unitPrice === undefined || Number(l.unitPrice) < 0,
+        priceDecimals: tooManyDecimals(l.unitPrice, 4),
         lot: needsLot && !l.lotNumber?.trim(),
         expiry: !!p?.tracksExpiry && !l.expiresAt,
         expired: !!p?.tracksExpiry && !!l.expiresAt && l.expiresAt < this.today,
@@ -410,6 +421,10 @@ export class PurchaseFormPage {
     const pres = this.presentationOf(index);
     const value = this.newPrice.value;
     if (!pres || value === null || value < 0 || this.savingPrice()) return;
+    if (this.newPrice.hasError('decimals')) {
+      this.toast.error('El precio de venta admite hasta 2 decimales (ej.: 0.83)');
+      return;
+    }
     this.savingPrice.set(true);
     this.inventory
       .updatePresentation(pres.id, { price: Number(value) })
@@ -512,7 +527,8 @@ export class PurchaseFormPage {
         presentationId: Number(l.presentationId),
         quantity: Number(l.quantity),
         unitPrice: Number(l.unitPrice),
-        lotNumber: l.product.tracksExpiry || l.product.controlled ? l.lotNumber.trim() : null,
+        lotNumber:
+          l.product.tracksExpiry || l.product.controlled ? l.lotNumber.trim() || null : null,
         expiresAt: l.product.tracksExpiry ? l.expiresAt : null,
       })),
     };

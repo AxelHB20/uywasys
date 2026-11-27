@@ -38,6 +38,7 @@ import { addDays, expiryStatus } from './expiry.js';
 import type { ExpiryStatus } from './expiry.js';
 import { lastUnitCosts } from './last-cost.js';
 import { StockService } from './stock.service.js';
+import { lotRequired } from './lot-rule.js';
 
 const D = Prisma.Decimal;
 const PAGE_SIZE = 20;
@@ -375,37 +376,99 @@ export class InventoryService {
   ): Promise<ProductDetail> {
     assertUniqueNames(dto.presentations);
     assertIgvChange(actor, 'TAXED', dto.igv);
+    const controlled = dto.controlled ?? false;
+    const tracksExpiry = dto.tracksExpiry ?? defaultTracksExpiry(dto.category);
+    // Stock inicial: se valida todo ANTES de crear nada, así un error no deja el producto a medias
+    const stock = dto.initialStock ?? null;
+    let stockExpiry: string | null = null;
+    if (stock) {
+      const pres = dto.presentations[stock.presentationIndex];
+      if (!pres)
+        throw new BadRequestException(
+          'Elige la presentación del stock inicial',
+        );
+      if (lotRequired(dto.category, controlled) && !stock.lotNumber)
+        throw new BadRequestException(
+          'Ingresa el lote del stock inicial (vacunas y controlados)',
+        );
+      if (tracksExpiry) {
+        if (!stock.expiresAt)
+          throw new BadRequestException(
+            'Ingresa el vencimiento del stock inicial',
+          );
+        if (fromDbDate(toDbDate(stock.expiresAt)) !== stock.expiresAt)
+          throw new BadRequestException('La fecha de vencimiento no es válida');
+        const today = await clinicToday(this.prisma, actor.clinicId);
+        if (stock.expiresAt < today)
+          throw new BadRequestException(
+            'Ese lote ya está vencido: no se puede ingresar',
+          );
+        stockExpiry = stock.expiresAt;
+      }
+    }
     let id: number;
     try {
-      ({ id } = await this.prisma.product.create({
-        data: {
-          clinicId: actor.clinicId,
-          code: dto.code ?? null,
-          barcode: dto.barcode ?? null,
-          name: dto.name,
-          nameSearch: normalizeSearch(dto.name).slice(0, 120),
-          category: dto.category,
-          baseUnit: dto.baseUnit,
-          minStock: dto.minStock ?? 0,
-          requiresPrescription: dto.requiresPrescription ?? false,
-          controlled: dto.controlled ?? false,
-          chargeable: dto.chargeable ?? defaultChargeable(dto.category),
-          tracksExpiry: dto.tracksExpiry ?? defaultTracksExpiry(dto.category),
-          sunatUnit: dto.sunatUnit ?? 'NIU',
-          igv: dto.igv ?? 'TAXED',
-          notes: dto.notes ?? null,
-          presentations: {
-            create: dto.presentations.map((pr) => ({
-              clinicId: actor.clinicId,
-              name: pr.name,
-              factor: pr.factor,
-              price: pr.price ?? null,
-              barcode: pr.barcode ?? null,
-            })),
+      id = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.product.create({
+          data: {
+            clinicId: actor.clinicId,
+            code: dto.code ?? null,
+            barcode: dto.barcode ?? null,
+            name: dto.name,
+            nameSearch: normalizeSearch(dto.name).slice(0, 120),
+            category: dto.category,
+            baseUnit: dto.baseUnit,
+            minStock: dto.minStock ?? 0,
+            // Un controlado siempre pide receta (la pantalla ya lo marca; la API también)
+            requiresPrescription:
+              (dto.requiresPrescription ?? false) || controlled,
+            controlled,
+            chargeable: dto.chargeable ?? defaultChargeable(dto.category),
+            tracksExpiry,
+            sunatUnit: dto.sunatUnit ?? 'NIU',
+            igv: dto.igv ?? 'TAXED',
+            notes: dto.notes ?? null,
+            presentations: {
+              create: dto.presentations.map((pr) => ({
+                clinicId: actor.clinicId,
+                name: pr.name,
+                factor: pr.factor,
+                price: pr.price ?? null,
+                barcode: pr.barcode ?? null,
+              })),
+            },
           },
-        },
-        select: { id: true },
-      }));
+          select: {
+            id: true,
+            presentations: { select: { id: true, name: true } },
+          },
+        });
+        if (stock) {
+          const name = dto.presentations[stock.presentationIndex].name;
+          const pres = created.presentations.find((p) => p.name === name)!;
+          const factor = new D(
+            dto.presentations[stock.presentationIndex].factor,
+          );
+          await this.stock.receive(tx, {
+            clinicId: actor.clinicId,
+            productId: created.id,
+            userId: actor.id,
+            quantity: new D(stock.quantity).times(factor),
+            lotNumber: stock.lotNumber ?? null,
+            expiresAt: stockExpiry,
+            unitCost:
+              stock.costPerPresentation == null
+                ? null
+                : new D(stock.costPerPresentation)
+                    .div(factor)
+                    .toDecimalPlaces(4),
+            supplier: null,
+            documentNumber: null,
+            reason: `Stock inicial · ${pres.name}`,
+          });
+        }
+        return created.id;
+      });
     } catch (error) {
       throw duplicate(error, 'Ya existe un producto con ese código');
     }
@@ -416,7 +479,16 @@ export class InventoryService {
       entity: 'product',
       entityId: id,
       ip,
-      data: { name: dto.name, controlled: dto.controlled ?? false },
+      data: {
+        name: dto.name,
+        controlled,
+        initialStock: stock
+          ? {
+              presentationIndex: stock.presentationIndex,
+              quantity: stock.quantity,
+            }
+          : null,
+      },
     });
     return this.get(actor.clinicId, id);
   }
@@ -490,6 +562,8 @@ export class InventoryService {
     ] as const) {
       if (dto[key] !== undefined) Object.assign(data, { [key]: dto[key] });
     }
+    // Un controlado siempre pide receta
+    if (dto.controlled === true) data.requiresPrescription = true;
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.product.update({ where: { id }, data });
@@ -603,15 +677,20 @@ export class InventoryService {
   ): Promise<ProductDetail> {
     const product = await this.prisma.product.findFirst({
       where: { id: productId, clinicId: actor.clinicId },
-      select: { tracksExpiry: true, active: true, controlled: true },
+      select: {
+        tracksExpiry: true,
+        active: true,
+        controlled: true,
+        category: true,
+      },
     });
     if (!product) throw new NotFoundException('El producto no existe');
     if (!product.active)
       throw new BadRequestException(
         'El producto está inactivo: actívalo antes de ingresar stock',
       );
-    // Controlados: DIGEMID pide el lote de cada entrada
-    if (product.controlled && !dto.lotNumber)
+    // Vacunas y controlados (DIGEMID): lote obligatorio. Lo demás que vence: basta la fecha
+    if (lotRequired(product.category, product.controlled) && !dto.lotNumber)
       throw new BadRequestException('Ingresa el número de lote');
     const supplier = dto.supplierId
       ? await this.prisma.supplier.findFirst({
@@ -630,8 +709,6 @@ export class InventoryService {
 
     // Lo que vence pide lote y vencimiento; lo que no vence (camas, juguetes) no guarda fecha
     if (product.tracksExpiry) {
-      if (!dto.lotNumber)
-        throw new BadRequestException('Ingresa el número de lote');
       if (!dto.expiresAt)
         throw new BadRequestException('Ingresa la fecha de vencimiento');
     }

@@ -207,6 +207,7 @@
             @let e = lineErrors()[i];
             @let showErr = tried();
             @let needsLot = p.tracksExpiry || p.controlled;
+            @let lotMust = p.category === 'VACCINE' || p.controlled;
             <li
               class="grid grid-cols-2 gap-3 px-5 py-4 sm:grid-cols-3 sm:px-6 xl:grid-cols-[5.5rem_9.5rem_minmax(0,1fr)_7.5rem_9.5rem_8rem_6.5rem_2.75rem] xl:items-start"
               [attr.aria-label]="'Línea ' + (i + 1) + ': ' + p.name"
@@ -249,9 +250,11 @@
                   step="any"
                   [formControl]="line.controls.quantity"
                   class="field-input mt-1.5 tabular-nums xl:mt-0"
-                  [attr.aria-invalid]="showErr && e.quantity"
+                  [attr.aria-invalid]="(showErr && e.quantity) || e.quantityDecimals"
                 />
-                @if (showErr && e.quantity) {
+                @if (e.quantityDecimals) {
+                  <p class="field-error" role="alert">Hasta 3 decimales</p>
+                } @else if (showErr && e.quantity) {
                   <p class="field-error">Mayor a 0</p>
                 }
               </div>
@@ -271,7 +274,7 @@
               <div class="xl:col-start-4 xl:row-start-1">
                 <label [for]="'pl-lot-' + i" class="field-label xl:sr-only"
                   >Lote
-                  @if (needsLot) {
+                  @if (lotMust) {
                     <span class="text-rose-600" aria-hidden="true">*</span>
                   }
                 </label>
@@ -339,10 +342,12 @@
                     [formControl]="line.controls.unitPrice"
                     class="field-input mt-0 pl-9 text-right tabular-nums"
                     [placeholder]="lastCostPlaceholder(i)"
-                    [attr.aria-invalid]="showErr && e.price"
+                    [attr.aria-invalid]="(showErr && e.price) || e.priceDecimals"
                   />
                 </div>
-                @if (showErr && e.price) {
+                @if (e.priceDecimals) {
+                  <p class="field-error" role="alert">Hasta 4 decimales</p>
+                } @else if (showErr && e.price) {
                   <p class="field-error">Escribe el precio (0 si es bonificación)</p>
                 }
               </div>

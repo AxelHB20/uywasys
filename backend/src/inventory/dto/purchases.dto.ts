@@ -114,7 +114,7 @@ export class PurchaseLineDto {
   /** Presentaciones que dice la ficha (5 cajas) */
   @IsNumber(
     { maxDecimalPlaces: 3 },
-    { message: 'La cantidad debe ser un número' },
+    { message: 'La cantidad debe ser un número con hasta 3 decimales' },
   )
   @Min(0.001, { message: 'La cantidad debe ser mayor a 0' })
   @Max(100_000)
@@ -123,7 +123,7 @@ export class PurchaseLineDto {
   /** Precio de cada presentación tal como viene en la ficha (0 = bonificación) */
   @IsNumber(
     { maxDecimalPlaces: 4 },
-    { message: 'El precio debe ser un número' },
+    { message: 'El precio debe ser un número con hasta 4 decimales' },
   )
   @Min(0, { message: 'El precio no puede ser negativo' })
   @Max(999_999)

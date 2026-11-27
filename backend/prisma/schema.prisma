@@ -429,6 +429,10 @@ enum BaseUnit {
   TABLET
   ML
   G
+  /// Se vende la caja entera (no por unidad suelta)
+  BOX
+  /// Se vende el frasco entero (no por ml)
+  BOTTLE
 }
 
 /// Afectación del IGV (SUNAT): 10 gravado, 20 exonerado, 30 inafecto

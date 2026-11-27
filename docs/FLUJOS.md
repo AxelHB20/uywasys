@@ -179,6 +179,34 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   presupuestos pendientes se cobran igual con su precio.
 - El precio se copia al cobrar; subirlo después no cambia cobros ni presupuestos ya emitidos.
 
+### Agregar producto con su stock (27 nov)
+
+Pedido de la clínica (cargando su inventario por primera vez): llenar productos y stock sin vueltas.
+
+- **Una sola pantalla:** producto, presentaciones y **stock inicial (opcional)**: cantidad en una
+  presentación, **vence como en la caja (08/2027 → se guarda el último día del mes; acepta 08/27 y la
+  fecha completa)**, lote y costo. Se guarda todo junto: si el stock está mal, no se crea nada.
+- **Sigue en la pantalla:** "Meloxicam agregado con 200 tabletas", el formulario se limpia (se quedan
+  categoría y unidad) y arriba queda **"Agregados ahora"** con enlace a cada uno.
+- **Unidad mínima: unidad / tableta / caja / frasco** (se vende entero). ml y g quedan solo para los
+  productos que ya los usaban; el Excel acepta "caja" y "frasco".
+- **La categoría decide si vence** (Accesorio no; lo demás sí) y se muestra en una nota con "Cambiar"
+  para casos raros. "Medicamento controlado" solo aparece en Medicamento.
+- **"Es de uso interno (no se vende)"** reemplaza a "Se cobra al cliente": siempre desmarcado (salvo
+  Insumo). También en Editar producto.
+- **Lote obligatorio solo en vacunas y controlados**, en todas partes (alta, Registrar compra, Recibir
+  compra, Excel). Lo demás que vence: basta el vencimiento.
+- **Aviso de repetido:** "Ya existe Meloxicam 1 mg (90 tabletas)… Abrir" (avisa, no bloquea).
+- Botón y título **"Agregar producto"**; enlace "¿Muchos productos? Súbelos con Excel".
+
+### Inventario: decimales y mensajes claros (27 nov)
+
+- **Decimales permitidos:** precio de venta 2 (ej.: 0.83), equivalencia, cantidades y stock mínimo 3,
+  costo de compra 4 (ej.: 21.6667). Se avisa **en el campo** al escribir, antes de guardar.
+- Si igual llega un error de una lista, dice cuál fila: "Presentación 1: el precio…", "Línea 3: …"
+  (antes "presentations.0.El precio…").
+- **Controlado = pide receta** también en el servidor (no solo en la pantalla).
+
 ### Plantillas clínicas (18 nov)
 
 - **Receta frecuente:** cada medicamento se busca en el inventario. Ligado + "Entregar y cobrar" →

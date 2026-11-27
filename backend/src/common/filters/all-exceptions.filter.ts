@@ -86,7 +86,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return {
           statusCode,
           message: 'Datos inválidos',
-          errors: (response as { message: string[] }).message,
+          errors: (response as { message: string[] }).message.map(readablePath),
         };
       }
       // Multer rechaza archivos que superan el límite con un mensaje en inglés
@@ -147,4 +147,25 @@ function extraFields(response: unknown): Record<string, unknown> | undefined {
     ...rest
   } = response as Record<string, unknown>;
   return Object.keys(rest).length ? rest : undefined;
+}
+
+/** Nombre de cada lista anidada tal como la ve el usuario */
+const LIST_NAMES: Record<string, string> = {
+  presentations: 'Presentación',
+  lines: 'Línea',
+  items: 'Fila',
+};
+
+/**
+ * class-validator antepone la ruta del campo anidado ("presentations.0.El precio…"), que el usuario
+ * veía tal cual. Se cambia por "Presentación 1: el precio…".
+ */
+export function readablePath(message: string): string {
+  const match = /^([A-Za-z]+)\.(\d+)\.(?:[A-Za-z]+\.(?:\d+\.)?)*(.+)$/.exec(
+    message,
+  );
+  if (!match) return message;
+  const [, list, index, rest] = match;
+  const label = LIST_NAMES[list] ?? 'Fila';
+  return `${label} ${Number(index) + 1}: ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
 }

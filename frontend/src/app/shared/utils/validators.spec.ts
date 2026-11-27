@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { apiErrorMessage } from './validators';
+import { FormControl } from '@angular/forms';
+import { apiErrorMessage, maxDecimals, tooManyDecimals } from './validators';
 
 const error = (status: number, body: unknown) =>
   new HttpErrorResponse({ status, error: body, url: '/api/x' });
@@ -27,5 +28,18 @@ describe('apiErrorMessage', () => {
     expect(apiErrorMessage(error(502, null))).toBe(
       'Ocurrió un error inesperado. Inténtalo de nuevo en unos minutos.',
     );
+  });
+});
+
+describe('maxDecimals', () => {
+  it('acepta hasta los decimales permitidos y avisa si hay más', () => {
+    expect(new FormControl(0.83, maxDecimals(2)).valid).toBe(true);
+    expect(new FormControl(19.9, maxDecimals(2)).valid).toBe(true);
+    expect(new FormControl(0.833, maxDecimals(2)).hasError('decimals')).toBe(true);
+    expect(new FormControl(21.6667, maxDecimals(4)).valid).toBe(true);
+    expect(new FormControl(21.66667, maxDecimals(4)).hasError('decimals')).toBe(true);
+    expect(new FormControl(null, maxDecimals(2)).valid).toBe(true);
+    expect(tooManyDecimals(2.5, 3)).toBe(false);
+    expect(tooManyDecimals(2.5555, 3)).toBe(true);
   });
 });

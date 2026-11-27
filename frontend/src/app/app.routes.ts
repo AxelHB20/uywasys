@@ -274,7 +274,7 @@ export const routes: Routes = [
       },
       {
         path: 'inventario/nuevo',
-        title: 'Nuevo producto · Uywa',
+        title: 'Agregar producto · Uywa',
         canActivate: [roleGuard('ADMIN', 'VET')],
         loadComponent: () =>
           import('./features/inventory/new-product.page').then((m) => m.NewProductPage),

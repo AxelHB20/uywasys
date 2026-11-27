@@ -55,6 +55,26 @@ export function apiErrorMessage(
   return body?.error?.errors?.[0] ?? body?.error?.message ?? fallback;
 }
 
+/**
+ * Máximo de decimales que acepta el servidor (precio 2, cantidad y equivalencia 3, costo 4).
+ * Sin esto el error llegaba recién al guardar y con un texto confuso.
+ */
+export function maxDecimals(max: number): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value = control.value as number | string | null;
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const scaled = n * 10 ** max;
+    return Math.abs(scaled - Math.round(scaled)) < 1e-6 ? null : { decimals: { max } };
+  };
+}
+
+/** ¿El número tiene más decimales de los permitidos? (para listas sin FormControl) */
+export function tooManyDecimals(value: unknown, max: number): boolean {
+  return maxDecimals(max)({ value } as AbstractControl) !== null;
+}
+
 /** Datos extra de un error de la API (por ejemplo { visitId } en un 409). */
 export function apiErrorDetails<T extends Record<string, unknown>>(error: unknown): Partial<T> {
   return ((error as { error?: { details?: T } } | null)?.error?.details ?? {}) as Partial<T>;

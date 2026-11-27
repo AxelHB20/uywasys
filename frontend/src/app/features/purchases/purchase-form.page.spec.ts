@@ -161,7 +161,7 @@ describe('PurchaseFormPage (Recibir compra)', () => {
     expect(localStorage.getItem(DRAFT)).toBeNull();
   });
 
-  it('no guarda si falta el lote o el vencimiento, y lo marca en la línea', async () => {
+  it('no guarda sin vencimiento (el lote de un medicamento es opcional) y lo marca en la línea', async () => {
     const fixture = render();
     const el: HTMLElement = fixture.nativeElement;
     set(el, '#pf-number', 'F001-1');
@@ -172,7 +172,7 @@ describe('PurchaseFormPage (Recibir compra)', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectNone('/api/inventory/purchases');
-    expect(text(el)).toContain('Falta el lote');
+    expect(text(el)).not.toContain('Falta el lote');
     expect(text(el)).toContain('Falta el vencimiento');
   });
 

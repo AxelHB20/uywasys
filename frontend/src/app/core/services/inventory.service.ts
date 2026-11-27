@@ -3,15 +3,16 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   ControlledMovement,
+  InitialStockInput,
   InventoryAlerts,
   Movement,
   OutflowInput,
   Presentation,
   PresentationInput,
-  ProductImportPreview,
-  ProductImportResult,
   ProductCategory,
   ProductDetail,
+  ProductImportPreview,
+  ProductImportResult,
   ProductInput,
   ProductPage,
   PurchaseInput,
@@ -50,7 +51,10 @@ export class InventoryService {
   }
 
   create(
-    product: ProductInput & { presentations: PresentationInput[] },
+    product: ProductInput & {
+      presentations: PresentationInput[];
+      initialStock?: InitialStockInput | null;
+    },
   ): Observable<ProductDetail> {
     return this.http.post<ProductDetail>('/api/inventory/products', product);
   }

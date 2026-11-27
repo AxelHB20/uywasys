@@ -486,7 +486,9 @@
         />
       </div>
     </div>
-    @if (purchasePreview(); as preview) {
+    @if (purchaseForm.controls.quantity.hasError('decimals')) {
+      <p class="field-error -mt-2" role="alert">La cantidad admite hasta 3 decimales</p>
+    } @else if (purchasePreview(); as preview) {
       <p class="-mt-2 text-sm font-medium text-anil-700 tabular-nums">{{ preview }}</p>
     } @else if (invalid(purchaseForm.controls.quantity)) {
       <p class="field-error -mt-2">Ingresa una cantidad mayor a 0</p>
@@ -495,8 +497,13 @@
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="pu-lot" class="field-label"
-            >Lote <span class="text-rose-600" aria-hidden="true">*</span></label
-          >
+            >Lote
+            @if (lotMandatory()) {
+              <span class="text-rose-600" aria-hidden="true">*</span>
+            } @else {
+              <span class="font-normal text-slate-600">(opcional)</span>
+            }
+          </label>
           <input
             id="pu-lot"
             formControlName="lotNumber"
@@ -559,8 +566,12 @@
             step="0.01"
             formControlName="costPerPresentation"
             class="field-input pl-9 tabular-nums"
+            [attr.aria-invalid]="purchaseForm.controls.costPerPresentation.hasError('decimals')"
           />
         </div>
+        @if (purchaseForm.controls.costPerPresentation.hasError('decimals')) {
+          <p class="field-error" role="alert">El costo admite hasta 4 decimales (ej.: 21.6667)</p>
+        }
       </div>
       <div>
         <label for="pu-doc" class="field-label">N.º de factura o boleta</label>
@@ -669,8 +680,14 @@
           min="0"
           formControlName="quantity"
           class="field-input tabular-nums"
-          [attr.aria-invalid]="invalid(outflowForm.controls.quantity)"
+          [attr.aria-invalid]="
+            invalid(outflowForm.controls.quantity) ||
+            outflowForm.controls.quantity.hasError('decimals')
+          "
         />
+        @if (outflowForm.controls.quantity.hasError('decimals')) {
+          <p class="field-error" role="alert">Hasta 3 decimales</p>
+        }
       </div>
       <div>
         <label for="ou-unit" class="field-label">Unidad</label>
@@ -809,10 +826,14 @@
               min="0"
               [formControlName]="i"
               class="field-input mt-0 w-28 tabular-nums"
+              [attr.aria-invalid]="countForm.controls.items.at(i).hasError('decimals')"
             />
           </li>
         }
       </ul>
+      @if (countHasDecimals()) {
+        <p class="field-error" role="alert">Las cantidades admiten hasta 3 decimales</p>
+      }
     }
     <div>
       <label for="cnt-reason" class="field-label"
@@ -874,8 +895,14 @@
           min="0"
           formControlName="factor"
           class="field-input tabular-nums"
-          [attr.aria-invalid]="invalid(presentationForm.controls.factor)"
+          [attr.aria-invalid]="
+            invalid(presentationForm.controls.factor) ||
+            presentationForm.controls.factor.hasError('decimals')
+          "
         />
+        @if (presentationForm.controls.factor.hasError('decimals')) {
+          <p class="field-error" role="alert">Hasta 3 decimales</p>
+        }
       </div>
       <div>
         <label for="pf-price" class="field-label">Precio con IGV</label>
@@ -892,8 +919,12 @@
             step="0.01"
             formControlName="price"
             class="field-input pl-9 tabular-nums"
+            [attr.aria-invalid]="presentationForm.controls.price.hasError('decimals')"
           />
         </div>
+        @if (presentationForm.controls.price.hasError('decimals')) {
+          <p class="field-error" role="alert">Hasta 2 decimales (ej.: 0.83)</p>
+        }
       </div>
     </div>
     @if (editingPresentation()) {
@@ -947,7 +978,11 @@
           min="0"
           formControlName="minStock"
           class="field-input tabular-nums"
+          [attr.aria-invalid]="editForm.controls.minStock.hasError('decimals')"
         />
+        @if (editForm.controls.minStock.hasError('decimals')) {
+          <p class="field-error" role="alert">Hasta 3 decimales</p>
+        }
       </div>
       <div>
         <label for="ed-code" class="field-label">Código interno</label>
@@ -1018,13 +1053,14 @@
       <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
         ><input
           type="checkbox"
-          formControlName="chargeable"
           class="mt-0.5 size-5 shrink-0 rounded accent-anil-600"
+          [checked]="!editForm.controls.chargeable.value"
+          (change)="setInternal($any($event.target).checked)"
         />
         <span
-          >Se cobra al cliente
-          <span class="block text-xs text-slate-500"
-            >Apagado: es un insumo, no sale al cobrar.</span
+          >Es de uso interno (no se vende)
+          <span class="block text-xs text-slate-600"
+            >Jeringas, guantes, algodón: no salen al cobrar.</span
           ></span
         ></label
       >

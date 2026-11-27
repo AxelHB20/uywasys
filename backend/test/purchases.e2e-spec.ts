@@ -317,11 +317,11 @@ describe('Compras y proveedores (e2e)', () => {
       cookies.vet,
       ficha({
         docNumber: 'F001-200',
-        lines: [{ ...ficha().lines[0], lotNumber: null }],
+        lines: [{ ...ficha().lines[0], expiresAt: null }],
       }),
     ).expect(400);
     expect(noLot.body.message).toBe(
-      'Línea 1: ingresa el lote de Amoxicilina 500 mg',
+      'Línea 1: ingresa el vencimiento de Amoxicilina 500 mg',
     );
     const expired = await purchase(
       cookies.vet,
