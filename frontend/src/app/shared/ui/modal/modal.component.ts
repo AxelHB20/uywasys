@@ -53,7 +53,7 @@ import { IconComponent } from '../icon/icon.component';
         [class]="
           size() === 'pos'
             ? 'h-[min(44rem,calc(100dvh-9rem))] overflow-hidden rounded-b-2xl'
-            : 'max-h-[70dvh] overflow-y-auto px-6 py-5'
+            : 'max-h-[calc(100dvh-19rem)] overflow-y-auto px-6 py-5 sm:max-h-[70dvh]'
         "
       >
         <ng-content />

@@ -215,9 +215,9 @@ describe('HospitalizationDetailPage (hoja de tratamiento)', () => {
     http.expectNone('/api/hospitalizations/7/discharge');
     expect(dialog.textContent).toContain('Elige si se cobra la estancia');
 
-    const stay = el.querySelector<HTMLSelectElement>('#dc-service')!;
-    stay.value = 'none';
-    stay.dispatchEvent(new Event('change'));
+    el.querySelector<HTMLInputElement>(
+      'input[name="stay"][value="none"], input[value="none"]',
+    )!.click();
     fixture.detectChanges();
     submit.click();
     const req = http.expectOne({ method: 'POST', url: '/api/hospitalizations/7/discharge' });

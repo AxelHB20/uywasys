@@ -4,8 +4,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  afterRenderEffect,
   computed,
   effect,
   inject,
@@ -145,7 +143,6 @@ export class HospitalizationDetailPage {
   private readonly toast = inject(ToastService);
   private readonly queueApi = inject(QueueService);
   private readonly inventory = inject(InventoryService);
-  private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 
   readonly id = input.required<string>();
   /** ?registrar=1 (desde el tablero): abre la dosis atrasada más antigua o la que toca */
@@ -305,17 +302,6 @@ export class HospitalizationDetailPage {
 
   constructor() {
     effect(() => this.load(Number(this.id())));
-    // Cada fila de horas se desplaza a lo que toca (en el celular no se ve todo)
-    let scrolledFor: number | null = null;
-    afterRenderEffect(() => {
-      const d = this.data();
-      if (!d || scrolledFor === d.id) return;
-      scrolledFor = d.id;
-      for (const row of this.host.nativeElement.querySelectorAll<HTMLElement>('.slot-row')) {
-        const target = row.querySelector<HTMLElement>(`[data-slot="${row.dataset['target']}"]`);
-        if (target) row.scrollLeft = target.offsetLeft - row.offsetLeft - 4;
-      }
-    });
     this.dischargeForm.valueChanges.subscribe(() =>
       this.dischargeValues.set(this.dischargeForm.getRawValue()),
     );
@@ -375,12 +361,20 @@ export class HospitalizationDetailPage {
     return slot.doneAt ? `${base} (${this.when(slot.doneAt)})` : base;
   }
 
-  /** La casilla que se ve primero: la atrasada o la que toca (con una dada antes, de contexto) */
-  protected targetIndex(order: HospOrder): number {
-    const i = order.slots.findIndex(
+  /** Indicaciones con muchas horas (cada 1–2 h): se ven las 3 últimas pasadas y "+N antes" */
+  private readonly expanded = signal<ReadonlySet<number>>(new Set());
+
+  protected visibleSlots(order: HospOrder): Slot[] {
+    if (order.slots.length <= 12 || this.expanded().has(order.id)) return order.slots;
+    const firstOpen = order.slots.findIndex(
       (s) => s.state === 'OVERDUE' || s.state === 'DUE' || s.state === 'PENDING',
     );
-    return Math.max(0, i - 1);
+    const from = Math.max(0, (firstOpen < 0 ? order.slots.length : firstOpen) - 3);
+    return order.slots.slice(from);
+  }
+
+  protected expandSlots(orderId: number): void {
+    this.expanded.update((set) => new Set([...set, orderId]));
   }
 
   protected givenCount(order: HospOrder): number {

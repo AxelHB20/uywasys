@@ -13,6 +13,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 - **Tablero:** franja de resumen en vez de 3 tarjetas, botón **Registrar** que abre la dosis que toca, dueño sin cortar, etiquetas del sistema.
 - **Hoja:** pendientes solo con la hora, leyenda plegable, ícono por tipo, textos de 12 px o más, evolución con "Notas y signos" primero; en celular los signos antes de la evolución; gráfico de temperatura normal en tablet de pie.
 - **Sin jaula** en pantallas (el dato queda guardado).
+- **Ajustes de diseño:** las horas de la hoja se acomodan en filas (antes se cortaban a los costados; con muchas horas, "+N antes"); la estancia del alta con opciones a la vista en vez de la lista desplegable cortada; en el celular, los botones de las ventanas ya no quedan fuera de la pantalla.
 - **Accesibilidad:** contraste del encabezado y "Actualizado", "Editar" fuera de la lista de datos, separadores de día y filtros bien marcados (axe: 0 fallas en tablero y hoja, PC y celular).
 - **Imagen del servidor:** `backend/.dockerignore` ya no copia `src/generated` de la PC (un cliente de Prisma viejo rompía la compilación con columnas nuevas).
 - **Cliente de Prisma en Docker:** `importFileExtension = "js"` explícito en `schema.prisma` (dentro de la imagen se genera sin tsconfig y ponía imports `.ts`: la API no arrancaba con "Cannot find module …/internal/class.ts").
