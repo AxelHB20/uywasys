@@ -218,7 +218,7 @@ export class ChargesService {
               .filter((s) => s.product.controlled)
               .map((s) => s.product.name);
       if (controlled.length) {
-        const what = `${line.description} lleva ${controlled.join(', ')} (controlado)`;
+        const what = `${line.description} lleva ${controlled.join(', ')} (psicotrópico)`;
         if (!ctx.petId)
           throw new BadRequestException(`${what}: indica la mascota`);
         if (!item.prescriptionRef)

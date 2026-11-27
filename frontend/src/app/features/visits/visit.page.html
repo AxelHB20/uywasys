@@ -1012,7 +1012,7 @@
                               · {{ o.detail }}
                             }
                             @if (o.controlled) {
-                              · controlado
+                              · psicotrópico
                             }
                           </span>
                         </span>
@@ -1070,7 +1070,7 @@
                       @if (g.controls.option.value.controlled) {
                         <div class="mt-3">
                           <label [for]="'line-rx-' + i" class="field-label"
-                            >N.º de receta (controlado)
+                            >N.º de receta (psicotrópico)
                             <span class="text-rose-600" aria-hidden="true">*</span></label
                           >
                           <input
@@ -1337,7 +1337,7 @@
                   <span class="text-slate-500">× {{ formatQty(i.quantity) }}</span>
                 }
                 @if (i.controlled) {
-                  <span class="ml-1 text-xs font-medium text-rose-700">controlado</span>
+                  <span class="ml-1 text-xs font-medium text-rose-700">psicotrópico</span>
                 }
               </span>
               <span class="shrink-0 text-slate-900 tabular-nums">{{ money(i.total) }}</span>
@@ -1366,7 +1366,7 @@
           @if (estimateRx.invalid && estimateRx.touched) {
             <p class="field-error">Escribe el número de la receta retenida</p>
           } @else {
-            <p class="field-hint">Incluye un medicamento controlado: va con su receta retenida.</p>
+            <p class="field-hint">Incluye un psicotrópico: va con su receta retenida.</p>
           }
         </div>
       }

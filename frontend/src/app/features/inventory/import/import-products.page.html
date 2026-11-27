@@ -58,7 +58,7 @@
               <li class="flex gap-2">
                 <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />El stock
                 inicial es opcional y va con su vencimiento; el lote es obligatorio solo en vacunas
-                y controlados. ¿Dos lotes? Repite la fila con el otro lote.
+                y psicotrópicos. ¿Dos lotes? Repite la fila con el otro lote.
               </li>
               <li class="flex gap-2">
                 <app-icon name="check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />Antes de
@@ -252,7 +252,7 @@
                             · {{ r.product.code }}
                           }
                           @if (r.product.controlled) {
-                            · Controlado
+                            · Psicotrópico
                           }
                           @if (r.product.igv !== 'TAXED') {
                             · {{ igvLabels[r.product.igv] }}

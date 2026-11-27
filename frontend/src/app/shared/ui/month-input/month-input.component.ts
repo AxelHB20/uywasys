@@ -35,6 +35,7 @@ import {
       [disabled]="disabled()"
       [attr.aria-invalid]="invalid()"
       [attr.aria-describedby]="describedBy()"
+      [attr.data-entry]="entry() ? '' : null"
       (input)="onInput($event)"
       (blur)="touched()"
     />
@@ -46,6 +47,8 @@ export class MonthInputComponent implements ControlValueAccessor, Validator {
   readonly describedBy = input<string | null>(null);
   /** Sin margen superior (cuando la etiqueta está oculta) */
   readonly flush = input(false);
+  /** Entra en el recorrido con Enter de Recibir compra ([data-entry]) */
+  readonly entry = input(false);
 
   protected readonly text = signal('');
   protected readonly disabled = signal(false);

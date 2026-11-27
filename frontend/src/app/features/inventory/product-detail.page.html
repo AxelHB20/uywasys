@@ -784,7 +784,7 @@
             autocomplete="off"
           />
           <p class="field-hint">
-            Medicamento controlado: queda en el libro de controlados con tu colegiatura.
+            Psicotrópico: queda en el libro de psicotrópicos con tu colegiatura.
           </p>
         </div>
       }
@@ -1087,27 +1087,43 @@
       @if (editForm.controls.category.value === 'MEDICINE' || editForm.controls.controlled.value) {
         <app-controlled-check [control]="editForm.controls.controlled" [compact]="true" />
       }
-      <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
-        ><input
-          type="checkbox"
-          class="mt-0.5 size-5 shrink-0 rounded accent-anil-600"
-          [checked]="!editForm.controls.chargeable.value"
-          (change)="setInternal($any($event.target).checked)"
-        />
-        <span
-          >No se vende: se gasta en la clínica (insumo)
-          <span class="block text-xs text-slate-600">{{ help.supply }}</span></span
-        ></label
-      >
+      <app-charge-choice
+        class="block py-2"
+        name="ed-charge"
+        [internal]="!editForm.controls.chargeable.value"
+        (internalChange)="setInternal($event)"
+      />
       <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-800"
         ><input type="checkbox" formControlName="active" class="size-5 rounded accent-anil-600" />
         Producto activo</label
       >
     </div>
-    <p class="text-xs text-slate-500">
-      Cómo se cuenta el stock (tableta, caja, frasco…) no se cambia aquí: si cambió, crea un
-      producto nuevo.
-    </p>
+    @if (canChangeUnit()) {
+      <fieldset>
+        <legend class="field-label">¿Cómo se cuenta el stock?</legend>
+        <div class="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          @for (u of unitChoices(); track u) {
+            <label
+              class="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl text-sm font-medium text-slate-700 capitalize ring-1 ring-slate-300 select-none hover:bg-slate-50 has-checked:bg-anil-50 has-checked:text-anil-800 has-checked:ring-2 has-checked:ring-anil-500 has-focus-visible:ring-2 has-focus-visible:ring-anil-400"
+            >
+              <input type="radio" class="sr-only" formControlName="baseUnit" [value]="u" />
+              {{ unitLabels[u][0] }}
+            </label>
+          }
+        </div>
+        <p class="field-hint">
+          Un shampoo o una loción: frasco. Se puede cambiar porque aún no tiene compras ni ventas.
+          @if (renameHint(); as hint) {
+            {{ hint }}
+          }
+        </p>
+      </fieldset>
+    } @else {
+      <p class="text-xs text-slate-500">
+        Cómo se cuenta el stock (tableta, caja, frasco…) ya no se cambia: el producto tiene
+        movimientos. Si cambió, crea un producto nuevo.
+      </p>
+    }
   </form>
   <ng-container modal-actions>
     <button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button>

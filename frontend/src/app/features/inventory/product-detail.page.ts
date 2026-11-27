@@ -32,6 +32,8 @@ import {
   INVENTORY_HELP,
   CONTROLLED_LABEL,
   BASE_UNIT_LABELS,
+  BaseUnit,
+  NEW_PRODUCT_UNITS,
   lotHint,
   lotMissingText,
 } from '../../core/services/inventory.models';
@@ -58,6 +60,7 @@ import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 import { ExpiryChoiceComponent } from './expiry-choice.component';
 import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
 import { ControlledCheckComponent } from './controlled-check.component';
+import { ChargeChoiceComponent } from './charge-choice.component';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 const RECEIVED = new Intl.DateTimeFormat('es-PE', {
@@ -93,6 +96,7 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
     ExpiryChoiceComponent,
     MonthInputComponent,
     ControlledCheckComponent,
+    ChargeChoiceComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-detail.page.html',
@@ -203,7 +207,7 @@ export class ProductDetailPage {
         key: 'base',
         text: `«${wrong.name}» dice que trae ${wrong.factor} ${BASE_UNIT_LABELS[p.baseUnit][1]}. Si es 1 ${unit} suelta, «Trae» debe ser 1 (¿pusieron el stock ahí?).`,
       });
-    if (p.chargeable === false && active.some((x) => (x.price ?? 0) > 0))
+    if (p.chargeable === false && p.category !== 'SUPPLY' && active.some((x) => (x.price ?? 0) > 0))
       list.push({
         key: 'supply',
         text: 'Tiene precio de venta pero está marcado como insumo: no aparece al cobrar.',
@@ -224,13 +228,16 @@ export class ProductDetailPage {
     const p = this.product();
     if (!p) return null;
     const active = p.presentations.filter((x) => x.active);
+    // En ml y g, "Por kilo = 1000" es una conversión de verdad (igual que en "Corregir productos")
+    if (!NEW_PRODUCT_UNITS.includes(p.baseUnit)) return null;
     if (!active.length || active.some((x) => x.factor === 1)) return null;
     const unit = BASE_UNIT_LABELS[p.baseUnit][0].toLowerCase();
     const named = active.find((x) => {
       const n = x.name.toLowerCase().trim();
       return n.startsWith(unit) || /\bx\s*1\b/.test(n);
     });
-    return named ?? [...active].sort((a, b) => a.factor - b.factor)[0];
+    const plain = active.length === 1 && !/\d/.test(active[0].name) ? active[0] : null;
+    return named ?? plain;
   }
 
   protected fixIssue(key: 'base' | 'supply' | 'controlled'): void {
@@ -365,7 +372,33 @@ export class ProductDetailPage {
     active: new FormControl(true, { nonNullable: true }),
     tracksExpiry: new FormControl(true, { nonNullable: true }),
     chargeable: new FormControl(true, { nonNullable: true }),
+    baseUnit: new FormControl<BaseUnit>('UNIT', { nonNullable: true }),
   });
+  /** Ya se sabe cuántos movimientos tiene (primera página del kardex cargada) */
+  private readonly movementsLoaded = signal(false);
+  /** Sin compras, ventas ni stock inicial: se puede cambiar cómo se cuenta (Unidad → Frasco) */
+  protected readonly canChangeUnit = computed(
+    () => this.movementsLoaded() && this.movementsTotal() === 0,
+  );
+  protected readonly unitLabels = BASE_UNIT_LABELS;
+  /** "La presentación «Unidad» pasará a llamarse «Frasco»" (si existe y no choca) */
+  protected renameHint(): string | null {
+    const p = this.product();
+    const to = this.editForm.controls.baseUnit.value;
+    if (!p || to === p.baseUnit) return null;
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    const [from, target] = [cap(BASE_UNIT_LABELS[p.baseUnit][0]), cap(BASE_UNIT_LABELS[to][0])];
+    const names = p.presentations.map((x) => x.name.trim().toLowerCase());
+    if (!names.includes(from.toLowerCase()) || names.includes(target.toLowerCase())) return null;
+    return `La presentación «${from}» pasará a llamarse «${target}».`;
+  }
+
+  protected unitChoices(): BaseUnit[] {
+    const p = this.product();
+    return !p || NEW_PRODUCT_UNITS.includes(p.baseUnit)
+      ? NEW_PRODUCT_UNITS
+      : [p.baseUnit, ...NEW_PRODUCT_UNITS];
+  }
   private readonly editTracks = toSignal(this.editForm.controls.tracksExpiry.valueChanges, {
     initialValue: true,
   });
@@ -414,6 +447,7 @@ export class ProductDetailPage {
       next: (res) => {
         this.movements.set(page === 1 ? res.items : [...this.movements(), ...res.items]);
         this.movementsTotal.set(res.total);
+        if (page === 1) this.movementsLoaded.set(true);
         this.movementsPage.set(page);
         this.movementsLoading.set(false);
       },
@@ -591,6 +625,7 @@ export class ProductDetailPage {
       active: p.active,
       tracksExpiry: p.tracksExpiry,
       chargeable: p.chargeable ?? true,
+      baseUnit: p.baseUnit,
     });
     this.modal.set('edit');
   }
@@ -633,7 +668,7 @@ export class ProductDetailPage {
     if (!p || this.invalidForm(this.outflowForm)) return;
     const v = this.outflowForm.getRawValue();
     if (this.controlledUse() && (!this.pickedPet() || !v.prescriptionRef.trim())) {
-      this.toast.error('Un controlado pide el paciente y el N.º de receta');
+      this.toast.error('Un psicotrópico pide el paciente y el N.º de receta');
       return;
     }
     this.run(
@@ -715,6 +750,7 @@ export class ProductDetailPage {
         active: v.active,
         tracksExpiry: v.tracksExpiry,
         chargeable: v.chargeable,
+        ...(this.canChangeUnit() && v.baseUnit !== p.baseUnit ? { baseUnit: v.baseUnit } : {}),
       }),
       'Producto actualizado',
     );

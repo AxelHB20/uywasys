@@ -111,7 +111,7 @@ describe('PurchaseFormPage (Recibir compra)', () => {
     expect(el.querySelector<HTMLSelectElement>('#pl-pres-0')!.selectedIndex).toBe(0);
     set(el, '#pl-qty-0', '5');
     set(el, '#pl-lot-0', 'a23b');
-    set(el, '#pl-exp-0', '2028-03-31');
+    set(el, '#pl-exp-0', '03/2028');
     set(el, '#pl-price-0', '40');
     fixture.detectChanges();
     await fixture.whenStable();
@@ -241,7 +241,7 @@ describe('PurchaseFormPage (Recibir compra)', () => {
     await addAmoxi(fixture);
     set(el, '#pl-qty-0', '1');
     set(el, '#pl-lot-0', 'L');
-    set(el, '#pl-exp-0', '2028-03-31');
+    set(el, '#pl-exp-0', '03/2028');
     set(el, '#pl-price-0', '40');
     el.querySelector<HTMLFormElement>('#purchase-form')!.dispatchEvent(new Event('submit'));
     await fixture.whenStable();

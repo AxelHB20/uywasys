@@ -280,6 +280,34 @@ export interface StockLoadItem {
   controlled?: boolean;
 }
 
+/** "Corregir productos": «Trae» con el stock puesto o insumo con precio */
+export interface ProductFixRow {
+  id: number;
+  name: string;
+  category: ProductCategory;
+  baseUnit: BaseUnit;
+  totalStock: number;
+  /** Sin movimientos: se puede cambiar cómo se cuenta */
+  canChangeUnit: boolean;
+  /** Presentación con «Trae» mal puesto (se le pone 1) */
+  presentation: { id: number; name: string; factor: number } | null;
+  supplyWithPrice: boolean;
+}
+
+export interface ProductFixItem {
+  productId: number;
+  presentationId?: number;
+  baseUnit?: BaseUnit;
+  sellable?: boolean;
+}
+
+/** Lo que estaba en «Trae»: cantidad sugerida en "Cargar stock" */
+export interface StockSuggestion {
+  productId: number;
+  presentationId: number;
+  quantity: number;
+}
+
 /** Stock con el que entra el producto al agregarlo (misma operación) */
 export interface InitialStockInput {
   /** Posición de la presentación en la lista (0 = la primera) */

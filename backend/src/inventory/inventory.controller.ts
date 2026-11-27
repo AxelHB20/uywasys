@@ -28,6 +28,8 @@ import {
 import { InventoryService, withoutCosts } from './inventory.service.js';
 import { StockLoadService } from './stock-load.service.js';
 import { StockLoadDto } from './dto/stock-load.dto.js';
+import { ProductFixService } from './product-fix.service.js';
+import { ProductFixDto } from './dto/product-fix.dto.js';
 import type { PresentationView, ProductDetail } from './inventory.service.js';
 
 /**
@@ -41,7 +43,25 @@ export class InventoryController {
   constructor(
     private readonly inventory: InventoryService,
     private readonly stockLoad: StockLoadService,
+    private readonly productFix: ProductFixService,
   ) {}
+
+  /** "Corregir productos": «Trae» con el stock puesto y insumos con precio */
+  @Roles(...STOCK_ROLES)
+  @Get('product-fixes')
+  pendingFixes(@CurrentUser() user: AuthUser) {
+    return this.productFix.pending(user.clinicId);
+  }
+
+  @Roles(...STOCK_ROLES)
+  @Post('product-fixes')
+  applyFixes(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ProductFixDto,
+    @Req() req: Request,
+  ) {
+    return this.productFix.apply(user, dto, req.ip);
+  }
 
   /** "Cargar stock": productos activos sin stock, para llenarlos todos en una tabla */
   @Roles(...STOCK_ROLES)

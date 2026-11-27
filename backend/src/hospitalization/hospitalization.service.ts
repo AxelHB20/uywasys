@@ -791,7 +791,7 @@ export class HospitalizationService {
         );
       if (service.supplies.some((x) => x.product.controlled))
         throw new BadRequestException(
-          `${service.name} usa un controlado: cárgalo en Atención y cuenta con su receta`,
+          `${service.name} usa un psicotrópico: cárgalo en Atención y cuenta con su receta`,
         );
       return { ...none, careServiceId: dto.careServiceId };
     }
@@ -823,7 +823,7 @@ export class HospitalizationService {
         throw new NotFoundException('El producto no existe o no se vende');
       if (presentation.product.controlled)
         throw new BadRequestException(
-          `${presentation.product.name} es controlado: cárgalo en Atención y cuenta con su receta`,
+          `${presentation.product.name} es psicotrópico: cárgalo en Atención y cuenta con su receta`,
         );
       return {
         careServiceId: null,

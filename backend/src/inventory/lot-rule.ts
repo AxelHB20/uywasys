@@ -18,7 +18,7 @@ export function lotMissingMessage(
   controlled: boolean,
 ): string {
   return controlled
-    ? 'Ingresa el lote: DIGEMID lo pide en los controlados'
+    ? 'Ingresa el lote: DIGEMID lo pide en los psicotrópicos'
     : category === 'VACCINE'
       ? 'Ingresa el lote: va en el carné de vacunación'
       : 'Ingresa el lote';

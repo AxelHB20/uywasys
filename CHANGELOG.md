@@ -4,6 +4,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Inventario sin confusiones: corregir productos, «¿Se le cobra al cliente?» y un solo nombre (27 nov)
+- **Por qué:** en la clínica quedaron productos con el stock escrito en «Trae» (Shampoo Alerdog «Unidad = 3 unidades», Giardia Pet «Tableta = 44») y medicamentos con precio marcados como insumo (Nutrical, Giardia Pet), así no salían al cobrar.
+- **Corregir productos** (`/inventario/corregir-productos`, aviso ámbar en Inventario, admin y veterinario): todos los mal llenados en una lista. Por producto: «Poner Trae = 1», «Se cuenta por» (Unidad → Frasco, solo sin movimientos) y «Se vende al cliente» si es insumo con precio. Se guarda todo junto (si uno falla no se guarda nada). Lo que estaba en «Trae» (el 3, el 44) pasa a **Cargar stock** como cantidad, primero en la lista con «Es lo que estaba en «Trae»»; solo falta el vencimiento. Si ya tenía stock, avisa que se revise con «Contar stock».
+- **Se detecta sin falsos avisos:** presentación sin número en el nombre («Unidad», «Frasco», «Tableta x1») en un producto sin ninguna que traiga 1. «Caja x 30» y los productos en ml o g («Por kilo = 1000») no se tocan. Los de categoría Insumo con precio tampoco.
+- **«¿Se le cobra al cliente?»** con dos respuestas a la vista («Sí, se vende» / «No, se gasta en la clínica») en Agregar producto y Editar, en lugar de la casilla «No se vende (insumo)».
+- **Editar producto: cambiar Unidad por Frasco** (o tableta, caja) mientras no tenga compras, ventas ni stock inicial. La presentación «Unidad» pasa a llamarse «Frasco».
+- **Un solo nombre: «psicotrópico»** en todas las pantallas (Libro de psicotrópicos, Recibir compra, Caja, Presupuestos, Atención, Hospitalización y mensajes del servidor); antes convivía con «controlado».
+- **Plantilla de Excel con los nombres de la pantalla:** «Se cuenta por», «Trae (1 si es una sola)», «Psicotrópico DIGEMID (Sí/No)», «Stock que tienes», «Vencimiento (MM/AAAA)» (columna de texto para que Excel no lo cambie). Cada producto necesita una fila con Trae = 1; si falta, el error dice «¿Pusiste el stock en «Trae»?». Las plantillas anteriores se siguen leyendo.
+- **Recibir compra:** vencimiento como en la caja (08/2027), igual que en las demás pantallas; Enter sigue pasando al campo siguiente.
+- **Servicios:** la ayuda de insumos ya no habla de ml («1 jeringa, 2 tabletas»).
+- **API:** `GET /api/inventory/product-fixes` y `POST /api/inventory/product-fixes` (hasta 300; errores por fila en `details.rows`; responde las cantidades sugeridas). Sin cambios en la base de datos.
+- Pruebas: e2e de corregir productos (fila mala → nada; Unidad → Frasco renombra la presentación; con movimientos no cambia la unidad; recepción no entra), detección de la presentación mal cargada, MM/AAAA y encabezados nuevos y viejos del Excel; frontend de Corregir productos y vencimiento en Recibir compra.
+
 ### Psicotrópicos y presentaciones guiadas (27 nov)
 - **Por qué:** en la clínica 12 de 13 medicamentos quedaron como "Controlado" (la palabra se entendía como "lo controlamos") y en Hemovitab se escribió el stock (192) en "Trae" de la tableta.
 - **"Estupefaciente o psicotrópico (libro de DIGEMID)"** en lugar de "Medicamento controlado"; insignia "Psicotrópico (DIGEMID)". Se movió a "Más datos" (solo Medicamento) y **pide confirmación** con lo que exige (lote, receta, paciente, veterinario) y lo que no se marca (antibióticos, vitaminas, antiparasitarios…). También al editar.

@@ -21,6 +21,18 @@ describe('importación de productos', () => {
       'quantity',
     );
     expect(productFieldFor('Stock')).toBe('quantity');
+    // Plantilla nueva (v0.4.12) y la anterior
+    expect(productFieldFor('Se cuenta por')).toBe('baseUnit');
+    expect(productFieldFor('Unidad mínima')).toBe('baseUnit');
+    expect(productFieldFor('Trae (1 si es una sola)')).toBe('factor');
+    expect(productFieldFor('Trae')).toBe('factor');
+    expect(productFieldFor('Psicotrópico DIGEMID (Sí/No)')).toBe('controlled');
+    expect(productFieldFor('Controlado (Sí/No)')).toBe('controlled');
+    expect(productFieldFor('Stock que tienes (en esta presentación)')).toBe(
+      'quantity',
+    );
+    expect(productFieldFor('Vencimiento (AAAA-MM-DD)')).toBe('expiresAt');
+    expect(productFieldFor('Stock mínimo')).toBe('minStock');
     expect(productFieldFor('Vencimiento')).toBe('expiresAt');
     expect(productFieldFor('Código')).toBe('code');
     expect(productFieldFor('Código de barras')).toBe('barcode');
@@ -71,7 +83,7 @@ describe('importación de productos', () => {
       today,
     );
     expect(rows[1].errors).toContain(
-      'La equivalencia debe ser un número mayor a 0',
+      '«Trae» debe ser un número mayor a 0 (1 si es una sola)',
     );
     expect(rows[0].status).toBe('error');
     expect(rows[0].errors[0]).toContain('fila 3');
@@ -107,7 +119,7 @@ describe('importación de productos', () => {
       ],
       today,
     );
-    expect(med.errors).toContain('Con cantidad inicial, indica el vencimiento');
+    expect(med.errors).toContain('Con stock, indica el vencimiento (MM/AAAA)');
     expect(acc.status).toBe('ok');
     expect(old.errors).toContain(
       'Ese lote ya está vencido: no se puede ingresar',
@@ -177,13 +189,14 @@ describe('importación de productos', () => {
           quantity: '1',
           expiresAt: '2027-09-30',
         }),
+        row(8, { ...base, presentation: 'Tableta', factor: '1', price: '2' }),
       ],
       today,
     );
     expect(rows[1]).toMatchObject({ extraLot: true, errors: [] });
     expect(rows[1].warnings).toEqual([]);
     expect(rows[3].errors[0]).toContain('para otro lote, pon su cantidad');
-    expect(rows[5].errors[0]).toContain('otra equivalencia o precio');
+    expect(rows[5].errors[0]).toContain('otro «Trae» o precio');
   });
 
   it('el lote es obligatorio solo en vacunas y controlados; alimento basta con vencimiento', () => {
@@ -276,5 +289,86 @@ describe('importación de productos', () => {
       'El código de barras ya está en la fila 2',
     );
     expect(rows[2].errors[0]).toContain('IGV «Libre» no reconocido');
+  });
+  it('sin una fila con Trae = 1 no se importa: casi siempre es el stock puesto en «Trae»', () => {
+    const [a, b] = validateProductRows(
+      [
+        row(2, {
+          name: 'Shampoo Alerdog',
+          category: 'Higiene',
+          baseUnit: 'Unidad',
+          presentation: 'Unidad',
+          factor: '3',
+          price: '35',
+        }),
+        row(3, {
+          name: 'Shampoo bien',
+          category: 'Higiene',
+          baseUnit: 'Frasco',
+          presentation: 'Frasco',
+          factor: '1',
+          price: '35',
+        }),
+      ],
+      today,
+    );
+    expect(a.status).toBe('error');
+    expect(a.errors[0]).toContain('«Trae» = 1');
+    expect(b.status).toBe('ok');
+  });
+
+  it('el vencimiento MM/AAAA es el último día del mes', () => {
+    const [r, bad] = validateProductRows(
+      [
+        row(2, {
+          ...base,
+          presentation: 'Tableta',
+          factor: '1',
+          price: '2',
+          quantity: '10',
+          expiresAt: '02/2028',
+        }),
+        row(3, {
+          name: 'Otro',
+          category: 'Alimento',
+          baseUnit: 'Unidad',
+          presentation: 'Bolsa',
+          factor: '1',
+          quantity: '1',
+          expiresAt: '13/2028',
+        }),
+      ],
+      today,
+    );
+    expect(r.stock?.expiresAt).toBe('2028-02-29');
+    expect(bad.errors[0]).toContain('MM/AAAA');
+  });
+});
+
+import { wrongBasePresentation } from '../unit-names.js';
+
+describe('presentación «de 1» mal cargada', () => {
+  it('detecta el stock puesto en «Trae» y respeta las presentaciones de verdad', () => {
+    const p = (name: string, factor: number) => ({ name, factor });
+    expect(wrongBasePresentation([p('Unidad', 3)], 'UNIT')?.name).toBe(
+      'Unidad',
+    );
+    expect(wrongBasePresentation([p('Shampoo', 3)], 'BOTTLE')?.name).toBe(
+      'Shampoo',
+    );
+    expect(
+      wrongBasePresentation(
+        [p('Caja x 30', 30), p('Tableta x1', 192)],
+        'TABLET',
+      )?.name,
+    ).toBe('Tableta x1');
+    expect(wrongBasePresentation([p('Caja x 30', 30)], 'TABLET')).toBeNull();
+    expect(
+      wrongBasePresentation([p('Blíster', 10), p('Caja x 100', 100)], 'TABLET'),
+    ).toBeNull();
+    expect(wrongBasePresentation([p('Por kilo', 1000)], 'G')).toBeNull();
+    expect(
+      wrongBasePresentation([p('Frasco', 1), p('Caja', 12)], 'BOTTLE'),
+    ).toBeNull();
   });
 });

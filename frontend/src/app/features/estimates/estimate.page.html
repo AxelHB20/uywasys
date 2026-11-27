@@ -60,12 +60,7 @@
         <button type="button" class="btn btn-ghost" (click)="print()">
           <app-icon name="printer" class="size-4" /> Imprimir
         </button>
-        <button
-          type="button"
-          class="btn btn-ghost"
-          [disabled]="downloading()"
-          (click)="download()"
-        >
+        <button type="button" class="btn btn-ghost" [disabled]="downloading()" (click)="download()">
           <app-icon name="download" class="size-4" />
           {{ downloading() ? 'Generando…' : 'PDF' }}
         </button>
@@ -652,7 +647,7 @@
             placeholder="Ej.: RX-00012"
             [attr.aria-invalid]="rx.invalid && rx.touched"
           />
-          <p class="field-hint">Incluye un medicamento controlado: va con su receta retenida.</p>
+          <p class="field-hint">Incluye un psicotrópico: va con su receta retenida.</p>
         </div>
       }
     </div>

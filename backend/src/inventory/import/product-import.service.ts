@@ -197,6 +197,8 @@ export class ProductImportService {
     styleHeader(sheet, PRODUCT_COLUMNS);
     sheet.getColumn('code').numFmt = '@';
     sheet.getColumn('lotNumber').numFmt = '@';
+    // Texto: si no, Excel convierte 03/2027 en fecha del día 1
+    sheet.getColumn('expiresAt').numFmt = '@';
     sheet.addRows([
       {
         code: 'MEL-1',
@@ -212,7 +214,7 @@ export class ProductImportService {
         requiresPrescription: 'Sí',
         controlled: 'No',
         lotNumber: 'MX2611',
-        expiresAt: '2027-03-31',
+        expiresAt: '03/2027',
         quantity: 2,
         cost: 90,
         supplier: 'Droguería Andina',
@@ -234,7 +236,7 @@ export class ProductImportService {
         presentation: 'Caja x 100',
         factor: 100,
         lotNumber: 'MX2702',
-        expiresAt: '2027-08-31',
+        expiresAt: '08/2027',
         quantity: 1,
         cost: 92,
         supplier: 'Droguería Andina',
@@ -276,10 +278,12 @@ export class ProductImportService {
       'Cómo llenar la plantilla de productos de Uywa',
       '',
       '• Una fila = una presentación. Si un producto se vende en caja y por tableta, escribe dos filas con el mismo nombre (o el mismo código).',
-      '• Unidad mínima: en la que se cuenta el stock (Unidad, Tableta, Caja o Frasco; se vende entero). Equivalencia: cuántas unidades mínimas trae la presentación (Caja x 100 = 100).',
+      '• Se cuenta por: Unidad, Tableta, Caja o Frasco (un shampoo o una loción: Frasco). Trae: cuántas de esa unidad trae la presentación. La presentación suelta trae 1 (Frasco = 1); Caja x 100 tabletas = 100.',
+      '• Cada producto necesita una fila con Trae = 1. No pongas el stock en «Trae»: el stock va en «Stock que tienes».',
       '• Precio con IGV incluido, el de la etiqueta. IGV: Gravado si lo dejas vacío (Exonerado o Inafecto solo si tu contador lo indica).',
       '• Código de barras (opcional): el de la caja o del producto, si usan lector.',
-      '• Stock inicial (opcional): cantidad en esa presentación y su vencimiento (AAAA-MM-DD). El lote es obligatorio en vacunas y controlados; en lo demás, si no lo tienes, déjalo vacío. Los accesorios no llevan lote ni vencimiento.',
+      '• Stock que tienes (opcional): cuántas tienes de esa presentación y su vencimiento (MM/AAAA, ej.: 03/2027). El lote es obligatorio en vacunas y psicotrópicos; en lo demás, si no lo tienes, déjalo vacío. Los accesorios no llevan lote ni vencimiento.',
+      '• Psicotrópico DIGEMID: Sí solo en estupefacientes y psicotrópicos del libro de DIGEMID (tramadol, ketamina, diazepam, fenobarbital…). Antibióticos, vacunas y antiparasitarios van en No.',
       '• ¿Dos lotes del mismo producto? Repite la fila de la presentación con la cantidad, lote y vencimiento del otro lote.',
       '• Los avisos en ámbar (sin precio, sin costo, vence pronto) no impiden importar.',
       '• Si una fila de un producto tiene error, ese producto no se importa hasta corregirlo.',

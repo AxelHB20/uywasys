@@ -12,7 +12,7 @@
         @if (isAdmin()) {
           <a routerLink="/inventario/importar" class="btn btn-secondary">Importar Excel</a>
         }
-        <a routerLink="/inventario/controlados" class="btn btn-secondary">Controlados</a>
+        <a routerLink="/inventario/controlados" class="btn btn-secondary">Libro de psicotrópicos</a>
         <a routerLink="/inventario/cargar-stock" class="btn btn-secondary">Cargar stock</a>
         <a routerLink="/inventario/nuevo" class="btn btn-primary">
           <app-icon name="plus" class="size-4" /> Agregar producto
@@ -36,6 +36,21 @@
         ¿Lo son de verdad? Antes la casilla decía «Controlado» y se marcó por error.
       </p>
       <a routerLink="/inventario/revisar-psicotropicos" class="btn btn-secondary h-10">Revisar</a>
+    </div>
+  }
+
+  @if (pendingFixes(); as n) {
+    <div
+      class="flex flex-wrap items-center gap-3 rounded-2xl bg-amber-50 px-5 py-3.5 text-sm text-amber-950 ring-1 ring-amber-200"
+    >
+      <app-icon name="alert" class="size-5 shrink-0 text-amber-700" />
+      <p class="min-w-0 flex-1">
+        <strong class="font-semibold"
+          >{{ n }} {{ n === 1 ? 'producto mal llenado' : 'productos mal llenados' }}.</strong
+        >
+        El stock quedó en «Trae» o están como insumo teniendo precio. Corrígelos todos juntos.
+      </p>
+      <a routerLink="/inventario/corregir-productos" class="btn btn-secondary h-10">Corregir</a>
     </div>
   }
 

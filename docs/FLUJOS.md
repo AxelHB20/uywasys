@@ -179,6 +179,26 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   presupuestos pendientes se cobran igual con su precio.
 - El precio se copia al cobrar; subirlo después no cambia cobros ni presupuestos ya emitidos.
 
+### Inventario sin confusiones (27 nov)
+
+Seguían productos con el stock en «Trae» (Alerdog «Unidad = 3», Giardia Pet «Tableta = 44») y
+medicamentos con precio marcados como insumo (no salían al cobrar).
+
+- **Inventario → aviso ámbar «N productos mal llenados» → Corregir productos.** Cada producto muestra
+  lo que está mal, ya marcado para corregir: «Poner Trae = 1», «Se cuenta por» (Unidad → Frasco, solo
+  si no tiene compras ni ventas) y «Se vende al cliente». «Corregir N y guardar» guarda todo junto.
+- Si había un número en «Trae», al guardar se abre **Cargar stock** con esa cantidad ya puesta (primero
+  en la lista): solo falta el vencimiento. Si el producto ya tenía stock, se revisa con «Contar stock».
+- **«¿Se le cobra al cliente?»** en Agregar producto y Editar: «Sí, se vende» (sale en Caja, atención y
+  presupuestos) o «No, se gasta en la clínica» (insumo).
+- **Editar producto:** «¿Cómo se cuenta el stock?» se puede cambiar mientras no tenga movimientos; la
+  presentación «Unidad» pasa a llamarse «Frasco».
+- **«Psicotrópico»** en todas las pantallas (ya no «controlado»): Libro de psicotrópicos, Recibir
+  compra, Caja, Presupuestos, Atención.
+- **Excel:** columnas con los nombres de la pantalla («Se cuenta por», «Trae», «Psicotrópico
+  DIGEMID», «Stock que tienes», «Vencimiento (MM/AAAA)»); sin fila con Trae = 1 el producto no entra.
+- **Recibir compra:** vencimiento 08/2027, como en las demás pantallas.
+
 ### Psicotrópicos y presentaciones guiadas (27 nov)
 
 La clínica marcó "Controlado" en 12 de 13 medicamentos y puso el stock en "Trae" (Hemovitab: 192).

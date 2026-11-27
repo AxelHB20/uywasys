@@ -38,6 +38,7 @@ import { addDays, expiryStatus } from './expiry.js';
 import type { ExpiryStatus } from './expiry.js';
 import { lastUnitCosts } from './last-cost.js';
 import { StockService } from './stock.service.js';
+import { renameUnitPresentations } from './unit-names.js';
 import { lotMissingMessage, lotRequired } from './lot-rule.js';
 
 const D = Prisma.Decimal;
@@ -518,7 +519,7 @@ export class InventoryService {
       current._count.movements > 0
     )
       throw new BadRequestException(
-        'No se puede cambiar la unidad mínima de un producto con movimientos: crea uno nuevo',
+        'Ya tiene movimientos: no se puede cambiar cómo se cuenta (crea uno nuevo)',
       );
 
     // Desactivar un insumo de servicios dejaría esos servicios descontando de un producto oculto
@@ -574,6 +575,9 @@ export class InventoryService {
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.product.update({ where: { id }, data });
+        // "Unidad" → "Frasco": la presentación suelta cambia de nombre con la unidad
+        if (dto.baseUnit && dto.baseUnit !== current.baseUnit)
+          await renameUnitPresentations(tx, id, current.baseUnit, dto.baseUnit);
         // Si deja de vencer, sus lotes ya no se marcan como vencidos ni por vencer
         if (dto.tracksExpiry === false && current.tracksExpiry)
           await tx.productBatch.updateMany({
@@ -817,7 +821,7 @@ export class InventoryService {
           throw new BadRequestException('Indica el N.º de receta');
         if (!me.licenseNumber)
           throw new ForbiddenException(
-            'Solo un veterinario con colegiatura registra la aplicación de un controlado',
+            'Solo un veterinario con colegiatura registra la aplicación de un psicotrópico',
           );
       }
       vetId = me.licenseNumber ? actor.id : null;

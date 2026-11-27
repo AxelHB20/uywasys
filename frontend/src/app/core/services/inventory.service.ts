@@ -5,6 +5,9 @@ import {
   ControlledMovement,
   InitialStockInput,
   PendingStockProduct,
+  ProductFixItem,
+  ProductFixRow,
+  StockSuggestion,
   StockLoadItem,
   InventoryAlerts,
   Movement,
@@ -61,6 +64,21 @@ export class InventoryService {
   /** Stock de varios productos de una vez: si una fila está mal, no entra nada */
   loadStock(items: StockLoadItem[]): Observable<{ loaded: number }> {
     return this.http.post<{ loaded: number }>('/api/inventory/stock-load', { items });
+  }
+
+  /** Productos con «Trae» mal puesto o insumos con precio */
+  productFixes(): Observable<{ items: ProductFixRow[] }> {
+    return this.http.get<{ items: ProductFixRow[] }>('/api/inventory/product-fixes');
+  }
+
+  /** Corrige varios de una vez: si uno está mal, no se guarda nada */
+  applyFixes(
+    items: ProductFixItem[],
+  ): Observable<{ fixed: number; suggestions: StockSuggestion[] }> {
+    return this.http.post<{ fixed: number; suggestions: StockSuggestion[] }>(
+      '/api/inventory/product-fixes',
+      { items },
+    );
   }
 
   get(id: number): Observable<ProductDetail> {

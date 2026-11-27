@@ -225,7 +225,7 @@
                   <span class="block font-medium text-slate-900">{{ p.name }}</span>
                   @if (p.controlled) {
                     <span class="text-xs font-medium text-violet-800"
-                      >Controlado: lote obligatorio</span
+                      >Psicotrópico: lote obligatorio</span
                     >
                   }
                 </span>
@@ -292,7 +292,7 @@
                     <p class="field-error">
                       {{
                         p.controlled
-                          ? 'Falta el lote (controlado: DIGEMID)'
+                          ? 'Falta el lote: DIGEMID lo pide en los psicotrópicos'
                           : 'Falta el lote (vacuna: carné)'
                       }}
                     </p>
@@ -309,19 +309,21 @@
                   }
                 </label>
                 @if (p.tracksExpiry) {
-                  <input
-                    [id]="'pl-exp-' + i"
-                    data-entry
-                    type="date"
-                    [min]="today"
+                  <app-month-input
+                    class="mt-1.5 xl:mt-0"
+                    [inputId]="'pl-exp-' + i"
+                    [entry]="true"
                     [formControl]="line.controls.expiresAt"
-                    class="field-input mt-1.5 tabular-nums xl:mt-0"
-                    [attr.aria-invalid]="showErr && (e.expiry || e.expired)"
+                    [invalid]="
+                      (showErr && e.expiry) || e.expired || line.controls.expiresAt.invalid
+                    "
                   />
-                  @if (showErr && e.expiry) {
-                    <p class="field-error">Falta el vencimiento</p>
-                  } @else if (e.expired) {
+                  @if (line.controls.expiresAt.hasError('expiryFormat')) {
+                    <p class="field-error">Escríbelo como 08/2027</p>
+                  } @else if (e.expired || line.controls.expiresAt.hasError('expiryPast')) {
                     <p class="field-error">Ya está vencido</p>
+                  } @else if (showErr && e.expiry) {
+                    <p class="field-error">Falta el vencimiento (08/2027)</p>
                   }
                 } @else {
                   <p class="mt-1.5 flex h-11 items-center text-sm text-slate-500 xl:mt-0">

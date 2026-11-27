@@ -273,7 +273,7 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     expect(bad.body.details.rows).toEqual([
       {
         productId: a.id,
-        message: 'Ingresa el lote: DIGEMID lo pide en los controlados',
+        message: 'Ingresa el lote: DIGEMID lo pide en los psicotrópicos',
       },
     ]);
     const stockB = async () =>
@@ -309,6 +309,128 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     expect(await stockB()).toBe(7);
     await http()
       .get('/api/inventory/stock-load')
+      .set('Cookie', cookies.reception)
+      .expect(403);
+  });
+
+  it('corregir productos: «Trae» con el stock puesto, Unidad → Frasco e insumo con precio, todo junto', async () => {
+    const make = async (name: string, chargeable = true) =>
+      (
+        await http()
+          .post('/api/inventory/products')
+          .set('Cookie', cookies.vet)
+          .send({
+            name,
+            category: 'HYGIENE',
+            baseUnit: 'UNIT',
+            chargeable,
+            presentations: [{ name: 'Unidad', factor: 1, price: 35 }],
+          })
+          .expect(201)
+      ).body as { id: number; presentations: { id: number }[] };
+    // Como lo dejaron en la clínica: «Trae» = 3 (era el stock)
+    const shampoo = await make('Shampoo Fix', false);
+    const locion = await make('Locion Fix');
+    for (const p of [shampoo, locion])
+      await http()
+        .patch(`/api/inventory/presentations/${p.presentations[0].id}`)
+        .set('Cookie', cookies.vet)
+        .send({ factor: 3 })
+        .expect(200);
+    const pending = (
+      await http()
+        .get('/api/inventory/product-fixes')
+        .set('Cookie', cookies.vet)
+        .expect(200)
+    ).body.items as {
+      id: number;
+      canChangeUnit: boolean;
+      presentation: { id: number; factor: number } | null;
+      supplyWithPrice: boolean;
+    }[];
+    const row = pending.find((p) => p.id === shampoo.id)!;
+    expect(row).toMatchObject({
+      canChangeUnit: true,
+      presentation: { id: shampoo.presentations[0].id, factor: 3 },
+      supplyWithPrice: true,
+    });
+    // Una fila mala: no se guarda nada
+    await http()
+      .post('/api/inventory/product-fixes')
+      .set('Cookie', cookies.vet)
+      .send({
+        items: [
+          {
+            productId: shampoo.id,
+            presentationId: shampoo.presentations[0].id,
+            baseUnit: 'BOTTLE',
+            sellable: true,
+          },
+          { productId: locion.id, presentationId: 999999 },
+        ],
+      })
+      .expect(400);
+    const res = await http()
+      .post('/api/inventory/product-fixes')
+      .set('Cookie', cookies.vet)
+      .send({
+        items: [
+          {
+            productId: shampoo.id,
+            presentationId: shampoo.presentations[0].id,
+            baseUnit: 'BOTTLE',
+            sellable: true,
+          },
+          { productId: locion.id, presentationId: locion.presentations[0].id },
+        ],
+      })
+      .expect(201);
+    expect(res.body.fixed).toBe(2);
+    // Lo que habían puesto en «Trae» pasa a "Cargar stock" como sugerencia
+    expect(res.body.suggestions).toEqual(
+      expect.arrayContaining([
+        {
+          productId: shampoo.id,
+          presentationId: shampoo.presentations[0].id,
+          quantity: 3,
+        },
+      ]),
+    );
+    const detail = (
+      await http()
+        .get(`/api/inventory/products/${shampoo.id}`)
+        .set('Cookie', cookies.vet)
+    ).body;
+    expect(detail).toMatchObject({ baseUnit: 'BOTTLE', chargeable: true });
+    expect(detail.presentations[0]).toMatchObject({
+      name: 'Frasco',
+      factor: 1,
+    });
+    const after = (
+      await http()
+        .get('/api/inventory/product-fixes')
+        .set('Cookie', cookies.vet)
+    ).body.items.map((p: { id: number }) => p.id);
+    expect(after).not.toContain(shampoo.id);
+    expect(after).not.toContain(locion.id);
+    // Con movimientos ya no se cambia cómo se cuenta
+    await http()
+      .post(`/api/inventory/products/${locion.id}/purchases`)
+      .set('Cookie', cookies.vet)
+      .send({
+        presentationId: locion.presentations[0].id,
+        quantity: 2,
+        expiresAt: addDays(today, 300),
+      })
+      .expect(201);
+    const blocked = await http()
+      .patch(`/api/inventory/products/${locion.id}`)
+      .set('Cookie', cookies.vet)
+      .send({ baseUnit: 'BOTTLE' })
+      .expect(400);
+    expect(blocked.body.message).toContain('Ya tiene movimientos');
+    await http()
+      .get('/api/inventory/product-fixes')
       .set('Cookie', cookies.reception)
       .expect(403);
   });

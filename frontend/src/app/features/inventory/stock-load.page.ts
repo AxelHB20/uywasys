@@ -22,6 +22,7 @@ import { MonthInputComponent } from '../../shared/ui/month-input/month-input.com
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { formatQty, unitLabel } from '../../shared/utils/stock';
 import { apiErrorDetails, apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
+import { dropSuggestions, readSuggestions } from './stock-suggestions';
 
 type Row = FormGroup<{
   quantity: FormControl<number | null>;
@@ -58,6 +59,8 @@ export class StockLoadPage {
   /** Errores que devolvió el servidor, por producto */
   protected readonly serverErrors = signal<Record<number, string>>({});
   private readonly rows = new Map<number, Row>();
+  /** Productos con la cantidad ya puesta desde "Corregir productos" (lo que estaba en «Trae») */
+  protected readonly suggested = signal<Set<number>>(new Set());
   /** Cambia cada vez que se escribe en cualquier fila (para recalcular contadores) */
   protected readonly edits = signal(0);
 
@@ -90,7 +93,23 @@ export class StockLoadPage {
     try {
       const res = await firstValueFrom(this.inventory.pendingStock());
       for (const p of res.items) if (!this.rows.has(p.id)) this.rows.set(p.id, this.newRow(p));
-      this.products.set(res.items);
+      // Lo corregido en «Trae» llega con su cantidad: van primero, solo falta el vencimiento
+      const ids = new Set(res.items.map((p) => p.id));
+      const hints = readSuggestions().filter((s) => ids.has(s.productId));
+      const applied = new Set<number>();
+      for (const s of hints) {
+        const p = res.items.find((x) => x.id === s.productId)!;
+        const row = this.rows.get(p.id)!;
+        if (row.controls.quantity.value || !p.presentations.some((x) => x.id === s.presentationId))
+          continue;
+        row.patchValue({ quantity: s.quantity, presentationId: s.presentationId });
+        applied.add(p.id);
+      }
+      this.suggested.set(applied);
+      this.products.set([
+        ...res.items.filter((p) => applied.has(p.id)),
+        ...res.items.filter((p) => !applied.has(p.id)),
+      ]);
       this.total.set(res.total);
     } catch (error) {
       this.loadError.set(apiErrorMessage(error));
@@ -212,6 +231,7 @@ export class StockLoadPage {
         );
       // Los que ya tienen stock salen de la tabla; el resto queda como estaba
       const loadedIds = new Set(withStock.map((p) => p.id));
+      dropSuggestions([...loadedIds]);
       const fixed = new Map(
         onlyControlled.map((p) => [p.id, this.row(p).controls.controlled.value]),
       );

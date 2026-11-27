@@ -150,6 +150,14 @@ export class InventoryPage {
     params: () => (this.canManage() ? true : undefined),
     stream: () => this.inventory.pendingStock(),
   });
+  /** Productos con «Trae» mal puesto o insumos con precio (aviso "Corregir") */
+  private readonly fixes = rxResource({
+    params: () => (this.canManage() ? true : undefined),
+    stream: () => this.inventory.productFixes(),
+  });
+  protected readonly pendingFixes = computed(() =>
+    this.fixes.hasValue() ? (this.fixes.value()?.items.length ?? 0) : 0,
+  );
   /** Psicotrópicos que nadie revisó todavía (la casilla antes decía "Controlado") */
   private readonly controlledList = rxResource({
     params: () => (this.canManage() ? true : undefined),

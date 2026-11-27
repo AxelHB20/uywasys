@@ -40,6 +40,7 @@ import { shrinkImage } from '../../shared/utils/image';
 import { loaded } from '../../shared/utils/resource';
 import { formatQty, money, unitLabel } from '../../shared/utils/stock';
 import { apiErrorMessage, tooManyDecimals, maxDecimals } from '../../shared/utils/validators';
+import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
 import { ProductSearchComponent } from './product-search.component';
 import { SupplierFormComponent } from './supplier-form.component';
 
@@ -120,6 +121,7 @@ function toLineProduct(p: ProductSummary): LineProduct {
     IconComponent,
     ProductSearchComponent,
     SupplierFormComponent,
+    MonthInputComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './purchase-form.page.html',

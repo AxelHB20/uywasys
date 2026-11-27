@@ -138,6 +138,9 @@
               @if (preview(p); as pv) {
                 <p class="mt-1 text-xs font-medium text-anil-700 tabular-nums">{{ pv }}</p>
               }
+              @if (suggested().has(p.id)) {
+                <p class="mt-1 text-xs text-slate-600">Es lo que estaba en «Trae». Revísalo.</p>
+              }
             </div>
 
             @if (p.tracksExpiry) {

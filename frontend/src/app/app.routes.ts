@@ -280,6 +280,13 @@ export const routes: Routes = [
           import('./features/inventory/new-product.page').then((m) => m.NewProductPage),
       },
       {
+        path: 'inventario/corregir-productos',
+        title: 'Corregir productos · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/inventory/product-fix.page').then((m) => m.ProductFixPage),
+      },
+      {
         path: 'inventario/cargar-stock',
         title: 'Cargar stock · Uywa',
         canActivate: [roleGuard('ADMIN', 'VET')],
@@ -295,7 +302,7 @@ export const routes: Routes = [
       },
       {
         path: 'inventario/controlados',
-        title: 'Libro de controlados · Uywa',
+        title: 'Libro de psicotrópicos · Uywa',
         canActivate: [roleGuard('ADMIN', 'VET')],
         loadComponent: () =>
           import('./features/inventory/controlled.page').then((m) => m.ControlledPage),

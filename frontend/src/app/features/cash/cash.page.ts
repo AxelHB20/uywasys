@@ -836,7 +836,7 @@ export class CashPage {
       return;
     }
     if (this.saleLines.controls.some((g) => g.controls.option.value.controlled)) {
-      this.toast.error('Un controlado se registra en la atención del paciente, con su receta.');
+      this.toast.error('Un psicotrópico se registra en la atención del paciente, con su receta.');
       return;
     }
     if (!this.buyerReady(this.collectBuyerMode())) return;
@@ -981,7 +981,7 @@ export class CashPage {
       return;
     }
     if (this.saleLines.controls.some((g) => g.controls.option.value.controlled)) {
-      this.toast.error('Un controlado se registra en la atención del paciente, con su receta.');
+      this.toast.error('Un psicotrópico se registra en la atención del paciente, con su receta.');
       return;
     }
     if (this.anonymousTooBig()) return;

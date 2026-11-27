@@ -198,7 +198,7 @@ export class CreateProductDto extends ProductFields {
   @IsIn(CATEGORIES, { message: 'Elige la categoría' })
   category: ProductCategory;
 
-  @IsIn(BASE_UNITS, { message: 'Elige la unidad mínima' })
+  @IsIn(BASE_UNITS, { message: 'Elige cómo se cuenta el stock' })
   baseUnit: BaseUnit;
 
   @IsArray()
@@ -226,7 +226,7 @@ export class UpdateProductDto extends ProductFields {
   category?: ProductCategory;
 
   @IsOptional()
-  @IsIn(BASE_UNITS, { message: 'Elige la unidad mínima' })
+  @IsIn(BASE_UNITS, { message: 'Elige cómo se cuenta el stock' })
   baseUnit?: BaseUnit;
 
   @IsOptional()

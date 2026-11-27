@@ -4,9 +4,9 @@
   </div>
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
-      <h1 class="font-display text-2xl font-semibold text-slate-900">Libro de controlados</h1>
+      <h1 class="font-display text-2xl font-semibold text-slate-900">Libro de psicotrópicos</h1>
       <p class="mt-1 text-slate-600">
-        Cada entrada y salida de medicamentos controlados, con paciente, veterinario, lote y receta.
+        Cada entrada y salida de psicotrópicos (DIGEMID), con paciente, veterinario, lote y receta.
       </p>
     </div>
     <button type="button" class="btn btn-secondary self-start print:hidden" (click)="print()">
@@ -39,9 +39,10 @@
     </div>
   } @else if (rows().length === 0) {
     <div class="card px-6 py-12 text-center">
-      <p class="font-medium text-slate-900">No hay movimientos de controlados en esas fechas</p>
+      <p class="font-medium text-slate-900">No hay movimientos de psicotrópicos en esas fechas</p>
       <p class="mt-1 text-sm text-slate-600">
-        Marca un producto como «controlado» para que sus usos aparezcan aquí.
+        Marca un medicamento como «Psicotrópico (DIGEMID)» en su ficha para que sus usos aparezcan
+        aquí.
       </p>
     </div>
   } @else {

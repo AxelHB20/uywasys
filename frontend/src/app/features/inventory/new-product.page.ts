@@ -26,6 +26,7 @@ import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
 import { ControlledCheckComponent } from './controlled-check.component';
+import { ChargeChoiceComponent } from './charge-choice.component';
 import { apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 import { formatQty, unitLabel } from '../../shared/utils/stock';
@@ -108,6 +109,7 @@ interface Added {
     IconComponent,
     MonthInputComponent,
     ControlledCheckComponent,
+    ChargeChoiceComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './new-product.page.html',
@@ -269,6 +271,12 @@ export class NewProductPage {
   protected readonly suggestions = computed(() => SUGGESTIONS[this.baseUnit()]);
   protected readonly example = computed(() => EXAMPLES[this.baseUnit()]);
   /** Un insumo con precio de venta no se podría cobrar: se avisa */
+  protected setInternal(internal: boolean): void {
+    const c = this.form.controls.internal;
+    c.setValue(internal);
+    c.markAsDirty();
+  }
+
   protected readonly supplyWithPrice = computed(
     () => !!this.value().internal && (this.value().presentations ?? []).some((p) => !!p.price),
   );
