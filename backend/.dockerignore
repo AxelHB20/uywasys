@@ -6,3 +6,5 @@ coverage
 .env.*
 !.env.example
 test
+# El cliente de Prisma se genera dentro de la imagen (npm ci); el de la PC puede estar viejo
+src/generated

@@ -14,6 +14,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 - **Hoja:** pendientes solo con la hora, leyenda plegable, ícono por tipo, textos de 12 px o más, evolución con "Notas y signos" primero; en celular los signos antes de la evolución; gráfico de temperatura normal en tablet de pie.
 - **Sin jaula** en pantallas (el dato queda guardado).
 - **Accesibilidad:** contraste del encabezado y "Actualizado", "Editar" fuera de la lista de datos, separadores de día y filtros bien marcados (axe: 0 fallas en tablero y hoja, PC y celular).
+- **Imagen del servidor:** `backend/.dockerignore` ya no copia `src/generated` de la PC (un cliente de Prisma viejo rompía la compilación con columnas nuevas).
 - **Base de datos:** migración `20261127010000_hospitalizacion_cobro` (columnas nuevas opcionales; no cambia datos existentes).
 - Pruebas: alta con estancia obligatoria y cobro aparte, registrar desde el tablero, confirmación al suspender, hora real (`givenAtIso`); e2e de cobro aparte, hora real y alta voluntaria.
 
