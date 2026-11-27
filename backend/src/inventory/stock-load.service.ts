@@ -154,7 +154,7 @@ export class StockLoadService {
               // Un controlado siempre pide receta
               data: r.controlled
                 ? { controlled: true, requiresPrescription: true }
-                : { controlled: false },
+                : { controlled: false, requiresPrescription: false },
             });
           const factor = new D(r.presentation.factor);
           await this.stock.receive(tx, {

@@ -87,7 +87,7 @@ describe('InventoryPage (lista)', () => {
     expect(text).not.toContain('Con receta');
     expect(text).toContain('Vence en 19 días');
     expect(text).toContain('No vence');
-    expect(text).toContain('Controlado');
+    expect(text).toContain('Psicotrópico (DIGEMID)');
     expect(text).toContain('S/ 2.00Tableta');
     expect(text).toContain('Con stock bajo');
     expect(text).not.toContain('Nuevo producto');

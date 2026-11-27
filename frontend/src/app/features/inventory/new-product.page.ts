@@ -25,6 +25,7 @@ import { InventoryService } from '../../core/services/inventory.service';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
+import { ControlledCheckComponent } from './controlled-check.component';
 import { apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 import { formatQty, unitLabel } from '../../shared/utils/stock';
@@ -68,6 +69,29 @@ function presentationForm(
 const same = (a: string, b: string) =>
   normalizeText(a).replace(/\s+/g, ' ') === normalizeText(b).replace(/\s+/g, ' ');
 
+/** Botones "También se vende por" según cómo se cuenta el stock */
+const SUGGESTIONS: Record<BaseUnit, string[]> = {
+  TABLET: ['Blíster', 'Caja'],
+  UNIT: ['Caja', 'Paquete'],
+  BOX: [],
+  BOTTLE: ['Caja'],
+  ML: ['Frasco'],
+  G: ['Bolsa'],
+};
+
+/** Ejemplo bajo el título, según la unidad */
+const EXAMPLES: Record<BaseUnit, string> = {
+  TABLET: 'Ej.: Tableta S/ 1.50 · Blíster x 10 S/ 14 · Caja x 100 S/ 120.',
+  UNIT: 'Ej.: Unidad S/ 25 · Caja x 12 S/ 270.',
+  BOX: 'Ej.: Caja S/ 25.',
+  BOTTLE: 'Ej.: Frasco 60 ml S/ 38 · Caja x 6 S/ 210.',
+  ML: 'Ej.: ml S/ 1.50 · Frasco 50 ml S/ 45.',
+  G: 'Ej.: g S/ 0.10 · Bolsa 2 kg S/ 145.',
+};
+
+/** Nombre que se arma solo ("Caja" + 100 → "Caja x 100") mientras no lo cambien a mano */
+const AUTO_NAME = /^(Blíster|Caja|Paquete|Frasco|Bolsa)(\s*x\s*[\d.,]*)?$/;
+
 /** Lo agregado en esta visita: se queda en la pantalla para seguir cargando sin volver */
 interface Added {
   id: number;
@@ -77,7 +101,14 @@ interface Added {
 
 @Component({
   selector: 'app-new-product-page',
-  imports: [BackLinkComponent, ReactiveFormsModule, RouterLink, IconComponent, MonthInputComponent],
+  imports: [
+    BackLinkComponent,
+    ReactiveFormsModule,
+    RouterLink,
+    IconComponent,
+    MonthInputComponent,
+    ControlledCheckComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './new-product.page.html',
 })
@@ -205,7 +236,10 @@ export class NewProductPage {
     this.form.controls.baseUnit.valueChanges.subscribe((unit) => {
       const rows = this.form.controls.presentations.controls;
       const first = rows[0]?.controls.name;
-      if (rows.length === 1 && first && Object.values(DEFAULT_PRESENTATION).includes(first.value))
+      if (
+        first &&
+        (!first.value.trim() || Object.values(DEFAULT_PRESENTATION).includes(first.value))
+      )
         first.setValue(DEFAULT_PRESENTATION[unit]);
     });
     // La categoría decide: vence o no, uso interno (insumos) y si puede ser controlado
@@ -226,12 +260,83 @@ export class NewProductPage {
     c.markAsDirty();
   }
 
+  // ── Presentaciones guiadas ──
+  protected readonly unitSingular = computed(() => this.unitLabels[this.baseUnit()][0]);
+  protected readonly unitSingularCap = computed(() => {
+    const u = this.unitSingular();
+    return u.charAt(0).toUpperCase() + u.slice(1);
+  });
+  protected readonly suggestions = computed(() => SUGGESTIONS[this.baseUnit()]);
+  protected readonly example = computed(() => EXAMPLES[this.baseUnit()]);
+  /** Un insumo con precio de venta no se podría cobrar: se avisa */
+  protected readonly supplyWithPrice = computed(
+    () => !!this.value().internal && (this.value().presentations ?? []).some((p) => !!p.price),
+  );
+
+  /** Qué le falta a una fila (solo lo que está a medias; una fila vacía se quita al guardar) */
+  protected rowError(i: number): string | null {
+    this.value();
+    const row = this.rows[i];
+    if (!row) return null;
+    const v = row.getRawValue();
+    if (row.controls.price.hasError('decimals'))
+      return 'El precio admite hasta 2 decimales (ej.: 0.83)';
+    if (row.controls.factor.hasError('decimals')) return '«Trae» admite hasta 3 decimales';
+    const name = v.name.trim();
+    if (i === 0)
+      return this.tried() && !name ? `Escribe el nombre (ej.: ${this.unitSingularCap()})` : null;
+    const empty = !name && !v.factor && v.price === null;
+    if (empty) return null;
+    if (v.factor !== null && v.factor <= 0) return '«Trae» debe ser mayor a 0';
+    if (!this.tried() && !row.controls.factor.touched && !row.controls.name.touched) return null;
+    if (!name) return 'Falta el nombre (ej.: Caja x 100)';
+    if (!v.factor) return `Falta cuántas ${this.unitPlural()} trae «${name}»`;
+    return null;
+  }
+
+  /** "1 Caja x 100 = 100 tabletas · S/ 1.20 cada tableta" (y aviso si sale más caro que suelto) */
+  protected rowSummary(i: number): { text: string; warn: string | null } | null {
+    this.value();
+    const v = this.rows[i]?.getRawValue();
+    if (!v?.factor || !v.name.trim()) return null;
+    const units = `${formatQty(v.factor)} ${unitLabel(this.baseUnit(), v.factor)}`;
+    let text = `1 ${v.name.trim()} = ${units}`;
+    let warn: string | null = null;
+    if (v.price !== null && v.price > 0) {
+      const each = v.price / v.factor;
+      text += ` · S/ ${each.toFixed(2)} cada ${this.unitSingular()}`;
+      const base = this.rows[0]?.controls.price.value;
+      if (base && v.price > base * v.factor + 0.005)
+        warn = `Sale más caro que ${units} sueltas (S/ ${(base * v.factor).toFixed(2)}). ¿Es correcto?`;
+    }
+    return { text, warn };
+  }
+
   protected get rows(): PresentationForm[] {
     return this.form.controls.presentations.controls;
   }
 
-  protected addRow(): void {
-    this.form.controls.presentations.push(presentationForm('', null));
+  /** "+ Caja": fila nueva con el nombre puesto; al escribir cuánto trae se arma "Caja x 100" */
+  protected addRow(word?: string): void {
+    const row = presentationForm(word ?? '', null);
+    row.controls.factor.valueChanges.subscribe((factor) => {
+      const name = row.controls.name;
+      if (!AUTO_NAME.test(name.value.trim())) return;
+      const base = name.value.trim().split(/\s+/)[0];
+      name.setValue(factor ? `${base} x ${factor}` : base, { emitEvent: true });
+    });
+    this.form.controls.presentations.push(row);
+    const i = this.rows.length - 1;
+    setTimeout(() => document.getElementById(word ? `pr-factor-${i}` : `pr-name-${i}`)?.focus());
+  }
+
+  /** Las filas extra completamente vacías no cuentan */
+  private dropEmptyRows(): void {
+    for (let i = this.rows.length - 1; i > 0; i--) {
+      const v = this.rows[i].getRawValue();
+      if (!v.name.trim() && !v.factor && v.price === null)
+        this.form.controls.presentations.removeAt(i);
+    }
   }
 
   protected removeRow(index: number): void {
@@ -247,8 +352,11 @@ export class NewProductPage {
 
   protected submit(): void {
     if (this.saving()) return;
+    this.dropEmptyRows();
+    this.rows[0]?.controls.factor.setValue(1);
     this.tried.set(true);
-    if (this.form.invalid || this.expiryMissing() || this.lotMissing()) {
+    const rowProblem = this.rows.some((_, i) => !!this.rowError(i));
+    if (this.form.invalid || rowProblem || this.expiryMissing() || this.lotMissing()) {
       this.form.markAllAsTouched();
       setTimeout(() => document.querySelector<HTMLElement>('form [aria-invalid="true"]')?.focus());
       return;

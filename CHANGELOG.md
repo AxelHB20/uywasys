@@ -4,6 +4,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). C
 
 ## [Sin publicar] · Plantillas clínicas y hospitalización
 
+### Psicotrópicos y presentaciones guiadas (27 nov)
+- **Por qué:** en la clínica 12 de 13 medicamentos quedaron como "Controlado" (la palabra se entendía como "lo controlamos") y en Hemovitab se escribió el stock (192) en "Trae" de la tableta.
+- **"Estupefaciente o psicotrópico (libro de DIGEMID)"** en lugar de "Medicamento controlado"; insignia "Psicotrópico (DIGEMID)". Se movió a "Más datos" (solo Medicamento) y **pide confirmación** con lo que exige (lote, receta, paciente, veterinario) y lo que no se marca (antibióticos, vitaminas, antiparasitarios…). También al editar.
+- **Revisar psicotrópicos** (`/inventario/revisar-psicotropicos`): aviso rojo en Inventario con los no revisados; lista con todos para quitar los que no son en una pasada. Al quitarlo también se quita "requiere receta" (backend: editar y Cargar stock). En Cargar stock la casilla solo sale para quitarlo. API: filtro `controlled=true` en la lista de productos.
+- **Presentaciones guiadas:** primera fila = unidad suelta, "Trae" fijo en 1 (no se puede poner el stock ahí); botones "+ Blíster / + Caja / + Otra" según la unidad; nombre automático ("Caja x 30"); resumen "1 Caja x 30 = 30 tabletas · S/ 2.67 cada tableta" y aviso si sale más caro que suelto; ejemplo bajo el título; filas vacías se quitan al guardar; errores concretos ("Falta cuántas tabletas trae «Caja»").
+- **Aviso de insumo con precio** al agregar ("no aparecerá al cobrar").
+- **Ficha: "Revisa este producto"** con botón "Corregir": presentación base mal cargada (ninguna trae 1) e insumo con precio. Al editar una presentación: "Cantidad de tabletas que trae. Si es una sola, pon 1".
+- Pruebas: confirmación del psicotrópico (frontend), quitar psicotrópico deja de pedir receta y filtro de la lista (e2e).
+
 ### Inventario: textos claros en todas las pantallas (27 nov)
 - **Lote con su motivo:** "Obligatorio: el lote va en el carné de vacunación", "Obligatorio: DIGEMID pide el lote de los controlados" u "Opcional: anótalo si la caja lo trae", bajo el campo en Agregar producto, Cargar stock y Registrar compra. Los errores dicen lo mismo (también los del servidor).
 - **Controlado explicado** donde se marca (agregar y editar): solo estupefacientes y psicotrópicos, qué exige y "si no es uno de estos, no lo marques".

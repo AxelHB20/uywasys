@@ -179,6 +179,24 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   presupuestos pendientes se cobran igual con su precio.
 - El precio se copia al cobrar; subirlo después no cambia cobros ni presupuestos ya emitidos.
 
+### Psicotrópicos y presentaciones guiadas (27 nov)
+
+La clínica marcó "Controlado" en 12 de 13 medicamentos y puso el stock en "Trae" (Hemovitab: 192).
+
+- **"Controlado" pasa a "Estupefaciente o psicotrópico (libro de DIGEMID)"** (insignia "Psicotrópico
+  (DIGEMID)"). Está en "Más datos" (solo Medicamento) y **pide confirmar** al marcarlo ("Sí, es
+  psicotrópico" / "No, cancelar"), con qué exige y qué no se marca.
+- **Revisar psicotrópicos** (aviso rojo en Inventario): todos los marcados en una lista; se quitan los
+  que no son de una vez ("Ninguno lo es", "Quitar N y guardar"). Quitarlo también deja de pedir receta.
+  En "Cargar stock" la casilla solo aparece para quitarlo.
+- **Presentaciones guiadas:** la primera fila es la unidad suelta ("1 · es la unidad", no se escribe);
+  botones "También se vende por: + Blíster, + Caja, + Otra"; al escribir cuánto trae, el nombre se arma
+  ("Caja x 30"); debajo "1 Caja x 30 = 30 tabletas · S/ 2.67 cada tableta" y aviso si sale más caro que
+  suelto. Las filas vacías se quitan solas; el error dice qué falta.
+- **Aviso** si tiene precio y está marcado como insumo (no aparecerá al cobrar).
+- **Ficha: "Revisa este producto"** con "Corregir" cuando ninguna presentación trae 1 (señala la que
+  se llama como la unidad, p. ej. "Tableta x1 trae 192") o hay precio en un insumo.
+
 ### Inventario: textos que se entienden (27 nov)
 
 Las mismas palabras en todas las pantallas del inventario:

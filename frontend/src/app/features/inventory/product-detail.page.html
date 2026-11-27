@@ -36,7 +36,7 @@
           <div class="mt-1 flex flex-wrap gap-1.5">
             @if (p.controlled) {
               <app-badge tone="danger"
-                ><app-icon name="alert" class="size-3" />Controlado</app-badge
+                ><app-icon name="alert" class="size-3" />{{ controlledLabel }}</app-badge
               >
             }
             @if (!p.tracksExpiry) {
@@ -93,6 +93,32 @@
         </div>
       }
     </div>
+
+    <!-- Datos que no cuadran (la clínica los cargó mal sin querer): se dice qué y se corrige aquí -->
+    @if (canManage() && issues().length) {
+      <section
+        class="rounded-2xl bg-amber-50 px-5 py-4 ring-1 ring-amber-200"
+        aria-labelledby="pd-issues"
+      >
+        <h2 id="pd-issues" class="flex items-center gap-2 text-sm font-semibold text-amber-950">
+          <app-icon name="alert" class="size-4 text-amber-700" /> Revisa este producto
+        </h2>
+        <ul class="mt-2 space-y-2">
+          @for (issue of issues(); track issue.key) {
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-amber-950">
+              <span class="min-w-0 flex-1">{{ issue.text }}</span>
+              <button
+                type="button"
+                class="btn btn-secondary h-9 shrink-0 px-3"
+                (click)="fixIssue(issue.key)"
+              >
+                Corregir
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
 
     <!-- Indicadores -->
     <ul
@@ -910,6 +936,9 @@
         @if (presentationForm.controls.factor.hasError('decimals')) {
           <p class="field-error" role="alert">Hasta 3 decimales</p>
         }
+        @if (!presentationForm.controls.factor.hasError('decimals')) {
+          <p class="field-hint">Cantidad de {{ unitName() }} que trae. Si es una sola, pon 1.</p>
+        }
       </div>
       <div>
         <label for="pf-price" class="field-label">Precio con IGV</label>
@@ -1055,17 +1084,9 @@
       </p>
     }
     <div class="space-y-1">
-      <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
-        ><input
-          type="checkbox"
-          formControlName="controlled"
-          class="mt-0.5 size-5 shrink-0 rounded accent-rose-600"
-        />
-        <span
-          >Medicamento controlado
-          <span class="block text-xs text-slate-600">{{ help.controlled }}</span></span
-        ></label
-      >
+      @if (editForm.controls.category.value === 'MEDICINE' || editForm.controls.controlled.value) {
+        <app-controlled-check [control]="editForm.controls.controlled" [compact]="true" />
+      }
       <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-slate-800"
         ><input
           type="checkbox"

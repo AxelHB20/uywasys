@@ -297,6 +297,15 @@ describe('Inventario: FEFO, kardex y permisos (e2e)', () => {
     ).body;
     expect(detailA.totalStock).toBe(3);
     expect(detailA.controlled).toBe(false);
+    // Quitar "psicotrópico" también deja de pedir receta (se había marcado por error)
+    expect(detailA.requiresPrescription).toBe(false);
+    const listed = await http()
+      .get('/api/inventory/products?controlled=true&status=all')
+      .set('Cookie', cookies.vet)
+      .expect(200);
+    expect(listed.body.items.map((p: { id: number }) => p.id)).not.toContain(
+      a.id,
+    );
     expect(await stockB()).toBe(7);
     await http()
       .get('/api/inventory/stock-load')

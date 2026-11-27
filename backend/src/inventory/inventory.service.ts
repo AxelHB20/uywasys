@@ -181,6 +181,7 @@ export class InventoryService {
     if (status !== 'all') where.active = status === 'active';
     if (query.category) where.category = query.category;
     if (query.chargeable) where.chargeable = true;
+    if (query.controlled) where.controlled = true;
 
     const term = normalizeSearch(query.q ?? '');
     if (term) {
@@ -562,8 +563,14 @@ export class InventoryService {
     ] as const) {
       if (dto[key] !== undefined) Object.assign(data, { [key]: dto[key] });
     }
-    // Un controlado siempre pide receta
+    // Un controlado siempre pide receta; si se quita (se marcó por error), deja de pedirla
     if (dto.controlled === true) data.requiresPrescription = true;
+    if (
+      dto.controlled === false &&
+      current.controlled &&
+      dto.requiresPrescription === undefined
+    )
+      data.requiresPrescription = false;
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.product.update({ where: { id }, data });

@@ -185,21 +185,6 @@
     </div>
 
     <div class="grid gap-3 sm:grid-cols-2">
-      @if (isMedicine()) {
-        <label
-          class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 text-sm text-slate-800"
-        >
-          <input
-            type="checkbox"
-            formControlName="controlled"
-            class="mt-0.5 size-5 shrink-0 rounded accent-rose-600"
-          />
-          <span>
-            <span class="font-medium">Medicamento controlado</span>
-            <span class="block text-slate-600">{{ help.controlled }}</span>
-          </span>
-        </label>
-      }
       <label
         class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 text-sm text-slate-800"
       >
@@ -213,6 +198,18 @@
           <span class="block text-slate-600">{{ help.supply }}</span>
         </span>
       </label>
+      @if (supplyWithPrice()) {
+        <p
+          class="flex gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-950 ring-1 ring-amber-200 sm:col-span-2"
+          role="status"
+        >
+          <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-amber-700" />
+          <span
+            >Tiene precio de venta pero está marcado como insumo:
+            <strong>no aparecerá al cobrar</strong>. Si lo vendes, desmarca la casilla.</span
+          >
+        </p>
+      }
     </div>
   </section>
 
@@ -221,55 +218,65 @@
       <h2 id="p-presentations" class="text-xs font-semibold tracking-wide text-slate-600 uppercase">
         Presentaciones y precios
       </h2>
-      <p class="mt-1 text-sm text-slate-600">
-        Cómo lo compras y lo vendes. «Trae» es la cantidad de {{ unitPlural() }} que viene en cada
-        una (ej.: «Caja x 100» trae 100). Precio con IGV incluido.
-      </p>
+      <p class="mt-1 text-sm text-slate-600">Cómo lo vendes, con IGV incluido. {{ example() }}</p>
     </div>
     <div
-      class="hidden grid-cols-[1fr_9rem_9rem_2.75rem] gap-3 text-xs font-medium text-slate-500 sm:grid"
+      class="hidden grid-cols-[1fr_9rem_9rem_2.75rem] gap-3 text-xs font-medium text-slate-600 sm:grid"
+      aria-hidden="true"
     >
       <span>Presentación</span><span>Trae ({{ unitPlural() }})</span><span>Precio de venta</span
       ><span></span>
     </div>
     <ul class="space-y-3" formArrayName="presentations">
       @for (row of rows; track row; let i = $index) {
+        @let err = rowError(i);
         <li
           class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70 sm:grid-cols-[1fr_9rem_9rem_2.75rem] sm:bg-transparent sm:p-0 sm:ring-0"
           [formGroupName]="i"
         >
           <div class="col-span-2 sm:col-span-1">
-            <label [for]="'pr-name-' + i" class="field-label sm:sr-only">Presentación</label>
+            <label [for]="'pr-name-' + i" class="field-label sm:sr-only">{{
+              i === 0 ? 'Se vende suelta como' : 'Presentación'
+            }}</label>
             <input
               [id]="'pr-name-' + i"
               formControlName="name"
               class="field-input sm:mt-0"
-              placeholder="Ej.: Caja x 100"
+              [placeholder]="i === 0 ? unitSingularCap() : 'Ej.: Caja x 100'"
               autocomplete="off"
-              [attr.aria-invalid]="invalid(row.controls.name)"
+              [attr.aria-invalid]="!!err && err.includes('nombre')"
             />
           </div>
           <div>
             <label [for]="'pr-factor-' + i" class="field-label sm:sr-only"
               >Trae ({{ unitPlural() }})</label
             >
-            <input
-              [id]="'pr-factor-' + i"
-              type="number"
-              inputmode="decimal"
-              min="0"
-              formControlName="factor"
-              class="field-input tabular-nums sm:mt-0"
-              [attr.aria-invalid]="
-                invalid(row.controls.factor) || row.controls.factor.hasError('decimals')
-              "
-            />
+            @if (i === 0) {
+              <!-- La primera siempre es 1: no se escribe (evita poner el stock aquí) -->
+              <p
+                [id]="'pr-factor-' + i"
+                class="mt-1.5 flex h-11 items-center rounded-xl bg-slate-100 px-3.5 text-sm text-slate-700 sm:mt-0"
+              >
+                1 · es la unidad
+              </p>
+            } @else {
+              <input
+                [id]="'pr-factor-' + i"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                formControlName="factor"
+                placeholder="Ej.: 100"
+                class="field-input tabular-nums sm:mt-0"
+                [attr.aria-invalid]="!!err && !err.includes('nombre') && !err.includes('precio')"
+              />
+            }
           </div>
           <div>
             <label [for]="'pr-price-' + i" class="field-label sm:sr-only">Precio (S/)</label>
             <div class="relative">
               <span
-                class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-500 sm:top-1/2"
+                class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-600 sm:top-1/2"
                 >S/</span
               >
               <input
@@ -285,35 +292,45 @@
             </div>
           </div>
           <div class="col-span-2 flex justify-end sm:col-span-1">
-            <button
-              type="button"
-              class="btn btn-ghost size-11 px-0 disabled:opacity-30"
-              [disabled]="rows.length === 1"
-              (click)="removeRow(i)"
-              [attr.aria-label]="'Quitar la presentación ' + (i + 1)"
-            >
-              <app-icon name="trash" class="size-4" />
-            </button>
+            @if (i > 0) {
+              <button
+                type="button"
+                class="btn btn-ghost size-11 px-0"
+                (click)="removeRow(i)"
+                [attr.aria-label]="'Quitar ' + (row.controls.name.value || 'la presentación')"
+              >
+                <app-icon name="trash" class="size-4" />
+              </button>
+            }
           </div>
-          @if (row.controls.price.hasError('decimals')) {
-            <p class="field-error col-span-2 -mt-1 sm:col-span-4" role="alert">
-              El precio admite hasta 2 decimales (ej.: 0.83)
+          @if (err) {
+            <p class="field-error col-span-2 -mt-1 sm:col-span-4" role="alert">{{ err }}</p>
+          } @else if (i === 0) {
+            <p class="col-span-2 -mt-1 text-sm text-slate-600 sm:col-span-4">
+              Precio de 1 {{ unitSingular() }}. Si no la vendes suelta, déjalo vacío.
             </p>
-          } @else if (row.controls.factor.hasError('decimals')) {
-            <p class="field-error col-span-2 -mt-1 sm:col-span-4" role="alert">
-              «Trae» admite hasta 3 decimales
-            </p>
-          } @else if (invalid(row.controls.name) || invalid(row.controls.factor)) {
-            <p class="field-error col-span-2 -mt-1 sm:col-span-4">
-              Completa el nombre y lo que trae (mayor a 0)
+          } @else if (rowSummary(i); as sum) {
+            <p class="col-span-2 -mt-1 text-sm sm:col-span-4">
+              <span class="font-medium text-anil-700">{{ sum.text }}</span>
+              @if (sum.warn) {
+                <span class="mt-0.5 block text-amber-800">{{ sum.warn }}</span>
+              }
             </p>
           }
         </li>
       }
     </ul>
-    <button type="button" class="btn btn-secondary" (click)="addRow()">
-      <app-icon name="plus" class="size-4" /> Agregar presentación
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-sm text-slate-600">También se vende por:</span>
+      @for (w of suggestions(); track w) {
+        <button type="button" class="btn btn-secondary h-10 px-3" (click)="addRow(w)">
+          <app-icon name="plus" class="size-4" /> {{ w }}
+        </button>
+      }
+      <button type="button" class="btn btn-ghost h-10 px-3" (click)="addRow()">
+        <app-icon name="plus" class="size-4" /> Otra
+      </button>
+    </div>
   </section>
 
   <section class="card space-y-4 p-5 sm:p-6" aria-labelledby="p-stock">
@@ -442,9 +459,12 @@
       class="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-anil-700"
     >
       <app-icon name="chevron-right" class="size-4 transition-transform group-open:rotate-90" /> Más
-      datos (código, código de barras, SUNAT, notas)
+      datos ({{ isMedicine() ? 'psicotrópico, ' : '' }}código, código de barras, SUNAT, notas)
     </summary>
     <div class="grid gap-5 pb-5 sm:grid-cols-2">
+      @if (isMedicine()) {
+        <app-controlled-check class="sm:col-span-2" [control]="form.controls.controlled" />
+      }
       <div>
         <label for="p-code" class="field-label">Código interno</label>
         <input

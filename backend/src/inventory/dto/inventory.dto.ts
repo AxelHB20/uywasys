@@ -364,6 +364,12 @@ export class ListProductsQuery {
   @IsIn(['active', 'inactive', 'all'])
   status?: 'active' | 'inactive' | 'all';
 
+  /** Solo los marcados como estupefaciente o psicotrópico (revisión de "controlados") */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  controlled?: boolean;
+
   /** Solo lo que se cobra al cliente (buscadores de cobro) */
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')

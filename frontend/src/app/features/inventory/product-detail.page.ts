@@ -30,6 +30,8 @@ import {
   defaultTracksExpiry,
   lotRequired,
   INVENTORY_HELP,
+  CONTROLLED_LABEL,
+  BASE_UNIT_LABELS,
   lotHint,
   lotMissingText,
 } from '../../core/services/inventory.models';
@@ -55,6 +57,7 @@ import { apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { FechaPipe } from '../../shared/pipes/fecha.pipe';
 import { ExpiryChoiceComponent } from './expiry-choice.component';
 import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
+import { ControlledCheckComponent } from './controlled-check.component';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 const RECEIVED = new Intl.DateTimeFormat('es-PE', {
@@ -89,6 +92,7 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
     PetPickerComponent,
     ExpiryChoiceComponent,
     MonthInputComponent,
+    ControlledCheckComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-detail.page.html',
@@ -184,6 +188,60 @@ export class ProductDetailPage {
   /** Lo que vence pide lote y fecha; camas, juguetes y similares no */
   protected readonly needsLot = computed(() => this.product()?.tracksExpiry ?? true);
   protected readonly help = INVENTORY_HELP;
+  protected readonly controlledLabel = CONTROLLED_LABEL;
+
+  /** Lo que no cuadra en el producto, con su arreglo */
+  protected readonly issues = computed(() => {
+    const p = this.product();
+    if (!p) return [];
+    const list: { key: 'base' | 'supply' | 'controlled'; text: string }[] = [];
+    const active = p.presentations.filter((x) => x.active);
+    const unit = BASE_UNIT_LABELS[p.baseUnit][0];
+    const wrong = this.wrongBase();
+    if (wrong)
+      list.push({
+        key: 'base',
+        text: `«${wrong.name}» dice que trae ${wrong.factor} ${BASE_UNIT_LABELS[p.baseUnit][1]}. Si es 1 ${unit} suelta, «Trae» debe ser 1 (¿pusieron el stock ahí?).`,
+      });
+    if (p.chargeable === false && active.some((x) => (x.price ?? 0) > 0))
+      list.push({
+        key: 'supply',
+        text: 'Tiene precio de venta pero está marcado como insumo: no aparece al cobrar.',
+      });
+    if (p.controlled && p.category !== 'MEDICINE')
+      list.push({
+        key: 'controlled',
+        text: `Está marcado como ${CONTROLLED_LABEL} sin ser medicamento.`,
+      });
+    return list;
+  });
+
+  /**
+   * La presentación "de 1" mal cargada: ninguna trae 1 y hay una que se llama como la unidad
+   * ("Tableta x1") o, si no, la más chica.
+   */
+  private wrongBase(): Presentation | null {
+    const p = this.product();
+    if (!p) return null;
+    const active = p.presentations.filter((x) => x.active);
+    if (!active.length || active.some((x) => x.factor === 1)) return null;
+    const unit = BASE_UNIT_LABELS[p.baseUnit][0].toLowerCase();
+    const named = active.find((x) => {
+      const n = x.name.toLowerCase().trim();
+      return n.startsWith(unit) || /\bx\s*1\b/.test(n);
+    });
+    return named ?? [...active].sort((a, b) => a.factor - b.factor)[0];
+  }
+
+  protected fixIssue(key: 'base' | 'supply' | 'controlled'): void {
+    const p = this.product();
+    if (!p) return;
+    if (key === 'base') {
+      this.openPresentation(this.wrongBase());
+      return;
+    }
+    this.openEdit();
+  }
   protected readonly lotHintMsg = computed(() => {
     const p = this.product();
     return p ? lotHint(p.category, p.controlled) : '';

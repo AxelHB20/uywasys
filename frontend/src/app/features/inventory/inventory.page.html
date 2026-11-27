@@ -23,6 +23,22 @@
 
   <app-inventory-tabs />
 
+  @if (unreviewedControlled(); as n) {
+    <div
+      class="flex flex-wrap items-center gap-3 rounded-2xl bg-rose-50 px-5 py-3.5 text-sm text-rose-950 ring-1 ring-rose-200"
+    >
+      <app-icon name="alert" class="size-5 shrink-0 text-rose-700" />
+      <p class="min-w-0 flex-1">
+        <strong class="font-semibold"
+          >{{ n }} {{ n === 1 ? 'producto marcado' : 'productos marcados' }} como psicotrópico
+          (DIGEMID).</strong
+        >
+        ¿Lo son de verdad? Antes la casilla decía «Controlado» y se marcó por error.
+      </p>
+      <a routerLink="/inventario/revisar-psicotropicos" class="btn btn-secondary h-10">Revisar</a>
+    </div>
+  }
+
   @if (pendingStock(); as n) {
     <div
       class="flex flex-wrap items-center gap-3 rounded-2xl bg-anil-50 px-5 py-3.5 text-sm text-anil-950 ring-1 ring-anil-200"
@@ -228,7 +244,7 @@
                               · {{ p.code }}
                             }
                             @if (p.controlled) {
-                              <app-badge tone="danger">Controlado</app-badge>
+                              <app-badge tone="danger">{{ controlledLabel }}</app-badge>
                             }
                             @if (!p.active) {
                               <app-badge>Inactivo</app-badge>
@@ -318,7 +334,7 @@
                       <p class="text-xs text-slate-500">
                         {{ categoryLabels[p.category] }}
                         @if (p.controlled) {
-                          · <span class="font-medium text-rose-700">Controlado</span>
+                          · <span class="font-medium text-rose-700">{{ controlledLabel }}</span>
                         }
                       </p>
                       <p

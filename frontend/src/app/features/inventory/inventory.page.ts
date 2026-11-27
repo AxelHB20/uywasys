@@ -32,7 +32,9 @@ import {
   ProductSummary,
   STOCK_ROLES,
   StockFilter,
+  CONTROLLED_LABEL,
 } from '../../core/services/inventory.models';
+import { reviewedControlled } from './controlled-reviewed';
 import { InventoryService } from '../../core/services/inventory.service';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
@@ -148,6 +150,20 @@ export class InventoryPage {
     params: () => (this.canManage() ? true : undefined),
     stream: () => this.inventory.pendingStock(),
   });
+  /** Psicotrópicos que nadie revisó todavía (la casilla antes decía "Controlado") */
+  private readonly controlledList = rxResource({
+    params: () => (this.canManage() ? true : undefined),
+    stream: () => this.inventory.list({ controlled: true, status: 'active' }),
+  });
+  protected readonly unreviewedControlled = computed(() => {
+    if (!this.controlledList.hasValue()) return 0;
+    const page = this.controlledList.value();
+    if (!page) return 0;
+    const seen = new Set(reviewedControlled());
+    const fresh = page.items.filter((p) => !seen.has(p.id)).length;
+    return fresh ? Math.max(fresh, page.total - seen.size) : 0;
+  });
+  protected readonly controlledLabel = CONTROLLED_LABEL;
   protected readonly pendingStock = computed(() =>
     this.pending.hasValue() ? (this.pending.value()?.total ?? 0) : 0,
   );

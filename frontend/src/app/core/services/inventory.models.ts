@@ -63,7 +63,7 @@ export const NEW_PRODUCT_UNITS: BaseUnit[] = ['UNIT', 'TABLET', 'BOX', 'BOTTLE']
 /** Textos que explican el inventario, iguales en todas las pantallas (sin jerga) */
 export const INVENTORY_HELP = {
   controlled:
-    'Solo estupefacientes y psicotrópicos (ketamina, tramadol, diazepam, fenobarbital). Pide lote al comprar, y receta, paciente y veterinario colegiado en cada uso. Si no es uno de estos, no lo marques.',
+    'Solo para ketamina, tramadol, diazepam, fenobarbital y similares. Queda en el libro de DIGEMID y cada uso pide receta, paciente y veterinario colegiado. Los demás medicamentos (antibióticos, vitaminas, antiparasitarios) no se marcan.',
   supply:
     'Para lo que se gasta al atender y no se le vende al cliente: jeringas, guantes, gasas, alcohol. No aparece al cobrar (Caja, atención ni presupuestos). Su stock baja al anotarlo en la atención («Insumos usados»), con un servicio que lo usa o en «Registrar salida».',
   cost: 'Lo que pagaste al proveedor, sin IGV.',
@@ -71,9 +71,13 @@ export const INVENTORY_HELP = {
   expiry: 'Como en la caja: 08/2027.',
 } as const;
 
+/** Nombre de lo que antes se llamaba "controlado": lo que de verdad significa */
+export const CONTROLLED_LABEL = 'Psicotrópico (DIGEMID)';
+export const CONTROLLED_QUESTION = 'Estupefaciente o psicotrópico (libro de DIGEMID)';
+
 /** Por qué se pide (o no) el lote, en palabras de la clínica */
 export function lotHint(category: ProductCategory | null, controlled: boolean): string {
-  if (controlled) return 'Obligatorio: DIGEMID pide el lote de los controlados.';
+  if (controlled) return 'Obligatorio: DIGEMID pide el lote de los psicotrópicos.';
   if (category === 'VACCINE') return 'Obligatorio: el lote va en el carné de vacunación.';
   return 'Opcional: anótalo si la caja lo trae.';
 }
@@ -81,7 +85,7 @@ export function lotHint(category: ProductCategory | null, controlled: boolean): 
 /** Mensaje cuando falta un lote obligatorio */
 export function lotMissingText(category: ProductCategory | null, controlled: boolean): string {
   return controlled
-    ? 'Falta el lote: DIGEMID lo pide en los controlados'
+    ? 'Falta el lote: DIGEMID lo pide en los psicotrópicos'
     : category === 'VACCINE'
       ? 'Falta el lote: va en el carné de vacunación'
       : 'Falta el lote';

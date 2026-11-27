@@ -17,15 +17,15 @@
       <li><strong class="font-semibold text-slate-900">Vence:</strong> {{ help.expiry }}</li>
       <li>
         <strong class="font-semibold text-slate-900">Lote:</strong> obligatorio solo en vacunas (va
-        en el carné) y controlados (lo pide DIGEMID). En lo demás, opcional.
+        en el carné) y psicotrópicos (lo pide DIGEMID). En lo demás, opcional.
       </li>
       <li>
         <strong class="font-semibold text-slate-900">Costo:</strong> {{ help.cost }} Opcional.
       </li>
       <li class="sm:col-span-2">
-        <strong class="font-semibold text-slate-900">Controlado:</strong> solo ketamina, tramadol,
-        diazepam, fenobarbital y similares. Si un medicamento quedó marcado por error, desmárcalo
-        aquí.
+        <strong class="font-semibold text-slate-900">Psicotrópico (DIGEMID):</strong> solo ketamina,
+        tramadol, diazepam, fenobarbital y similares (antes decía «Controlado»). Si un medicamento
+        quedó marcado por error, desmárcalo en su fila.
       </li>
     </ul>
   </div>
@@ -90,7 +90,7 @@
         <span>Vence</span>
         <span>Lote</span>
         <span>Costo sin IGV</span>
-        <span class="text-center">Controlado</span>
+        <span class="text-center">Psicotrópico</span>
       </div>
       <ul class="divide-y divide-slate-100">
         @for (p of visible(); track p.id) {
@@ -170,7 +170,7 @@
                   <p class="mt-1 text-xs text-slate-600">
                     {{
                       r.controls.controlled.value
-                        ? 'Controlado: lo pide DIGEMID'
+                        ? 'Psicotrópico: lo pide DIGEMID'
                         : 'Vacuna: va en el carné'
                     }}
                   </p>
@@ -204,7 +204,8 @@
             </div>
 
             <div class="flex items-center lg:justify-center lg:pt-2.5">
-              @if (p.category === 'MEDICINE') {
+              <!-- Solo para quitarlo si se marcó por error (marcarlo se hace en la ficha, con confirmación) -->
+              @if (p.controlled) {
                 <label
                   class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-800 lg:min-h-0"
                 >
@@ -213,7 +214,7 @@
                     formControlName="controlled"
                     class="size-5 rounded accent-rose-600"
                   />
-                  <span class="lg:sr-only">Controlado</span>
+                  <span class="lg:sr-only">Psicotrópico (DIGEMID)</span>
                 </label>
               }
             </div>

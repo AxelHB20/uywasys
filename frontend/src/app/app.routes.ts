@@ -287,6 +287,13 @@ export const routes: Routes = [
           import('./features/inventory/stock-load.page').then((m) => m.StockLoadPage),
       },
       {
+        path: 'inventario/revisar-psicotropicos',
+        title: 'Revisar psicotrópicos · Uywa',
+        canActivate: [roleGuard('ADMIN', 'VET')],
+        loadComponent: () =>
+          import('./features/inventory/controlled-review.page').then((m) => m.ControlledReviewPage),
+      },
+      {
         path: 'inventario/controlados',
         title: 'Libro de controlados · Uywa',
         canActivate: [roleGuard('ADMIN', 'VET')],
