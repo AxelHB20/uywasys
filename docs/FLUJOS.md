@@ -186,7 +186,7 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   Se ve «− S/ 20.00 · queda S/ 460.00» y el total dice «Incluye descuento». El sistema lo reparte en
   las líneas para la boleta.
 - **Tope:** hasta el % de Configuración → Descuentos (10 % por defecto) lo da cualquiera; más, solo el
-  administrador («Pasa del 10 % (máx. S/ 48.00)…»). Las líneas con un abono hecho no entran.
+  administrador («Pasa del 10 % (máx. S/ 48.00)…»). Si ya abonó, el descuento sale de lo que falta.
   Todo queda en el reporte de Control (quién, cuánto y por qué).
 - **Lista Por cobrar:** qué debe («Consulta general, Vacuna y 1 más»), «ya pagó · falta» si abonó, y la
   etiqueta «Venta de mostrador» cuando no hay atención detrás. Arriba: «Cobrado en esta caja»,

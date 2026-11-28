@@ -1297,6 +1297,7 @@
     <app-discount-fields
       idPrefix="disc"
       [gross]="discountBase()"
+      [capBase]="discountCapBase()"
       [maxPercent]="maxDiscount()"
       [canExceed]="isAdmin()"
       [showErrors]="discountErrors()"

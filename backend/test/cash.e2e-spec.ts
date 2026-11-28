@@ -869,16 +869,29 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
     );
     expect(adm.body.message).toBeUndefined();
     expect(adm.status).toBe(201);
-    // Con un pago ya hecho, el descuento no se cambia
+    // Con un abono hecho, el descuento sale de lo que falta (no más de eso)
     const c3 = await charge();
     await pay(cookies.cashier, c3, [], 10).expect(201);
+    const tooMuch = await pay(
+      cookies.admin,
+      c3,
+      [{ chargeId: c3, discount: 45, discountReason: 'Campaña' }],
+      5,
+    ).expect(400);
+    expect(tooMuch.body.message).toContain('mayor que lo que falta');
     const late = await pay(
       cookies.cashier,
       c3,
       [{ chargeId: c3, discount: 2, discountReason: 'Campaña' }],
       38,
-    ).expect(400);
-    expect(late.body.message).toContain('antes del primer pago');
+    );
+    expect(late.status).toBe(201);
+    const c3saved = await prisma.charge.findUniqueOrThrow({
+      where: { id: c3 },
+    });
+    expect(c3saved.status).toBe('PAID');
+    expect(Number(c3saved.total)).toBe(48);
+    expect(Number(c3saved.paidAmount)).toBe(48);
     // En venta de mostrador el descuento va en la línea
     const sale = await http()
       .post('/api/cash/counter-sales')

@@ -1173,7 +1173,7 @@ export class CashService {
         pets: string[] | null;
         grooming: boolean;
         hospital: boolean;
-                consult: boolean;
+        consult: boolean;
         counter: boolean;
         names: string[] | null;
         paid: Decimal;
@@ -1204,7 +1204,7 @@ export class CashService {
       : [];
     return rows.map((r) => ({
       client: clients.find((c) => c.id === r.client_id)!,
-            balance: Number(r.balance),
+      balance: Number(r.balance),
       charges: Number(r.charges),
       /** Lo primero que debe ("Consulta general, Vacuna y 1 más") */
       names: r.names ?? [],
@@ -1297,8 +1297,8 @@ export class CashService {
    * reparte el monto, registra pagos y numera el ticket.
    */
   /**
-   * Descuento en caja sobre lo que ya estaba por cobrar. Solo antes del primer pago de la línea
-   * (lo abonado no cambia) y con el mismo tope que en la atención.
+   * Descuento en caja sobre lo que ya estaba por cobrar, con el mismo tope que en la atención. Si
+   * ya hubo un abono, sale de lo que falta: lo pagado y su comprobante no cambian.
    */
   private async applyDiscounts(
     tx: Tx,
@@ -1339,16 +1339,18 @@ export class CashService {
         );
       if (c.status !== 'PENDING')
         throw new ConflictException('Algún cargo ya está pagado');
-      if (new D(c.paidAmount).gt(0))
-        throw new BadRequestException(
-          `${c.description} ya tiene un pago: el descuento va antes del primer pago`,
-        );
+
       const amounts = lineAmounts({
         quantity: c.quantity,
         unitPrice: c.unitPrice,
         discount: d.discount,
         affectation: c.igvAffectation,
       });
+      // Con un abono hecho, el descuento sale de lo que falta (lo pagado no cambia)
+      if (amounts.total.lt(c.paidAmount))
+        throw new BadRequestException(
+          `El descuento en ${c.description} es mayor que lo que falta pagar`,
+        );
       const reason = d.discountReason?.trim() || null;
       if (amounts.discount.gt(0)) {
         if (!reason)

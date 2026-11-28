@@ -302,6 +302,40 @@ describe('CashPage (caja)', () => {
     expect(req.request.body.amount).toBe(99);
   });
 
+  it('con un abono hecho, el descuento sale de lo que falta', async () => {
+    const fixture = render(session);
+    const el: HTMLElement = fixture.nativeElement;
+    el.querySelector<HTMLButtonElement>('[aria-label="Cobrar a Rosa Quispe"]')!.click();
+    http.expectOne('/api/clients/7/account').flush({
+      ...account,
+      pending: [{ ...account.pending[0], total: 85, paidAmount: 28, balance: 57, discount: 0 }],
+      pendingTotal: 57,
+    });
+    fixture.detectChanges();
+    await tick();
+    fixture.detectChanges();
+    const dialog = el.querySelector('dialog[open]')!;
+    expect(dialog.textContent).toContain('ya pagó S/ 28.00');
+    button(dialog, 'Descuento').click();
+    fixture.detectChanges();
+    await tick();
+    const amount = dialog.querySelector<HTMLInputElement>('#disc-amt')!;
+    amount.value = '7';
+    amount.dispatchEvent(new Event('input'));
+    button(dialog, 'Ajuste de precio').click();
+    fixture.detectChanges();
+    // Tope sobre el precio (S/ 85 → S/ 8.50); queda lo que falta menos el descuento
+    expect(dialog.textContent).toContain('− S/ 7.00 · queda S/ 50.00');
+    button(dialog, 'Yape').click();
+    fixture.detectChanges();
+    button(dialog, 'Cobrar S/ 50.00').click();
+    const req = http.expectOne('/api/cash/receipts');
+    expect(req.request.body.discounts).toEqual([
+      { chargeId: 1, discount: 7, discountReason: 'Ajuste de precio' },
+    ]);
+    expect(req.request.body.amount).toBe(50);
+  });
+
   it('Yape sin código de operación se cobra igual (el código es opcional)', async () => {
     const fixture = render(session);
     const dialog = await openCollect(fixture);

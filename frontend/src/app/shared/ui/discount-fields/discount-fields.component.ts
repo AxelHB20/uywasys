@@ -84,6 +84,8 @@ export class DiscountFieldsComponent {
   /** Importe de la línea antes del descuento */
   readonly gross = input.required<number>();
   readonly maxPercent = input.required<number>();
+  /** Sobre qué se mide el tope (precio de las líneas); por defecto, el importe */
+  readonly capBase = input<number | null>(null);
   /** El administrador puede pasar el tope */
   readonly canExceed = input(false);
   /** Mostrar "falta el motivo" (al intentar cobrar) */
@@ -100,13 +102,17 @@ export class DiscountFieldsComponent {
       this.reason(),
       this.maxPercent(),
       this.canExceed(),
+      this.capBase() ?? this.gross(),
     ),
   );
   protected readonly message = computed(() => {
     const p = this.problem();
     const amount = this.amount() ?? 0;
     if (p && (p !== 'reason' || this.showErrors()))
-      return { error: true, text: discountProblemText(p, this.gross(), this.maxPercent()) };
+      return {
+        error: true,
+        text: discountProblemText(p, this.capBase() ?? this.gross(), this.maxPercent()),
+      };
     if (amount > 0)
       return {
         error: false,
@@ -116,7 +122,7 @@ export class DiscountFieldsComponent {
       error: false,
       text: this.canExceed()
         ? `Importe ${money(this.gross())}`
-        : `Hasta ${money(discountCap(this.gross(), this.maxPercent()))} sin el administrador`,
+        : `Hasta ${money(discountCap(this.capBase() ?? this.gross(), this.maxPercent()))} sin el administrador`,
     };
   });
 

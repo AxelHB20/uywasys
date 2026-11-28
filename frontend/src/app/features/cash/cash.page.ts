@@ -327,19 +327,25 @@ export class CashPage {
   /** Mostrar "falta el motivo" después de intentar cobrar */
   protected readonly discountErrors = signal(false);
 
-  /** A qué se le reparte: lo marcado sin pagos (en el cobro) y lo agregado o vendido */
+  /** A qué se le reparte: lo marcado (lo que falta de cada línea) y lo agregado o vendido */
   private readonly discountTargets = computed(() => {
     this.saleVersion();
     const acc = this.modal() === 'collect' ? this.account() : null;
     const sel = this.selected();
     const charges = acc
       ? acc.pending
-          .filter((c) => sel.has(c.id) && !c.paidAmount)
-          .map((c) => ({ key: `c${c.id}`, base: c.total }))
+          .filter((c) => sel.has(c.id) && c.balance > 0)
+          .map((c) => ({
+            key: `c${c.id}`,
+            // Con abono, el descuento sale de lo que falta
+            base: c.balance,
+            price: (cents(c.total) + cents(c.discount ?? 0)) / 100,
+          }))
       : [];
     const lines = this.saleLines.controls.map((g, i) => ({
       key: `l${i}`,
       base: this.lineGross(g),
+      price: this.lineGross(g),
     }));
     return [...charges, ...lines];
   });
@@ -347,6 +353,11 @@ export class CashPage {
   /** Sobre cuánto se puede descontar */
   protected readonly discountBase = computed(
     () => this.discountTargets().reduce((s, t) => s + cents(t.base), 0) / 100,
+  );
+
+  /** Sobre qué se mide el tope: el precio de las líneas */
+  protected readonly discountCapBase = computed(
+    () => this.discountTargets().reduce((s, t) => s + cents(t.price), 0) / 100,
   );
 
   /** Monto del descuento que se está dando (0 si está cerrado o no es válido) */
@@ -361,6 +372,7 @@ export class CashPage {
       'ok',
       this.maxDiscount(),
       this.isAdmin(),
+      this.discountCapBase(),
     );
     return amount > 0 && !problem ? amount : 0;
   });
@@ -418,6 +430,7 @@ export class CashPage {
         d.reason,
         this.maxDiscount(),
         this.isAdmin(),
+        this.discountCapBase(),
       ) !== null;
     if (bad) {
       this.discountErrors.set(true);
