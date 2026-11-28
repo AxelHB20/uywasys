@@ -585,7 +585,7 @@
     }
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
-        <label for="pu-cost" class="field-label">Costo sin IGV de cada presentación</label>
+        <label for="pu-cost" class="field-label">Costo de cada presentación</label>
         <div class="relative">
           <span
             class="pointer-events-none absolute top-[calc(50%+3px)] left-3 -translate-y-1/2 text-sm text-slate-500"
@@ -604,7 +604,15 @@
         </div>
         @if (purchaseForm.controls.costPerPresentation.hasError('decimals')) {
           <p class="field-error" role="alert">El costo admite hasta 4 decimales (ej.: 21.6667)</p>
+        } @else if (purchaseCostNet(); as net) {
+          <p class="field-hint">Se guarda sin IGV: {{ money(net) }}</p>
         }
+        <app-igv-choice
+          class="mt-2 block"
+          labelId="pu-cost-igv"
+          [withIgv]="costWithIgv()"
+          (withIgvChange)="costWithIgv.set($event)"
+        />
       </div>
       <div>
         <label for="pu-doc" class="field-label">N.º de factura o boleta</label>
@@ -1054,14 +1062,17 @@
           }}
         </p>
       </div>
-      <div>
-        <label for="ed-sunat" class="field-label">Unidad SUNAT</label>
-        <select id="ed-sunat" formControlName="sunatUnit" class="field-input">
-          @for (u of sunatUnits(); track u.code) {
-            <option [value]="u.code">{{ u.label }}</option>
-          }
-        </select>
-      </div>
+      @if (isAdmin()) {
+        <div>
+          <label for="ed-sunat" class="field-label">Unidad SUNAT</label>
+          <select id="ed-sunat" formControlName="sunatUnit" class="field-input">
+            @for (u of sunatUnits(); track u.code) {
+              <option [value]="u.code">{{ u.label }}</option>
+            }
+          </select>
+          <p class="field-hint">Va en la boleta. Cámbiala solo si el contador lo indica.</p>
+        </div>
+      }
     </div>
     <div>
       <label for="ed-notes" class="field-label">Notas</label>

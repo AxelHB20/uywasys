@@ -8,6 +8,7 @@ import {
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { discountPercent, lineAmounts } from '../common/money/igv.js';
+import { discountCapMessage } from './discount-cap.js';
 import { clinicToday } from '../common/time/clinic-today.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type {
@@ -204,7 +205,11 @@ export class ChargesService {
           )
         )
           throw new ForbiddenException(
-            `El descuento en ${line.description} supera el ${Number(maxDiscountPercent)} % permitido: lo autoriza el administrador`,
+            discountCapMessage(
+              line.description,
+              amounts.gross,
+              maxDiscountPercent,
+            ),
           );
       }
 
@@ -245,6 +250,7 @@ export class ChargesService {
           unitPrice: line.unitPrice,
           discount: amounts.discount,
           discountReason: amounts.discount.gt(0) ? item.discountReason : null,
+          discountById: amounts.discount.gt(0) ? actor.id : null,
           igvAffectation: line.igv,
           igvRate: amounts.rate,
           sunatUnit: line.sunatUnit,

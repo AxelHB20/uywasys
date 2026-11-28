@@ -774,7 +774,9 @@ model Charge {
   /// Precio unitario con IGV
   unitPrice       Decimal        @map("unit_price") @db.Decimal(12, 2)
   discount        Decimal        @default(0) @db.Decimal(12, 2)
-  discountReason  String?        @map("discount_reason") @db.VarChar(120)
+    discountReason  String?        @map("discount_reason") @db.VarChar(120)
+  /// Quién dio el descuento (en la atención, quien registró el cargo; en caja, quien cobró)
+  discountById    Int?           @map("discount_by_id")
   igvAffectation  IgvAffectation @map("igv_affectation")
   igvRate         Decimal        @map("igv_rate") @db.Decimal(5, 4)
   /// Catálogo 03 de SUNAT: ZZ para servicios, NIU u otra para productos

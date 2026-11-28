@@ -23,6 +23,10 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { formatQty, unitLabel } from '../../shared/utils/stock';
 import { apiErrorDetails, apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { dropSuggestions, readSuggestions } from './stock-suggestions';
+import {
+  IgvChoiceComponent,
+  costWithoutIgv,
+} from '../../shared/ui/igv-choice/igv-choice.component';
 
 type Row = FormGroup<{
   quantity: FormControl<number | null>;
@@ -39,7 +43,14 @@ type Row = FormGroup<{
  */
 @Component({
   selector: 'app-stock-load-page',
-  imports: [ReactiveFormsModule, RouterLink, BackLinkComponent, IconComponent, MonthInputComponent],
+  imports: [
+    ReactiveFormsModule,
+    RouterLink,
+    BackLinkComponent,
+    IconComponent,
+    MonthInputComponent,
+    IgvChoiceComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './stock-load.page.html',
 })
@@ -61,6 +72,8 @@ export class StockLoadPage {
   private readonly rows = new Map<number, Row>();
   /** Productos con la cantidad ya puesta desde "Corregir productos" (lo que estaba en «Trae») */
   protected readonly suggested = signal<Set<number>>(new Set());
+  /** Los costos vienen con IGV (precio final) o sin IGV (valor de la factura) */
+  protected readonly costWithIgv = signal(true);
   /** Cambia cada vez que se escribe en cualquier fila (para recalcular contadores) */
   protected readonly edits = signal(0);
 
@@ -214,7 +227,11 @@ export class StockLoadPage {
         quantity: Number(v.quantity),
         lotNumber: v.lotNumber.trim() || null,
         expiresAt: p.tracksExpiry ? v.expiresAt || null : null,
-        costPerPresentation: v.cost === null ? null : Number(v.cost),
+        costPerPresentation: costWithoutIgv(
+          v.cost === null ? null : Number(v.cost),
+          this.costWithIgv(),
+          p.igv,
+        ),
         ...(v.controlled !== p.controlled ? { controlled: v.controlled } : {}),
       };
     });

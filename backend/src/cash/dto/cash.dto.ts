@@ -70,6 +70,23 @@ const RequestKey = () =>
     message: 'Falta la clave del cobro (requestKey)',
   });
 
+/** Descuento en caja sobre algo que ya estaba por cobrar (monto en soles, con IGV) */
+export class ChargeDiscountDto {
+  @IsInt({ message: 'Elige qué se descuenta' })
+  @Min(1)
+  chargeId: number;
+
+  /** 0 quita el descuento */
+  @money('El descuento')
+  @Min(0, { message: 'El descuento no puede ser negativo' })
+  discount: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  discountReason?: string;
+}
+
 export class CollectDto {
   @RequestKey()
   requestKey: string;
@@ -104,6 +121,14 @@ export class CollectDto {
   @ValidateNested({ each: true })
   @Type(() => ChargeItemDto)
   items?: ChargeItemDto[];
+
+  /** Descuentos que se dan al cobrar (antes del primer pago de cada línea) */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ChargeDiscountDto)
+  discounts?: ChargeDiscountDto[];
 
   /** Cuánto paga ahora; si no se indica, todo lo seleccionado. Menos = pago parcial */
   @IsOptional()

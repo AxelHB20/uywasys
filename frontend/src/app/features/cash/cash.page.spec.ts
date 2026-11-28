@@ -108,6 +108,7 @@ describe('CashPage (caja)', () => {
     fixture.detectChanges();
     http.expectOne((r) => r.url === '/api/care-services').flush([]);
     http.expectOne('/api/billing/status').flush(billing);
+    http.expectOne('/api/clinic/discount-limit').flush({ maxDiscountPercent: 10 });
     http.expectOne('/api/cash/sessions/current').flush(current);
     if (!current) {
       http
@@ -165,9 +166,9 @@ describe('CashPage (caja)', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toMatch(/Esta caja es (de ayer|del .+ \(hace \d+ días\))/);
     expect(el.textContent).toContain('Ciérrala y abre la de hoy');
-    expect(el.textContent).toContain('1 cliente con saldo');
+    expect(el.textContent).toContain('1 cliente debe');
     expect(el.textContent).toContain('S/ 110.00');
-    expect(el.textContent).toContain('Ticket promedio S/ 100.00');
+    expect(el.textContent).toContain('Promedio por cobro S/ 100.00');
     expect(el.querySelectorAll('[aria-label="Resumen de la caja"] .rounded-sm').length).toBe(2);
     expect(el.textContent).toContain('Aún no hay cobros en esta caja');
   });
@@ -261,6 +262,46 @@ describe('CashPage (caja)', () => {
     return el.querySelector('dialog[open]')!;
   }
 
+  it('descuento al cobrar: un monto abajo, tope sin administrador, motivo de un toque y se reparte en las líneas', async () => {
+    const fixture = render(session);
+    const dialog = await openCollect(fixture);
+    const links = [...dialog.querySelectorAll('button')].filter(
+      (b) => b.textContent?.trim() === 'Descuento',
+    );
+    expect(links.length).toBe(1);
+    links[0].click();
+    fixture.detectChanges();
+    await tick();
+    const amount = dialog.querySelector<HTMLInputElement>('#disc-amt')!;
+    amount.value = '12';
+    amount.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    // Total S/ 110 y tope 10 %: más de S/ 11 no
+    expect(dialog.textContent).toContain('Pasa del 10 % (máx. S/ 11.00): solo el administrador');
+    amount.value = '11';
+    amount.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(dialog.textContent).toContain('− S/ 11.00 · queda S/ 99.00');
+    button(dialog, 'Yape').click();
+    fixture.detectChanges();
+    button(dialog, 'Cobrar S/').click();
+    fixture.detectChanges();
+    expect(dialog.textContent).toContain('Elige o escribe el motivo');
+    http.expectNone('/api/cash/receipts');
+    button(dialog, 'Cliente frecuente').click();
+    fixture.detectChanges();
+    expect(dialog.textContent).toContain('Incluye descuento − S/ 11.00');
+    expect(dialog.textContent).toContain('S/ 99.00');
+    button(dialog, 'Cobrar S/').click();
+    const req = http.expectOne('/api/cash/receipts');
+    // Consulta S/ 50 y vacunación S/ 60: S/ 5 y S/ 6
+    expect(req.request.body.discounts).toEqual([
+      { chargeId: 1, discount: 5, discountReason: 'Cliente frecuente' },
+      { chargeId: 2, discount: 6, discountReason: 'Cliente frecuente' },
+    ]);
+    expect(req.request.body.amount).toBe(99);
+  });
+
   it('Yape sin código de operación se cobra igual (el código es opcional)', async () => {
     const fixture = render(session);
     const dialog = await openCollect(fixture);
@@ -303,7 +344,7 @@ describe('CashPage (caja)', () => {
     fixture.detectChanges();
     expect(dialog.textContent).toContain('Agregado en caja');
     expect(dialog.textContent).toContain('Nuevo');
-    expect(dialog.textContent).toContain('+ 1 nuevo');
+    expect(dialog.textContent).toContain('+ 1 agregado');
     button(dialog, 'Yape').click();
     fixture.detectChanges();
     button(dialog, 'Cobrar S/').click();
@@ -323,7 +364,7 @@ describe('CashPage (caja)', () => {
     fixture.detectChanges();
     type(el, '#collect-amount', '80');
     fixture.detectChanges();
-    button(dialog, 'Dividir el pago').click();
+    button(dialog, 'Paga con dos medios (ej.: efectivo + Yape)').click();
     fixture.detectChanges();
     // Efectivo + Yape: se escribe lo de Yape y el efectivo queda con el resto
     expect(dialog.querySelector<HTMLSelectElement>('#collect-method-1')!.value).toBe('YAPE');
@@ -462,7 +503,7 @@ describe('CashPage (caja)', () => {
   it('el egreso no puede ser mayor al efectivo en caja; los motivos frecuentes llenan el motivo', async () => {
     const fixture = render(session);
     const el: HTMLElement = fixture.nativeElement;
-    button(el, 'Egreso').click();
+    button(el, 'Salida de dinero').click();
     fixture.detectChanges();
     await tick();
     const dialog = el.querySelector('dialog[open]')!;
@@ -473,12 +514,12 @@ describe('CashPage (caja)', () => {
     fixture.detectChanges();
     expect(el.querySelector<HTMLInputElement>('#exp-reason')!.value).toBe('Retiro del dueño');
     expect(dialog.textContent).toContain('No puede ser mayor al efectivo');
-    button(dialog, 'Registrar egreso').click();
+    button(dialog, 'Registrar salida').click();
     http.expectNone((r) => r.url.endsWith('/expenses'));
 
     type(el, '#exp-amount', '50');
     fixture.detectChanges();
-    button(dialog, 'Registrar egreso').click();
+    button(dialog, 'Registrar salida').click();
     const req = http.expectOne((r) => r.method === 'POST' && r.url.endsWith('/expenses'));
     expect(req.request.body).toEqual({ amount: 50, reason: 'Retiro del dueño' });
     req.flush(session);

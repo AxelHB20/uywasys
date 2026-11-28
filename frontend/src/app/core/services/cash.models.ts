@@ -89,6 +89,10 @@ export interface PendingClient {
   client: { id: number; number: number; name: string; phone: string };
   balance: number;
   charges: number;
+  /** Lo primero que debe (hasta 2 nombres) */
+  names: string[];
+  /** Ya pagó una parte (abono) */
+  paid: number;
   since: string;
   /** Último cargo: lo de hoy va arriba ("De hoy") */
   last: string;
@@ -102,7 +106,7 @@ export const PENDING_SOURCE_LABELS: Record<PendingSource, string> = {
   CONSULTATION: 'Consulta',
   GROOMING: 'Grooming',
   HOSPITALIZATION: 'Hospitalización',
-  COUNTER: 'Mostrador',
+  COUNTER: 'Venta de mostrador',
 };
 
 export interface ReceiptTicket {

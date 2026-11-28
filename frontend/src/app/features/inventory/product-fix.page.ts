@@ -110,7 +110,7 @@ interface RowState {
                       <app-icon name="alert" class="mt-0.5 size-4 shrink-0 text-amber-700" />
                       Ya tiene stock ({{ qty(p.totalStock) }}
                       {{ unitsOf(p.baseUnit, p.totalStock) }}). Después revisa la cantidad con
-                      «Contar stock» en su ficha.
+                      «Conteo físico» en su ficha.
                     </p>
                   }
                 }

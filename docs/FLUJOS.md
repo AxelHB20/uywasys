@@ -179,6 +179,24 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
   presupuestos pendientes se cobran igual con su precio.
 - El precio se copia al cobrar; subirlo después no cambia cobros ni presupuestos ya emitidos.
 
+### Caja: descuento y textos claros (28 nov)
+
+- **Descuento al cobrar (en soles):** en el cobro y en Venta de mostrador, «Descuento» abajo (junto al
+  abono) → monto + motivo de un toque (Cliente frecuente, Campaña, Albergue o rescate, Ajuste de precio).
+  Se ve «− S/ 20.00 · queda S/ 460.00» y el total dice «Incluye descuento». El sistema lo reparte en
+  las líneas para la boleta.
+- **Tope:** hasta el % de Configuración → Descuentos (10 % por defecto) lo da cualquiera; más, solo el
+  administrador («Pasa del 10 % (máx. S/ 48.00)…»). Las líneas con un abono hecho no entran.
+  Todo queda en el reporte de Control (quién, cuánto y por qué).
+- **Lista Por cobrar:** qué debe («Consulta general, Vacuna y 1 más»), «ya pagó · falta» si abonó, y la
+  etiqueta «Venta de mostrador» cuando no hay atención detrás. Arriba: «Cobrado en esta caja»,
+  «Promedio por cobro», «N clientes deben». Botón **«Salida de dinero»** (antes «Egreso»).
+- **Cómo paga:** «Paga con dos medios (ej.: efectivo + Yape)» paga todo con dos medios; «Paga solo una
+  parte (abono)» deja saldo.
+- **Celular:** el nombre del cliente completo; el resumen se abre con «Ver resumen».
+- **Costo:** «El costo viene: Con IGV / Sin IGV» en Agregar producto, Cargar stock y Registrar compra;
+  se guarda sin IGV. La unidad SUNAT solo la ve el administrador.
+
 ### Inventario sin confusiones (27 nov)
 
 Seguían productos con el stock en «Trae» (Alerdog «Unidad = 3», Giardia Pet «Tableta = 44») y
@@ -188,7 +206,7 @@ medicamentos con precio marcados como insumo (no salían al cobrar).
   lo que está mal, ya marcado para corregir: «Poner Trae = 1», «Se cuenta por» (Unidad → Frasco, solo
   si no tiene compras ni ventas) y «Se vende al cliente». «Corregir N y guardar» guarda todo junto.
 - Si había un número en «Trae», al guardar se abre **Cargar stock** con esa cantidad ya puesta (primero
-  en la lista): solo falta el vencimiento. Si el producto ya tenía stock, se revisa con «Contar stock».
+  en la lista): solo falta el vencimiento. Si el producto ya tenía stock, se revisa con «Conteo físico».
 - **«¿Se le cobra al cliente?»** en Agregar producto y Editar: «Sí, se vende» (sale en Caja, atención y
   presupuestos) o «No, se gasta en la clínica» (insumo).
 - **Editar producto:** «¿Cómo se cuenta el stock?» se puede cambiar mientras no tenga movimientos; la

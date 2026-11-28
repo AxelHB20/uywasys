@@ -130,6 +130,46 @@ export class ClinicSettingsPage implements OnInit {
       });
   }
 
+  /** Tope de descuento: se guarda con su propio botón (no es un dato del ticket) */
+  protected readonly discountCap = new FormControl<number | null>(null, [
+    Validators.required,
+    Validators.min(0),
+    Validators.max(100),
+    Validators.pattern(/^\d+(\.\d{1,2})?$/),
+  ]);
+  protected readonly capBusy = signal(false);
+
+  protected saveDiscountCap(): void {
+    const p = this.profile();
+    if (!p || this.capBusy()) return;
+    if (this.discountCap.invalid) {
+      this.discountCap.markAsTouched();
+      return;
+    }
+    this.capBusy.set(true);
+    this.clinic
+      .update({
+        name: p.name,
+        ruc: p.ruc,
+        address: p.address,
+        phone: p.phone,
+        email: p.email,
+        maxDiscountPercent: Number(this.discountCap.value),
+      })
+      .subscribe({
+        next: (profile) => {
+          this.profile.set(profile);
+          this.discountCap.reset(profile.maxDiscountPercent);
+          this.capBusy.set(false);
+          this.toast.success(`Tope de descuento: ${profile.maxDiscountPercent} %`);
+        },
+        error: (error: unknown) => {
+          this.capBusy.set(false);
+          this.toast.error(apiErrorMessage(error));
+        },
+      });
+  }
+
   protected readonly portalBusy = signal(false);
 
   /** Se guarda al instante: es una sola opción, no necesita el botón del formulario */
@@ -226,6 +266,7 @@ export class ClinicSettingsPage implements OnInit {
 
   private apply(profile: ClinicProfile): void {
     this.profile.set(profile);
+    this.discountCap.reset(profile.maxDiscountPercent);
     this.form.reset({
       name: profile.name,
       ruc: profile.ruc ?? '',

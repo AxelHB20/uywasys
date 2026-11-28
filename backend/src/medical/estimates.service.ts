@@ -9,6 +9,7 @@ import { clinicLogoUrl } from '../auth/session-user.js';
 import { AuditService } from '../common/audit/audit.service.js';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { discountPercent, lineAmounts } from '../common/money/igv.js';
+import { discountCapMessage } from '../visits/discount-cap.js';
 import {
   estimateCode,
   reserveNumbers,
@@ -343,7 +344,11 @@ export class EstimatesService {
           )
         )
           throw new ForbiddenException(
-            `El descuento en ${line.description} supera el ${Number(prep.maxDiscountPercent)} % permitido: lo autoriza el administrador`,
+            discountCapMessage(
+              line.description,
+              amounts.gross,
+              prep.maxDiscountPercent,
+            ),
           );
         total = total.plus(amounts.total);
         return {

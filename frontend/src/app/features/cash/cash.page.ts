@@ -48,6 +48,9 @@ import {
 } from '../../shared/ui/buyer-fields/buyer-fields.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
+import { DiscountFieldsComponent } from '../../shared/ui/discount-fields/discount-fields.component';
+import { discountProblem } from '../../shared/ui/discount-fields/discount';
+import { ClinicService } from '../../core/services/clinic.service';
 import {
   PaymentGroup,
   PaymentLinesComponent,
@@ -102,6 +105,7 @@ function plain(text: string): string {
     PaymentLinesComponent,
     DocumentChoiceComponent,
     BuyerFieldsComponent,
+    DiscountFieldsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './cash.page.html',
@@ -112,6 +116,7 @@ export class CashPage {
   private readonly clients = inject(ClientsService);
   private readonly services = inject(CareServicesService);
   private readonly inventory = inject(InventoryService);
+  private readonly clinicService = inject(ClinicService);
   private readonly session = inject(SessionService);
   private readonly toast = inject(ToastService);
   private readonly document = inject(DOCUMENT);
@@ -222,6 +227,15 @@ export class CashPage {
     field?.focus();
   }
 
+  /** "Consulta general, Vacuna y 1 más" */
+  protected owedNames(p: PendingClient): string {
+    const names = p.names ?? [];
+    if (!names.length) return `${p.charges} por cobrar`;
+    const rest = p.charges - names.length;
+    if (rest <= 0) return names.length === 2 ? `${names[0]} y ${names[1]}` : names[0];
+    return `${names.join(', ')} y ${rest} más`;
+  }
+
   protected readonly averageTicket = computed(() => {
     const t = this.current()?.totals;
     return t && t.receipts ? Math.round((t.net / t.receipts) * 100) / 100 : 0;
@@ -294,6 +308,124 @@ export class CashPage {
       .join('');
   }
 
+  /** Celular: el resumen de la caja se abre al tocar */
+  protected readonly summaryOpen = signal(false);
+
+  // ── Descuento: un monto para todo el cobro (se reparte entre las líneas para la boleta) ──
+  protected readonly maxDiscount = toSignal(
+    this.clinicService.discountLimit().pipe(
+      map((r) => r.maxDiscountPercent),
+      catchError(() => of(10)),
+    ),
+    { initialValue: 10 },
+  );
+  protected readonly discount = signal<{ open: boolean; amount: number | null; reason: string }>({
+    open: false,
+    amount: null,
+    reason: '',
+  });
+  /** Mostrar "falta el motivo" después de intentar cobrar */
+  protected readonly discountErrors = signal(false);
+
+  /** A qué se le reparte: lo marcado sin pagos (en el cobro) y lo agregado o vendido */
+  private readonly discountTargets = computed(() => {
+    this.saleVersion();
+    const acc = this.modal() === 'collect' ? this.account() : null;
+    const sel = this.selected();
+    const charges = acc
+      ? acc.pending
+          .filter((c) => sel.has(c.id) && !c.paidAmount)
+          .map((c) => ({ key: `c${c.id}`, base: c.total }))
+      : [];
+    const lines = this.saleLines.controls.map((g, i) => ({
+      key: `l${i}`,
+      base: this.lineGross(g),
+    }));
+    return [...charges, ...lines];
+  });
+
+  /** Sobre cuánto se puede descontar */
+  protected readonly discountBase = computed(
+    () => this.discountTargets().reduce((s, t) => s + cents(t.base), 0) / 100,
+  );
+
+  /** Monto del descuento que se está dando (0 si está cerrado o no es válido) */
+  protected readonly discountAmount = computed(() => {
+    const d = this.discount();
+    if (!d.open) return 0;
+    const amount = Number(d.amount) || 0;
+    // Si pasa del tope o no se entiende, el total no cambia hasta corregirlo
+    const problem = discountProblem(
+      this.discountBase(),
+      amount,
+      'ok',
+      this.maxDiscount(),
+      this.isAdmin(),
+    );
+    return amount > 0 && !problem ? amount : 0;
+  });
+
+  /** El descuento repartido según el importe de cada línea (lo que sobra, a las más grandes) */
+  private readonly discountShares = computed(() => {
+    const targets = this.discountTargets();
+    const total = cents(this.discountAmount());
+    const shares = new Map<string, number>();
+    const sum = targets.reduce((s, t) => s + cents(t.base), 0);
+    if (!total || !sum) return shares;
+    const parts = targets.map((t) => Math.floor((total * cents(t.base)) / sum));
+    let rest = total - parts.reduce((s, x) => s + x, 0);
+    const order = targets.map((_, i) => i).sort((x, y) => targets[y].base - targets[x].base);
+    for (let i = 0; rest > 0; i++, rest--) parts[order[i % order.length]]++;
+    targets.forEach((t, i) => shares.set(t.key, parts[i] / 100));
+    return shares;
+  });
+
+  private shareOf(key: string): number {
+    return this.discountShares().get(key) ?? 0;
+  }
+
+  protected openDiscount(): void {
+    this.discount.set({ open: true, amount: null, reason: '' });
+    setTimeout(() =>
+      (this.document.getElementById('disc-amt') as HTMLInputElement | null)?.focus(),
+    );
+  }
+
+  protected setDiscount(patch: Partial<{ amount: number | null; reason: string }>): void {
+    this.discount.update((d) => ({ ...d, ...patch }));
+    this.afterDiscountChange();
+  }
+
+  protected closeDiscount(): void {
+    this.discount.set({ open: false, amount: null, reason: '' });
+    this.afterDiscountChange();
+  }
+
+  private afterDiscountChange(): void {
+    if (this.modal() === 'collect' && !this.partial())
+      this.amount.setValue(this.selectedTotal() || null);
+    if (this.modal() === 'counter') syncPaymentsTotal(this.payments, this.saleTotal());
+  }
+
+  /** El descuento abierto está mal (pasa del tope, falta el motivo…) */
+  private discountsInvalid(): boolean {
+    const d = this.discount();
+    if (!d.open || !d.amount) return false;
+    const bad =
+      discountProblem(
+        this.discountBase(),
+        d.amount,
+        d.reason,
+        this.maxDiscount(),
+        this.isAdmin(),
+      ) !== null;
+    if (bad) {
+      this.discountErrors.set(true);
+      this.toast.error('Revisa el descuento: el monto o el motivo.');
+    }
+    return bad;
+  }
+
   // ── Cobrar ──
   protected readonly account = signal<ClientAccount | null>(null);
   protected readonly selected = signal<Set<number>>(new Set());
@@ -307,7 +439,11 @@ export class CashPage {
     const acc = this.account();
     if (!acc) return 0;
     const ids = this.selected();
-    return acc.pending.filter((c) => ids.has(c.id)).reduce((s, c) => s + cents(c.balance), 0) / 100;
+    return (
+      acc.pending
+        .filter((c) => ids.has(c.id))
+        .reduce((s, c) => s + cents(c.balance) - cents(this.shareOf(`c${c.id}`)), 0) / 100
+    );
   });
   /** Lo que se cobra: lo marcado (o el abono) + lo agregado en caja, que se paga completo */
   protected readonly collectTotal = computed(
@@ -321,8 +457,8 @@ export class CashPage {
     this.saleVersion();
     const n = this.selected().size;
     const added = this.saleLines.length;
-    const base = `${n} ${n === 1 ? 'cargo' : 'cargos'}`;
-    return added ? `${base} + ${added} ${added === 1 ? 'nuevo' : 'nuevos'}` : base;
+    if (!added) return '';
+    return n ? `${n} + ${added} ${added === 1 ? 'agregado' : 'agregados'}` : '';
   });
   protected payments: FormArray<PaymentGroup> = paymentForm(0);
   private requestKey = '';
@@ -416,8 +552,7 @@ export class CashPage {
     this.saleVersion();
     return (
       this.saleLines.controls.reduce(
-        (s, g) =>
-          s + cents((Number(g.controls.quantity.value) || 0) * g.controls.option.value.unitPrice),
+        (s, g, i) => s + cents(this.lineGross(g)) - cents(this.shareOf(`l${i}`)),
         0,
       ) / 100
     );
@@ -691,6 +826,8 @@ export class CashPage {
     this.saleLines.clear();
     this.saleVersion.update((v) => v + 1);
     this.account.set(null);
+    this.discount.set({ open: false, amount: null, reason: '' });
+    this.discountErrors.set(false);
     this.partial.set(false);
     this.payError.set(null);
     this.resetDocument();
@@ -839,6 +976,7 @@ export class CashPage {
       this.toast.error('Un psicotrópico se registra en la atención del paciente, con su receta.');
       return;
     }
+    if (this.discountsInvalid()) return;
     if (!this.buyerReady(this.collectBuyerMode())) return;
     const problem = paymentsError(this.payments, total);
     if (problem) {
@@ -853,6 +991,7 @@ export class CashPage {
         requestKey: this.requestKey,
         clientId: acc.client.id,
         chargeIds: ids,
+        discounts: this.discountsPayload(ids),
         items: this.saleLines.length ? this.saleItems() : undefined,
         amount: total,
         payments: paymentsValue(this.payments),
@@ -874,6 +1013,8 @@ export class CashPage {
 
   protected openCounter(): void {
     this.requestKey = crypto.randomUUID();
+    this.discount.set({ open: false, amount: null, reason: '' });
+    this.discountErrors.set(false);
     this.resetDocument();
     this.saleClient.set(null);
     this.clientSearch.setValue('');
@@ -959,18 +1100,45 @@ export class CashPage {
 
   /** Lo vendido o agregado, como lo pide el servidor */
   private saleItems(): ChargeItemInput[] {
-    return this.saleLines.getRawValue().map((l) => ({
-      careServiceId: l.option.careServiceId,
-      productId: l.option.productId,
-      presentationId: l.option.presentationId,
-      quantity: Number(l.quantity),
-    }));
+    const reason = this.discount().reason.trim();
+    return this.saleLines.getRawValue().map((l, i) => {
+      const discount = this.shareOf(`l${i}`);
+      return {
+        careServiceId: l.option.careServiceId,
+        productId: l.option.productId,
+        presentationId: l.option.presentationId,
+        quantity: Number(l.quantity),
+        ...(discount > 0 ? { discount, discountReason: reason } : {}),
+      };
+    });
   }
 
-  protected lineTotal(g: SaleLine): number {
+  /** El descuento repartido en lo que ya estaba por cobrar (se suma al que traía de la atención) */
+  private discountsPayload(ids: number[]) {
+    const acc = this.account();
+    const reason = this.discount().reason.trim();
+    if (!acc || !this.discountAmount()) return undefined;
+    const list = acc.pending
+      .filter((c) => ids.includes(c.id) && this.shareOf(`c${c.id}`) > 0)
+      .map((c) => ({
+        chargeId: c.id,
+        discount: (cents(c.discount ?? 0) + cents(this.shareOf(`c${c.id}`))) / 100,
+        discountReason: (c.discountReason ? `${c.discountReason}; ${reason}` : reason).slice(
+          0,
+          120,
+        ),
+      }));
+    return list.length ? list : undefined;
+  }
+
+  protected lineGross(g: SaleLine): number {
     return (
       cents((Number(g.controls.quantity.value) || 0) * g.controls.option.value.unitPrice) / 100
     );
+  }
+
+  protected lineTotal(g: SaleLine): number {
+    return this.lineGross(g);
   }
 
   protected sell(): void {
@@ -985,6 +1153,7 @@ export class CashPage {
       return;
     }
     if (this.anonymousTooBig()) return;
+    if (this.discountsInvalid()) return;
     if (!this.buyerReady(this.saleBuyerMode())) return;
     const problem = paymentsError(this.payments, this.saleTotal());
     if (problem) {
@@ -1066,7 +1235,7 @@ export class CashPage {
         this.saving.set(false);
         this.modal.set(null);
         this.refreshSession(session);
-        this.toast.success('Egreso registrado.');
+        this.toast.success('Salida de dinero registrada.');
       },
       error: (error: unknown) => this.fail(error),
     });
@@ -1091,7 +1260,7 @@ export class CashPage {
         this.saving.set(false);
         this.modal.set(null);
         this.refreshSession(session);
-        this.toast.success('Egreso anulado.');
+        this.toast.success('Salida de dinero anulada.');
       },
       error: (error: unknown) => this.fail(error),
     });

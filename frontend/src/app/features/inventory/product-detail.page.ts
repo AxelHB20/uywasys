@@ -61,6 +61,10 @@ import { ExpiryChoiceComponent } from './expiry-choice.component';
 import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
 import { ControlledCheckComponent } from './controlled-check.component';
 import { ChargeChoiceComponent } from './charge-choice.component';
+import {
+  IgvChoiceComponent,
+  costWithoutIgv,
+} from '../../shared/ui/igv-choice/igv-choice.component';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
 
 const RECEIVED = new Intl.DateTimeFormat('es-PE', {
@@ -97,6 +101,7 @@ const MOVEMENT_TONE: Record<MovementType, BadgeTone> = {
     MonthInputComponent,
     ControlledCheckComponent,
     ChargeChoiceComponent,
+    IgvChoiceComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-detail.page.html',
@@ -180,6 +185,16 @@ export class ProductDetailPage {
   });
   protected readonly purchaseValue = toSignal(this.purchaseForm.valueChanges, {
     initialValue: this.purchaseForm.value,
+  });
+  /** El costo viene con IGV (precio final) o sin IGV (valor de la factura) */
+  protected readonly costWithIgv = signal(true);
+  /** "Se guarda sin IGV: S/ 21.19" cuando se escribe con IGV */
+  protected readonly purchaseCostNet = computed(() => {
+    const p = this.product();
+    const cost = this.purchaseValue().costPerPresentation;
+    if (!p || cost === null || cost === undefined || !this.costWithIgv() || p.igv !== 'TAXED')
+      return null;
+    return costWithoutIgv(Number(cost), true, 'TAXED');
   });
   protected readonly purchasePreview = computed(() => {
     const p = this.product();
@@ -653,7 +668,11 @@ export class ProductDetailPage {
         quantity: Number(v.quantity),
         lotNumber: tracks ? v.lotNumber.trim() || null : null,
         expiresAt: tracks ? v.expiresAt || null : null,
-        costPerPresentation: v.costPerPresentation === null ? null : Number(v.costPerPresentation),
+        costPerPresentation: costWithoutIgv(
+          v.costPerPresentation === null ? null : Number(v.costPerPresentation),
+          this.costWithIgv(),
+          p.igv,
+        ),
         supplier: this.suppliersFailed() ? v.supplier.trim() || null : null,
         supplierId: this.suppliersFailed() ? undefined : v.supplierId,
         documentNumber: v.documentNumber.trim() || null,

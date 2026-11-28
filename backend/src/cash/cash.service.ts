@@ -2,6 +2,7 @@ import { documentCode } from '../billing/billing.types.js';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import { clinicDay, startOfDayIn } from '../common/time/clinic-day.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { DocumentType, PaymentMethod } from '../generated/prisma/enums.js';
 import { addDays } from '../inventory/expiry.js';
+import { discountPercent, lineAmounts } from '../common/money/igv.js';
+import { discountCapMessage } from '../visits/discount-cap.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ChargesService } from '../visits/charges.service.js';
 import type { CreatedCharges } from '../visits/charges.service.js';
@@ -32,6 +35,7 @@ import type { PaymentInput } from './cash-math.js';
 import type {
   CashVoidDto,
   CloseSessionDto,
+  ChargeDiscountDto,
   CollectDto,
   CounterSaleDto,
   ExpenseDto,
@@ -47,6 +51,14 @@ const D = Prisma.Decimal;
 /** SUNAT: la boleta que supera S/ 700 identifica al comprador (RCP art. 8) */
 const ANONYMOUS_LIMIT = new D(700);
 const DEFAULT_REGISTER = 'Caja principal';
+
+type DiscountChange = {
+  chargeId: number;
+  description: string;
+  discount: number;
+  was: number;
+  reason: string | null;
+};
 const LEGEND = 'Nota de venta interna — no es comprobante de pago';
 const SESSIONS_PAGE = 20;
 
@@ -594,12 +606,24 @@ export class CashService {
     const existing = await this.byRequestKey(actor.clinicId, dto.requestKey);
     if (existing) return existing;
     const extra = dto.items?.length ? dto.items : null;
-    const prep = extra ? await this.charges.prepare(actor) : null;
+    const discounts = dto.discounts?.length ? dto.discounts : null;
+    const prep = extra || discounts ? await this.charges.prepare(actor) : null;
     let receiptId: number;
     let added: CreatedCharges | null;
+    let discounted: DiscountChange[] = [];
     try {
       ({ id: receiptId, added } = await this.prisma.$transaction(
         async (tx) => {
+          // Descuentos dados al cobrar: se recalcula la línea antes de pagarla
+          if (discounts && prep)
+            discounted = await this.applyDiscounts(
+              tx,
+              actor,
+              dto.clientId,
+              dto.chargeIds ?? null,
+              discounts,
+              prep.maxDiscountPercent,
+            );
           // Lo agregado en caja se registra aquí mismo: si el cobro falla, no queda nada
           const added =
             extra && prep
@@ -642,6 +666,16 @@ export class CashService {
       throw error;
     }
     if (added) await this.charges.logCreated(actor, null, added, ip);
+    if (discounted.length)
+      await this.audit.log({
+        clinicId: actor.clinicId,
+        userId: actor.id,
+        action: 'charge.discount',
+        entity: 'receipt',
+        entityId: receiptId,
+        ip,
+        data: { discounts: discounted },
+      });
     if (dto.document && dto.document !== 'NOTE') this.sender.dispatch();
     const ticket = await this.ticket(actor.clinicId, receiptId);
     await this.logCollect(actor, ticket, ip);
@@ -1139,11 +1173,15 @@ export class CashService {
         pets: string[] | null;
         grooming: boolean;
         hospital: boolean;
-        consult: boolean;
+                consult: boolean;
         counter: boolean;
+        names: string[] | null;
+        paid: Decimal;
       }[]
     >`
       SELECT c.client_id, SUM(c.total - c.paid_amount) AS balance, COUNT(*) AS charges,
+             (array_agg(c.description ORDER BY c.id))[1:2] AS names,
+             SUM(c.paid_amount) AS paid,
              MIN(c.created_at) AS since, MAX(c.created_at) AS last,
              array_remove(array_agg(DISTINCT p.name), NULL) AS pets,
              bool_or(v.type = 'GROOMING') AS grooming,
@@ -1166,8 +1204,12 @@ export class CashService {
       : [];
     return rows.map((r) => ({
       client: clients.find((c) => c.id === r.client_id)!,
-      balance: Number(r.balance),
+            balance: Number(r.balance),
       charges: Number(r.charges),
+      /** Lo primero que debe ("Consulta general, Vacuna y 1 más") */
+      names: r.names ?? [],
+      /** Ya pagó una parte (abono) */
+      paid: Number(r.paid),
       since: r.since,
       last: r.last,
       pets: r.pets ?? [],
@@ -1254,6 +1296,103 @@ export class CashService {
    * El corazón del cobro, dentro de una transacción: bloquea la sesión y los cargos,
    * reparte el monto, registra pagos y numera el ticket.
    */
+  /**
+   * Descuento en caja sobre lo que ya estaba por cobrar. Solo antes del primer pago de la línea
+   * (lo abonado no cambia) y con el mismo tope que en la atención.
+   */
+  private async applyDiscounts(
+    tx: Tx,
+    actor: AuthUser,
+    clientId: number,
+    chargeIds: number[] | null,
+    discounts: ChargeDiscountDto[],
+    maxDiscountPercent: Decimal,
+  ): Promise<DiscountChange[]> {
+    const ids = discounts.map((d) => d.chargeId);
+    if (new Set(ids).size !== ids.length)
+      throw new BadRequestException('Un descuento está repetido');
+    if (chargeIds && ids.some((id) => !chargeIds.includes(id)))
+      throw new BadRequestException(
+        'El descuento va en algo que se cobra ahora: márcalo',
+      );
+    await this.lockCharges(tx, actor.clinicId, ids);
+    const rows = await tx.charge.findMany({
+      where: { id: { in: ids }, clinicId: actor.clinicId },
+      select: {
+        id: true,
+        clientId: true,
+        status: true,
+        paidAmount: true,
+        quantity: true,
+        unitPrice: true,
+        igvAffectation: true,
+        description: true,
+        discount: true,
+      },
+    });
+    const changes: DiscountChange[] = [];
+    for (const d of discounts) {
+      const c = rows.find((r) => r.id === d.chargeId);
+      if (!c || c.clientId !== clientId)
+        throw new NotFoundException(
+          'Algún cargo no existe o es de otro cliente',
+        );
+      if (c.status !== 'PENDING')
+        throw new ConflictException('Algún cargo ya está pagado');
+      if (new D(c.paidAmount).gt(0))
+        throw new BadRequestException(
+          `${c.description} ya tiene un pago: el descuento va antes del primer pago`,
+        );
+      const amounts = lineAmounts({
+        quantity: c.quantity,
+        unitPrice: c.unitPrice,
+        discount: d.discount,
+        affectation: c.igvAffectation,
+      });
+      const reason = d.discountReason?.trim() || null;
+      if (amounts.discount.gt(0)) {
+        if (!reason)
+          throw new BadRequestException(
+            `Indica el motivo del descuento en ${c.description}`,
+          );
+        if (
+          actor.role !== 'ADMIN' &&
+          discountPercent(amounts.gross, amounts.discount).gt(
+            maxDiscountPercent,
+          )
+        )
+          throw new ForbiddenException(
+            discountCapMessage(
+              c.description,
+              amounts.gross,
+              maxDiscountPercent,
+            ),
+          );
+      }
+      if (amounts.discount.equals(c.discount) && !amounts.discount.gt(0))
+        continue;
+      await tx.charge.update({
+        where: { id: c.id },
+        data: {
+          discount: amounts.discount,
+          discountReason: amounts.discount.gt(0) ? reason : null,
+          discountById: amounts.discount.gt(0) ? actor.id : null,
+          taxableAmount: amounts.taxable,
+          igvAmount: amounts.igv,
+          total: amounts.total,
+        },
+      });
+      changes.push({
+        chargeId: c.id,
+        description: c.description,
+        discount: Number(amounts.discount),
+        was: Number(c.discount),
+        reason,
+      });
+    }
+    return changes;
+  }
+
   private async collectInTx(
     tx: Tx,
     actor: AuthUser,

@@ -74,6 +74,14 @@ export class ClinicController {
     return this.clinic.openingHours(user.clinicId);
   }
 
+  /** Tope de descuento sin administrador (Caja y Atención lo muestran a cualquier rol). */
+  @Get('discount-limit')
+  discountLimit(
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ maxDiscountPercent: number }> {
+    return this.clinic.discountLimit(user.clinicId);
+  }
+
   /** Avance de "Primeros pasos" en el dashboard (lo ve cualquier rol). */
   @Get('setup')
   setup(@CurrentUser() user: AuthUser): Promise<SetupStatus> {

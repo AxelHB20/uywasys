@@ -66,7 +66,7 @@ export const INVENTORY_HELP = {
     'Solo para ketamina, tramadol, diazepam, fenobarbital y similares. Queda en el libro de DIGEMID y cada uso pide receta, paciente y veterinario colegiado. Los demás medicamentos (antibióticos, vitaminas, antiparasitarios) no se marcan.',
   supply:
     'Para lo que se gasta al atender y no se le vende al cliente: jeringas, guantes, gasas, alcohol. No aparece al cobrar (Caja, atención ni presupuestos). Su stock baja al anotarlo en la atención («Insumos usados»), con un servicio que lo usa o en «Registrar salida».',
-  cost: 'Lo que pagaste al proveedor, sin IGV.',
+  cost: 'Lo que pagaste al proveedor, con IGV (precio final) o sin IGV (valor de la factura): elígelo al lado. Se guarda sin IGV.',
   price: 'Lo que paga el cliente, con IGV incluido.',
   expiry: 'Como en la caja: 08/2027.',
 } as const;
@@ -266,6 +266,7 @@ export interface PendingStockProduct {
   baseUnit: BaseUnit;
   controlled: boolean;
   tracksExpiry: boolean;
+  igv: IgvAffectation;
   /** De la más grande a la más chica */
   presentations: { id: number; name: string; factor: number }[];
 }

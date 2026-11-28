@@ -27,9 +27,13 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MonthInputComponent } from '../../shared/ui/month-input/month-input.component';
 import { ControlledCheckComponent } from './controlled-check.component';
 import { ChargeChoiceComponent } from './charge-choice.component';
+import {
+  IgvChoiceComponent,
+  costWithoutIgv,
+} from '../../shared/ui/igv-choice/igv-choice.component';
 import { apiErrorMessage, maxDecimals } from '../../shared/utils/validators';
 import { BackLinkComponent } from '../../shared/ui/back-link/back-link.component';
-import { formatQty, unitLabel } from '../../shared/utils/stock';
+import { formatQty, money, unitLabel } from '../../shared/utils/stock';
 import { normalizeText } from '../../shared/catalog/catalog-options';
 
 type PresentationForm = FormGroup<{
@@ -110,6 +114,7 @@ interface Added {
     MonthInputComponent,
     ControlledCheckComponent,
     ChargeChoiceComponent,
+    IgvChoiceComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './new-product.page.html',
@@ -271,6 +276,18 @@ export class NewProductPage {
   protected readonly suggestions = computed(() => SUGGESTIONS[this.baseUnit()]);
   protected readonly example = computed(() => EXAMPLES[this.baseUnit()]);
   /** Un insumo con precio de venta no se podría cobrar: se avisa */
+  protected readonly money = money;
+  /** El costo viene con IGV (precio final) o sin IGV (valor de la factura) */
+  protected readonly costWithIgv = signal(true);
+  /** "Se guarda sin IGV: S/ 21.19" cuando se escribe con IGV */
+  protected readonly costNet = computed(() => {
+    const v = this.value();
+    const cost = v.stock?.cost;
+    if (cost === null || cost === undefined || !this.costWithIgv() || v.igv !== 'TAXED')
+      return null;
+    return costWithoutIgv(Number(cost), true, 'TAXED');
+  });
+
   protected setInternal(internal: boolean): void {
     const c = this.form.controls.internal;
     c.setValue(internal);
@@ -398,7 +415,11 @@ export class NewProductPage {
               quantity: Number(s.quantity),
               lotNumber: s.lotNumber.trim() || null,
               expiresAt: v.tracksExpiry ? s.expiresAt || null : null,
-              costPerPresentation: s.cost === null ? null : Number(s.cost),
+              costPerPresentation: costWithoutIgv(
+                s.cost === null ? null : Number(s.cost),
+                this.costWithIgv(),
+                v.igv,
+              ),
             }
           : null,
       })

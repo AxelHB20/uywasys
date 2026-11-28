@@ -417,7 +417,7 @@
       }
       <div>
         <label for="st-cost" class="field-label"
-          >Costo sin IGV <span class="font-normal text-slate-600">(opcional)</span></label
+          >Costo <span class="font-normal text-slate-600">(opcional)</span></label
         >
         <div class="relative">
           <span
@@ -439,10 +439,18 @@
           <p class="field-error" role="alert">Hasta 4 decimales</p>
         } @else {
           <p class="field-hint">
-            De cada {{ presentationNames()[value().stock?.presentation ?? 0] }}: lo que pagaste, sin
-            IGV
+            De cada {{ presentationNames()[value().stock?.presentation ?? 0] }}: lo que pagaste.
+            @if (costNet(); as net) {
+              Se guarda sin IGV: {{ money(net) }}.
+            }
           </p>
         }
+        <app-igv-choice
+          class="mt-2 block"
+          labelId="st-cost-igv"
+          [withIgv]="costWithIgv()"
+          (withIgvChange)="costWithIgv.set($event)"
+        />
       </div>
     </div>
   </section>
@@ -452,7 +460,8 @@
       class="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-anil-700"
     >
       <app-icon name="chevron-right" class="size-4 transition-transform group-open:rotate-90" /> Más
-      datos ({{ isMedicine() ? 'psicotrópico, ' : '' }}código, código de barras, SUNAT, notas)
+      datos ({{ isMedicine() ? 'psicotrópico, ' : '' }}código, código de barras,
+      {{ isAdmin() ? 'IGV, SUNAT, ' : '' }}notas)
     </summary>
     <div class="grid gap-5 pb-5 sm:grid-cols-2">
       @if (isMedicine()) {
@@ -490,17 +499,20 @@
           }}
         </p>
       </div>
-      <div>
-        <label for="p-sunat" class="field-label">Unidad SUNAT</label>
-        <input
-          id="p-sunat"
-          formControlName="sunatUnit"
-          class="field-input uppercase"
-          maxlength="3"
-          autocomplete="off"
-        />
-        <p class="field-hint">NIU = unidad (lo más común)</p>
-      </div>
+      <!-- Unidad de la boleta: solo la toca el administrador (con el contador) -->
+      @if (isAdmin()) {
+        <div>
+          <label for="p-sunat" class="field-label">Unidad SUNAT</label>
+          <input
+            id="p-sunat"
+            formControlName="sunatUnit"
+            class="field-input uppercase"
+            maxlength="3"
+            autocomplete="off"
+          />
+          <p class="field-hint">Va en la boleta. Deja NIU salvo que el contador indique otra.</p>
+        </div>
+      }
       <div class="sm:col-span-2">
         <label for="p-notes" class="field-label">Notas</label>
         <textarea

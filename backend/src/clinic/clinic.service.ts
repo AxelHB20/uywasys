@@ -281,6 +281,16 @@ export class ClinicService {
     return { attachments: a, purchaseFiles: p, totalBytes: a.bytes + p.bytes };
   }
 
+  async discountLimit(
+    clinicId: number,
+  ): Promise<{ maxDiscountPercent: number }> {
+    const c = await this.prisma.clinic.findUniqueOrThrow({
+      where: { id: clinicId },
+      select: { maxDiscountPercent: true },
+    });
+    return { maxDiscountPercent: Number(c.maxDiscountPercent) };
+  }
+
   async openingHours(clinicId: number): Promise<OpeningHours> {
     const clinic = await this.prisma.clinic.findUniqueOrThrow({
       where: { id: clinicId },

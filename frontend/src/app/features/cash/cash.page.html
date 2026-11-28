@@ -44,7 +44,7 @@
         </p>
         <p
           class="mt-2 inline-flex items-center gap-2 rounded-full bg-white py-1 pr-3 pl-1 text-sm text-slate-600 shadow-xs ring-1 ring-slate-200"
-          title="Los cobros, ventas y egresos que registres quedan a tu nombre en esta misma caja"
+          title="Los cobros, ventas y salidas de dinero que registres quedan a tu nombre en esta misma caja"
         >
           <span
             class="grid size-6 place-items-center rounded-full bg-anil-100 text-[10px] font-semibold text-anil-800"
@@ -56,7 +56,7 @@
       </div>
       <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <button type="button" class="btn btn-ghost" (click)="openExpense()">
-          <app-icon name="trending-down" class="size-4" /> Egreso
+          <app-icon name="trending-down" class="size-4" /> Salida de dinero
         </button>
         <button type="button" class="btn btn-secondary" (click)="openClose()">
           <app-icon name="lock" class="size-4" /> Cerrar caja
@@ -87,8 +87,39 @@
       </div>
     }
 
-    <!-- Indicadores -->
-    <ul class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label="Resumen de la caja">
+    <!-- Indicadores: en celular, una línea que se abre (la lista Por cobrar va primero) -->
+    <button
+      type="button"
+      class="card flex w-full items-center gap-3 px-4 py-3 text-left text-sm sm:hidden"
+      [attr.aria-expanded]="summaryOpen()"
+      aria-controls="cash-summary"
+      (click)="summaryOpen.set(!summaryOpen())"
+    >
+      <span class="min-w-0 flex-1 text-slate-700">
+        Efectivo
+        <strong class="whitespace-nowrap text-slate-900 tabular-nums">{{
+          money(s.expectedCash)
+        }}</strong>
+        · Cobrado
+        <strong class="whitespace-nowrap text-slate-900 tabular-nums">{{
+          money(s.totals.net)
+        }}</strong>
+      </span>
+      <span class="shrink-0 text-xs font-medium text-anil-700">{{
+        summaryOpen() ? 'Ocultar' : 'Ver resumen'
+      }}</span>
+      <app-icon
+        name="chevron-down"
+        class="size-4 shrink-0 text-anil-700 transition-transform"
+        [class.rotate-180]="summaryOpen()"
+      />
+    </button>
+    <ul
+      id="cash-summary"
+      class="grid grid-cols-2 gap-3 sm:grid sm:gap-4 xl:grid-cols-4"
+      [class.max-sm:hidden]="!summaryOpen()"
+      aria-label="Resumen de la caja"
+    >
       <li class="card p-4 sm:p-5">
         <p
           class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
@@ -111,7 +142,7 @@
             </div>
             @if (f.expenses) {
               <div class="flex justify-between gap-2">
-                <dt>Egresos</dt>
+                <dt>Salidas</dt>
                 <dd class="whitespace-nowrap text-rose-700 tabular-nums">
                   − {{ money(f.expenses) }}
                 </dd>
@@ -124,7 +155,8 @@
         <p
           class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
         >
-          <span class="size-2 rounded-full bg-anil-500" aria-hidden="true"></span> Cobrado neto
+          <span class="size-2 rounded-full bg-anil-500" aria-hidden="true"></span> Cobrado en esta
+          caja
         </p>
         <p class="mt-2 font-display text-xl font-semibold text-slate-900 tabular-nums sm:text-2xl">
           {{ money(s.totals.net) }}
@@ -134,7 +166,7 @@
         </p>
         @if (s.totals.receipts) {
           <p class="mt-0.5 text-xs text-slate-500">
-            Ticket promedio <span class="tabular-nums">{{ money(averageTicket()) }}</span>
+            Promedio por cobro <span class="tabular-nums">{{ money(averageTicket()) }}</span>
           </p>
         }
         @if (s.totals.refunded) {
@@ -156,10 +188,10 @@
           {{ money(pendingTotal()) }}
         </p>
         <p class="mt-1 text-sm text-slate-600">
-          {{ pending().length }} {{ pending().length === 1 ? 'cliente' : 'clientes' }} con saldo
+          {{ pending().length }} {{ pending().length === 1 ? 'cliente debe' : 'clientes deben' }}
         </p>
       </li>
-      <li class="card p-4 sm:p-5">
+      <li class="card p-4 max-sm:col-span-2 sm:p-5">
         <p
           class="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"
         >
@@ -258,17 +290,17 @@
               @for (p of g.items; track p.client.id) {
                 @let age = daysSince(p.since);
                 <li
-                  class="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50/70"
+                  class="grid grid-cols-[2.5rem_1fr_auto] items-center gap-x-3 gap-y-2 px-5 py-3.5 transition-colors hover:bg-slate-50/70 sm:flex"
                 >
                   <span
-                    class="grid size-10 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600"
+                    class="grid size-10 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 max-sm:self-start"
                     aria-hidden="true"
                     >{{ initials(p.client.name) }}</span
                   >
-                  <div class="min-w-0 flex-1">
+                  <div class="min-w-0 flex-1 max-sm:col-span-2">
                     <a
                       [routerLink]="['/clientes', p.client.id]"
-                      class="block truncate font-medium text-slate-900 hover:text-anil-700"
+                      class="block font-medium text-slate-900 hover:text-anil-700 sm:truncate"
                       >{{ p.client.name }}</a
                     >
                     <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-slate-600">
@@ -283,24 +315,33 @@
                         >
                       }
                     </p>
-                    <p class="mt-0.5 text-xs text-slate-500">
-                      {{ p.charges }} {{ p.charges === 1 ? 'cargo' : 'cargos' }} ·
+                    <p class="mt-0.5 text-xs text-slate-600">
+                      {{ owedNames(p) }} ·
                       @if (age >= 7) {
                         <span
-                          class="rounded-md bg-amber-50 px-1.5 py-px font-medium text-amber-800 ring-1 ring-amber-200"
+                          class="rounded-md bg-amber-50 px-1.5 py-px font-medium whitespace-nowrap text-amber-800 ring-1 ring-amber-200"
                           >hace {{ age }} días</span
                         >
                       } @else {
-                        desde {{ relativeDay(p.since).toLowerCase() }}
+                        <span class="whitespace-nowrap"
+                          >desde {{ relativeDay(p.since).toLowerCase() }}</span
+                        >
                       }
                     </p>
                   </div>
-                  <p class="shrink-0 text-right font-semibold text-slate-900 tabular-nums">
+                  <p
+                    class="shrink-0 text-right font-semibold text-slate-900 tabular-nums max-sm:col-start-2 max-sm:row-start-2"
+                  >
+                    @if (p.paid > 0) {
+                      <span class="block text-[11px] font-medium text-slate-600"
+                        >ya pagó {{ money(p.paid) }} · falta</span
+                      >
+                    }
                     {{ money(p.balance) }}
                   </p>
                   <button
                     type="button"
-                    class="btn btn-secondary h-10 shrink-0 px-4 text-anil-700 hover:text-anil-800"
+                    class="btn btn-secondary h-10 shrink-0 px-4 text-anil-700 hover:text-anil-800 max-sm:col-start-3 max-sm:row-start-2"
                     [attr.aria-label]="'Cobrar a ' + p.client.name"
                     (click)="openCollect(p.client.id)"
                   >
@@ -385,7 +426,7 @@
               "
               (click)="activity.set('movements')"
             >
-              Egresos <span class="text-slate-500 tabular-nums">{{ s.movements.length }}</span>
+              Salidas <span class="text-slate-500 tabular-nums">{{ s.movements.length }}</span>
             </button>
           </div>
         </div>
@@ -506,7 +547,7 @@
                       [class]="m.voided ? 'text-slate-500' : 'text-slate-900'"
                     >
                       @if (m.kind === 'EXPENSE') {
-                        Egreso: {{ m.reason }}
+                        Salida: {{ m.reason }}
                       } @else {
                         Devolución de
                         <span class="tabular-nums">{{ m.receiptCode ?? 'un cobro' }}</span>
@@ -531,7 +572,7 @@
                     <button
                       type="button"
                       class="btn btn-ghost size-9 shrink-0 px-0 text-slate-500"
-                      [attr.aria-label]="'Anular egreso ' + m.reason"
+                      [attr.aria-label]="'Anular la salida ' + m.reason"
                       (click)="askVoidExpense(m)"
                     >
                       <app-icon name="x" class="size-4" />
@@ -545,12 +586,12 @@
               <span class="grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-500">
                 <app-icon name="minus" class="size-6" />
               </span>
-              <p class="mt-3 font-medium text-slate-900">Sin egresos ni devoluciones</p>
+              <p class="mt-3 font-medium text-slate-900">Sin salidas de dinero ni devoluciones</p>
               <p class="mt-1 text-sm text-slate-500">
                 Registra lo que sale de la caja chica: agua, movilidad, compras menores.
               </p>
               <button type="button" class="btn btn-secondary mt-4" (click)="openExpense()">
-                Registrar egreso
+                Registrar salida de dinero
               </button>
             </div>
           }
@@ -570,7 +611,7 @@
         </span>
       </div>
       <p class="mt-1 text-sm text-slate-600">
-        Abre la caja para cobrar, vender y registrar egresos.
+        Abre la caja para cobrar, vender y registrar salidas de dinero.
       </p>
     </header>
 
@@ -735,8 +776,9 @@
             >
               <span
                 >Qué paga ·
-                <span class="tabular-nums">{{ selected().size }} de {{ acc.pending.length }}</span>
-                {{ acc.pending.length === 1 ? 'cargo' : 'cargos' }}</span
+                <span class="tabular-nums"
+                  >{{ selected().size }} de {{ acc.pending.length }}</span
+                ></span
               >
               @if (acc.pending.length > 1) {
                 <button
@@ -751,7 +793,7 @@
             <div class="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <ul class="divide-y divide-slate-100">
                 @for (c of acc.pending; track c.id) {
-                  <li class="flex items-center">
+                  <li class="flex flex-wrap items-center">
                     <label
                       class="flex min-h-13 min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2 hover:bg-slate-50"
                     >
@@ -765,20 +807,25 @@
                         <span class="block truncate font-medium text-slate-900">{{
                           c.description
                         }}</span>
-                        <span class="text-xs text-slate-500">
+                        <span class="text-xs text-slate-600">
                           @if (c.pet) {
                             {{ c.pet.name }} ·
                           }
                           {{ c.createdAt | fecha: 'date' }}
                           @if (c.paidAmount) {
-                            · abonó {{ money(c.paidAmount) }}
+                            · {{ money(c.total) }} · ya pagó {{ money(c.paidAmount) }}
+                          } @else if (c.discount) {
+                            · descuento − {{ money(c.discount) }}
                           }
                         </span>
                       </span>
                       @if (editingPrice() !== c.id) {
-                        <span class="text-sm font-semibold text-slate-900 tabular-nums">{{
-                          money(c.balance)
-                        }}</span>
+                        <span class="text-right text-sm font-semibold text-slate-900 tabular-nums">
+                          @if (c.paidAmount) {
+                            <span class="block text-[11px] font-medium text-slate-600">falta</span>
+                          }
+                          {{ money(c.balance) }}</span
+                        >
                       }
                     </label>
                     @if (c.transport && !c.paidAmount) {
@@ -868,7 +915,7 @@
             <div>
               <div class="flex items-center justify-between gap-3">
                 <label for="collect-amount" class="field-label">{{
-                  saleLines.length ? 'Abono de los cargos (S/)' : 'Abono: cuánto paga hoy (S/)'
+                  saleLines.length ? 'Abono de lo marcado (S/)' : 'Abono: cuánto paga hoy (S/)'
                 }}</label>
                 <button
                   type="button"
@@ -904,6 +951,7 @@
               <app-icon name="split" class="size-4" /> Paga solo una parte (abono)
             </button>
           }
+          <ng-container [ngTemplateOutlet]="discountTpl" />
         }
       } @else {
         <div class="h-40 animate-pulse rounded-xl bg-slate-100" aria-busy="true"></div>
@@ -915,6 +963,7 @@
       [ngTemplateOutletContext]="{
         total: collectTotal(),
         count: collectCount(),
+        discount: discountAmount(),
         options: collectDocuments(),
         buyerMode: account() ? collectBuyerMode() : null,
         buyerId: account() && account()!.client.number !== 0 ? account()!.client.id : null,
@@ -1029,6 +1078,7 @@
             }
           </ul>
         </div>
+        <ng-container [ngTemplateOutlet]="discountTpl" />
       } @else {
         <div
           class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 py-10 text-center lg:flex-1"
@@ -1058,6 +1108,7 @@
       [ngTemplateOutletContext]="{
         total: saleTotal(),
         count: saleLines.length + (saleLines.length === 1 ? ' ítem' : ' ítems'),
+        discount: discountAmount(),
         options: saleDocuments(),
         buyerMode: saleLines.length ? saleBuyerMode() : null,
         buyerId: saleClient()?.id ?? null,
@@ -1078,6 +1129,7 @@
   #payPanel
   let-total="total"
   let-count="count"
+  let-discount="discount"
   let-options="options"
   let-buyerMode="buyerMode"
   let-buyerId="buyerId"
@@ -1093,13 +1145,21 @@
   >
     <p class="flex items-baseline justify-between gap-3">
       <span class="font-medium text-slate-600"
-        >Total <span class="text-xs font-normal text-slate-500">· {{ count }}</span></span
-      >
+        >Total
+        @if (count) {
+          <span class="text-xs font-normal text-slate-600">· {{ count }}</span>
+        }
+      </span>
       <span
         class="font-display text-[1.75rem] leading-none font-semibold text-slate-900 tabular-nums"
         >{{ money(total) }}</span
       >
     </p>
+    @if (discount > 0) {
+      <p class="-mt-2 text-right text-sm font-medium text-emerald-700 tabular-nums">
+        Incluye descuento − {{ money(discount) }}
+      </p>
+    }
     <app-document-choice
       class="block"
       variant="tabs"
@@ -1231,6 +1291,32 @@
   </div>
 </ng-template>
 
+<!-- Descuento: un monto para todo el cobro o la venta (el sistema lo reparte en la boleta) -->
+<ng-template #discountTpl>
+  @if (discount().open) {
+    <app-discount-fields
+      idPrefix="disc"
+      [gross]="discountBase()"
+      [maxPercent]="maxDiscount()"
+      [canExceed]="isAdmin()"
+      [showErrors]="discountErrors()"
+      [amount]="discount().amount"
+      (amountChange)="setDiscount({ amount: $event })"
+      [reason]="discount().reason"
+      (reasonChange)="setDiscount({ reason: $event })"
+      (remove)="closeDiscount()"
+    />
+  } @else if (discountBase() > 0) {
+    <button
+      type="button"
+      class="inline-flex min-h-8 items-center gap-1.5 rounded-md text-sm font-medium text-anil-700 hover:text-anil-900 focus-visible:outline-2 focus-visible:outline-anil-600"
+      (click)="openDiscount()"
+    >
+      <app-icon name="tag" class="size-4" /> Descuento
+    </button>
+  }
+</ng-template>
+
 <!-- Una línea de lo que se vende (venta de mostrador o agregado en el cobro) -->
 <ng-template #saleRowTpl let-g let-i="i" let-pfx="pfx" let-isNew="isNew">
   @let o = g.controls.option.value;
@@ -1309,10 +1395,10 @@
   </li>
 </ng-template>
 
-<!-- Egreso -->
+<!-- Salida de dinero -->
 <app-modal
   [open]="modal() === 'expense'"
-  title="Egreso de caja chica"
+  title="Salida de dinero (caja chica)"
   description="Dinero que sale del cajón: compras menores, movilidad o un retiro del dueño."
   [dismissible]="false"
   (closed)="closeModal()"
@@ -1396,15 +1482,15 @@
   <ng-container modal-actions>
     <button type="button" class="btn btn-secondary" (click)="closeModal()">Volver</button>
     <button type="submit" form="expense-form" class="btn btn-primary" [disabled]="saving()">
-      Registrar egreso
+      Registrar salida
     </button>
   </ng-container>
 </app-modal>
 
-<!-- Anular egreso -->
+<!-- Anular salida -->
 <app-modal
   [open]="modal() === 'void-expense'"
-  title="Anular egreso"
+  title="Anular salida de dinero"
   [dismissible]="false"
   (closed)="closeModal()"
 >
@@ -1461,7 +1547,7 @@
           {{ money(s.expectedCash) }}
         </p>
         <p class="mt-1 text-xs text-slate-500">
-          Inicial {{ money(s.openingAmount) }} + efectivo cobrado − egresos − devoluciones
+          Inicial {{ money(s.openingAmount) }} + efectivo cobrado − salidas − devoluciones
         </p>
       </div>
       @if (digitalMethods().length) {

@@ -51,6 +51,8 @@ export class CashService {
     chargeIds?: number[];
     /** Productos o servicios agregados en caja (mismo comprobante) */
     items?: ChargeItemInput[];
+    /** Descuentos dados al cobrar (soles) sobre lo que ya estaba por cobrar */
+    discounts?: { chargeId: number; discount: number; discountReason?: string }[];
     amount?: number;
     payments: PaymentInput[];
     document?: DocumentChoice;

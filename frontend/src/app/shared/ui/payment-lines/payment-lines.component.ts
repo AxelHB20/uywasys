@@ -254,7 +254,7 @@ const METHOD_ICONS: Record<PaymentMethod, IconName> = {
           class="mt-3 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-anil-700 hover:text-anil-900 focus-visible:outline-2 focus-visible:outline-anil-600"
           (click)="split()"
         >
-          <app-icon name="split" class="size-4" /> Dividir el pago
+          <app-icon name="split" class="size-4" /> Paga con dos medios (ej.: efectivo + Yape)
           <span class="font-normal text-slate-500 @max-md:hidden"
             >· ej. parte efectivo y parte Yape</span
           >

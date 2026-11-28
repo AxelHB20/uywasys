@@ -20,7 +20,15 @@
         en el carné) y psicotrópicos (lo pide DIGEMID). En lo demás, opcional.
       </li>
       <li>
-        <strong class="font-semibold text-slate-900">Costo:</strong> {{ help.cost }} Opcional.
+        <strong class="font-semibold text-slate-900">Costo (opcional):</strong> lo que pagaste al
+        proveedor. Se guarda sin IGV.
+        <app-igv-choice
+          class="mt-1.5 block"
+          labelId="sl-cost-igv"
+          label="Los costos vienen"
+          [withIgv]="costWithIgv()"
+          (withIgvChange)="costWithIgv.set($event)"
+        />
       </li>
       <li class="sm:col-span-2">
         <strong class="font-semibold text-slate-900">Psicotrópico (DIGEMID):</strong> solo ketamina,
@@ -89,7 +97,7 @@
         <span>Cantidad</span>
         <span>Vence</span>
         <span>Lote</span>
-        <span>Costo sin IGV</span>
+        <span>Costo {{ costWithIgv() ? 'con IGV' : 'sin IGV' }}</span>
         <span class="text-center">Psicotrópico</span>
       </div>
       <ul class="divide-y divide-slate-100">
@@ -187,7 +195,8 @@
 
             <div>
               <label [for]="'sl-cost-' + p.id" class="field-label lg:sr-only"
-                >Costo sin IGV <span class="font-normal text-slate-600">(opcional)</span></label
+                >Costo {{ costWithIgv() ? 'con IGV' : 'sin IGV' }}
+                <span class="font-normal text-slate-600">(opcional)</span></label
               >
               <div class="relative mt-1.5 lg:mt-0">
                 <span

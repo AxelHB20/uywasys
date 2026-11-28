@@ -240,6 +240,61 @@
         </label>
       </section>
     }
+    @if (profile(); as p) {
+      <section class="card p-6" aria-labelledby="discount-title">
+        <div class="flex items-start gap-4">
+          <span
+            class="grid size-10 shrink-0 place-items-center rounded-xl bg-anil-50 text-anil-700"
+            aria-hidden="true"
+          >
+            <app-icon name="receipt" class="size-5" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <h2 id="discount-title" class="font-semibold text-slate-900">Descuentos</h2>
+            <p class="mt-1 text-sm text-pretty text-slate-600">
+              Hasta este porcentaje de cada línea, cualquiera puede dar un descuento (en Caja,
+              Atención y Presupuestos). Si pasa, solo el administrador. Todos quedan en el reporte
+              de Control con quién lo dio y por qué.
+            </p>
+          </div>
+        </div>
+        <form
+          class="mt-5 flex flex-wrap items-end gap-3"
+          (submit)="$event.preventDefault(); saveDiscountCap()"
+          novalidate
+        >
+          <div>
+            <label for="discount-cap" class="field-label">Tope sin administrador (%)</label>
+            <input
+              id="discount-cap"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="1"
+              class="field-input w-32 tabular-nums"
+              [formControl]="discountCap"
+              [attr.aria-invalid]="discountCap.invalid && discountCap.touched"
+              aria-describedby="discount-cap-hint"
+            />
+          </div>
+          <button
+            type="submit"
+            class="btn btn-secondary"
+            [disabled]="capBusy() || discountCap.pristine"
+          >
+            Guardar tope
+          </button>
+          <p id="discount-cap-hint" class="field-hint basis-full">
+            @if (discountCap.invalid && discountCap.touched) {
+              <span class="text-rose-700">Escribe un número de 0 a 100.</span>
+            } @else {
+              Ej.: con 10 %, en una consulta de S/ 50 cualquiera puede descontar hasta S/ 5.
+            }
+          </p>
+        </form>
+      </section>
+    }
     @if (storage(); as s) {
       <section class="card space-y-3 p-6" aria-labelledby="storage-title">
         <div>

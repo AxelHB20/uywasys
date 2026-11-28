@@ -189,7 +189,7 @@ export class ControlReportService {
       this.prisma.$queryRaw<
         { user_id: number; amount: unknown; count: bigint; gross: unknown }[]
       >(Prisma.sql`
-        SELECT c.created_by_id AS user_id, SUM(c.discount) AS amount,
+        SELECT COALESCE(c.discount_by_id, c.created_by_id) AS user_id, SUM(c.discount) AS amount,
                COUNT(*) FILTER (WHERE c.discount > 0) AS count, SUM(c.total + c.discount) AS gross
         FROM charges c
         WHERE c.clinic_id = ${clinicId} AND c.status <> 'VOID' AND ${inP(Prisma.sql`c.created_at`)}

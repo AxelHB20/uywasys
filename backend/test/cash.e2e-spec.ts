@@ -787,4 +787,122 @@ describe('Caja: sesiones, cobros, mostrador, egresos y arqueo (e2e)', () => {
       ids.otherSession,
     ]);
   });
+  it('descuento en caja: tope en soles, motivo, antes del primer pago y queda quién lo dio', async () => {
+    const clientId = (
+      await http()
+        .post('/api/clients')
+        .set('Cookie', cookies.reception)
+        .send({ name: 'Cliente Descuento', phone: '987650001', consent: true })
+        .expect(201)
+    ).body.id as number;
+    const charge = async () =>
+      (
+        await http()
+          .post('/api/charges')
+          .set('Cookie', cookies.reception)
+          .send({
+            clientId,
+            items: [{ careServiceId: ids.sConsult, quantity: 1 }],
+          })
+          .expect(201)
+      ).body.charges[0].id as number;
+    const pay = (
+      cookie: string,
+      chargeId: number,
+      discounts: unknown[],
+      amount: number,
+    ) =>
+      http()
+        .post('/api/cash/receipts')
+        .set('Cookie', cookie)
+        .send({
+          requestKey: randomUUID(),
+          clientId,
+          chargeIds: [chargeId],
+          discounts,
+          amount,
+          payments: [{ method: 'CASH', amount, tendered: amount }],
+        });
+    // Al final de la suite la caja ya se cerró: se abre otra
+    await http()
+      .post('/api/cash/sessions')
+      .set('Cookie', cookies.cashier)
+      .send({ openingAmount: 0 });
+    const c1 = await charge();
+    // Consulta S/ 50 y tope 10 %: más de S/ 5 solo el administrador
+    const over = await pay(
+      cookies.cashier,
+      c1,
+      [{ chargeId: c1, discount: 6, discountReason: 'Cliente frecuente' }],
+      44,
+    ).expect(403);
+    expect(over.body.message).toContain('máx. S/ 5.00');
+    await pay(cookies.cashier, c1, [{ chargeId: c1, discount: 5 }], 45).expect(
+      400,
+    );
+    const ok = await pay(
+      cookies.cashier,
+      c1,
+      [{ chargeId: c1, discount: 5, discountReason: 'Cliente frecuente' }],
+      45,
+    );
+    expect(ok.body.message).toBeUndefined();
+    expect(ok.body.totals.paid).toBe(45);
+    const saved = await prisma.charge.findUniqueOrThrow({ where: { id: c1 } });
+    const cashier = await prisma.user.findFirstOrThrow({
+      where: { email: `cashier-cash-${stamp}@uywa.pe` },
+    });
+    expect(saved).toMatchObject({
+      status: 'PAID',
+      discountReason: 'Cliente frecuente',
+      discountById: cashier.id,
+    });
+    expect(Number(saved.discount)).toBe(5);
+    expect(Number(saved.total)).toBe(45);
+    // El administrador puede pasar el tope
+    const c2 = await charge();
+    const adm = await pay(
+      cookies.admin,
+      c2,
+      [{ chargeId: c2, discount: 20, discountReason: 'Albergue o rescate' }],
+      30,
+    );
+    expect(adm.body.message).toBeUndefined();
+    expect(adm.status).toBe(201);
+    // Con un pago ya hecho, el descuento no se cambia
+    const c3 = await charge();
+    await pay(cookies.cashier, c3, [], 10).expect(201);
+    const late = await pay(
+      cookies.cashier,
+      c3,
+      [{ chargeId: c3, discount: 2, discountReason: 'Campaña' }],
+      38,
+    ).expect(400);
+    expect(late.body.message).toContain('antes del primer pago');
+    // En venta de mostrador el descuento va en la línea
+    const sale = await http()
+      .post('/api/cash/counter-sales')
+      .set('Cookie', cookies.cashier)
+      .send({
+        requestKey: randomUUID(),
+        clientId,
+        items: [
+          {
+            productId: ids.pipette,
+            presentationId: ids.pipettePres,
+            quantity: 1,
+            discount: 4.5,
+            discountReason: 'Campaña',
+          },
+        ],
+        payments: [{ method: 'YAPE', amount: 40.5, operationCode: 'OP-1' }],
+      })
+      .expect(201);
+    expect(sale.body.receipt.totals.paid).toBe(40.5);
+    const limit = await http()
+      .get('/api/clinic/discount-limit')
+      .set('Cookie', cookies.cashier)
+      .expect(200);
+    expect(limit.body).toEqual({ maxDiscountPercent: 10 });
+  });
 });

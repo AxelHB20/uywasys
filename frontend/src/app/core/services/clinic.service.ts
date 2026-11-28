@@ -15,12 +15,14 @@ export interface ClinicProfile {
   openingHours: DayHours[];
   /** El portal del dueño muestra el carnet completo y las recetas */
   portalShowRecords: boolean;
+  /** Descuento máximo por línea (%) sin el administrador */
+  maxDiscountPercent: number;
 }
 
 export type ClinicProfileUpdate = Omit<
   ClinicProfile,
-  'id' | 'logoUrl' | 'openingHours' | 'portalShowRecords'
-> & { portalShowRecords?: boolean };
+  'id' | 'logoUrl' | 'openingHours' | 'portalShowRecords' | 'maxDiscountPercent'
+> & { portalShowRecords?: boolean; maxDiscountPercent?: number };
 
 /** Espacio que ocupan los archivos de la clínica */
 export interface StorageUsage {
@@ -48,6 +50,11 @@ export class ClinicService {
     return this.http
       .patch<ClinicProfile>('/api/clinic', data)
       .pipe(tap((clinic) => this.syncSession(clinic)));
+  }
+
+  /** Tope de descuento sin administrador (cualquier rol: Caja, Atención y Presupuestos) */
+  discountLimit(): Observable<{ maxDiscountPercent: number }> {
+    return this.http.get<{ maxDiscountPercent: number }>('/api/clinic/discount-limit');
   }
 
   /** Horario de atención (cualquier rol: la agenda sombrea lo cerrado) */

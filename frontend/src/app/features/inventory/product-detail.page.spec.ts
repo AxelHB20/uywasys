@@ -118,7 +118,7 @@ describe('ProductDetailPage (ficha de producto)', () => {
       .flush([{ id: 3, name: 'Droguería Andina S.A.C.', ruc: '20131312955', active: true }]);
     fixture.detectChanges();
     await tick();
-    expect(el.querySelector('label[for="pu-cost"]')?.textContent).toContain('sin IGV');
+    expect(el.querySelector('label[for="pu-cost"]')?.textContent).toContain('Costo');
     const supplier = el.querySelector<HTMLSelectElement>('#pu-sup')!;
     supplier.value = supplier.options[1].value;
     supplier.dispatchEvent(new Event('change'));
@@ -133,6 +133,8 @@ describe('ProductDetailPage (ficha de producto)', () => {
     set('#pu-cost', '90');
     fixture.detectChanges();
     expect(el.textContent).toContain('= 500 tabletas');
+    // Viene con IGV (precio final): se guarda sin IGV
+    expect(el.textContent).toContain('Se guarda sin IGV: S/ 76.27');
     el.querySelector<HTMLButtonElement>('button[form="purchase-form"]')!.click();
     const req = http.expectOne('/api/inventory/products/5/purchases');
     expect(req.request.body).toMatchObject({
@@ -140,7 +142,7 @@ describe('ProductDetailPage (ficha de producto)', () => {
       quantity: 5,
       lotNumber: 'L-Z',
       expiresAt: '2027-06-30',
-      costPerPresentation: 90,
+      costPerPresentation: 76.2712,
       supplierId: 3,
       supplier: null,
     });

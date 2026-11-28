@@ -54,6 +54,7 @@ import {
 } from '../../shared/catalog/catalog-options';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { IconComponent } from '../../shared/ui/icon/icon.component';
+import { DISCOUNT_REASONS } from '../../shared/ui/discount-fields/discount';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { formatPhone } from '../../shared/utils/peru';
@@ -198,6 +199,7 @@ function lineValidator(group: LineGroup): ValidationErrors | null {
   },
 })
 export class VisitPage {
+  protected readonly discountReasons = DISCOUNT_REASONS;
   private readonly visits = inject(VisitsService);
   private readonly services = inject(CareServicesService);
   private readonly inventory = inject(InventoryService);

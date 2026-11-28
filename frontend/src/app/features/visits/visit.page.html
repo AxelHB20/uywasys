@@ -1117,6 +1117,27 @@
                               maxlength="120"
                               [attr.aria-invalid]="lineError(g, 'discountReason')"
                             />
+                            <div
+                              class="mt-1.5 flex flex-wrap gap-1.5"
+                              role="group"
+                              aria-label="Motivos frecuentes"
+                            >
+                              @for (r of discountReasons; track r) {
+                                <button
+                                  type="button"
+                                  class="h-8 rounded-full px-3 text-xs font-medium ring-1 pointer-coarse:h-10"
+                                  [class]="
+                                    g.controls.discountReason.value === r
+                                      ? 'bg-anil-600 text-white ring-anil-600'
+                                      : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+                                  "
+                                  [attr.aria-pressed]="g.controls.discountReason.value === r"
+                                  (click)="g.controls.discountReason.setValue(r)"
+                                >
+                                  {{ r }}
+                                </button>
+                              }
+                            </div>
                           </div>
                         </div>
                         @if (lineError(g, 'discountTooBig')) {

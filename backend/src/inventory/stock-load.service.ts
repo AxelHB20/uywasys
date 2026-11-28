@@ -4,7 +4,11 @@ import type { AuthUser } from '../common/auth/auth-user.js';
 import { fromDbDate, toDbDate } from '../common/time/clinic-day.js';
 import { clinicToday } from '../common/time/clinic-today.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type { BaseUnit, ProductCategory } from '../generated/prisma/enums.js';
+import type {
+  BaseUnit,
+  IgvAffectation,
+  ProductCategory,
+} from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { StockLoadDto } from './dto/stock-load.dto.js';
 import { lotMissingMessage, lotRequired } from './lot-rule.js';
@@ -21,6 +25,8 @@ export interface PendingProduct {
   baseUnit: BaseUnit;
   controlled: boolean;
   tracksExpiry: boolean;
+  /** Para pasar el costo con IGV a sin IGV en la pantalla */
+  igv: IgvAffectation;
   presentations: { id: number; name: string; factor: number }[];
 }
 
@@ -61,6 +67,7 @@ export class StockLoadService {
           baseUnit: true,
           controlled: true,
           tracksExpiry: true,
+          igv: true,
           presentations: {
             where: { active: true },
             orderBy: { factor: 'desc' },
