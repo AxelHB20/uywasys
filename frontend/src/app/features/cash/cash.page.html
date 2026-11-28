@@ -751,7 +751,7 @@
   (closed)="closeModal()"
 >
   <div
-    class="h-full overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:grid-rows-[minmax(0,1fr)_auto] lg:overflow-hidden"
+    class="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_22.5rem] short:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)_auto] lg:overflow-hidden"
   >
     <div class="space-y-4 px-6 py-5 lg:row-span-2 lg:flex lg:min-h-0 lg:min-w-0 lg:flex-col">
       @if (account(); as acc) {
@@ -987,7 +987,7 @@
   (closed)="closeModal()"
 >
   <div
-    class="h-full overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:grid-rows-[minmax(0,1fr)_auto] lg:overflow-hidden"
+    class="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_22.5rem] short:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)_auto] lg:overflow-hidden"
   >
     <div class="space-y-4 px-6 py-5 lg:row-span-2 lg:flex lg:min-h-0 lg:min-w-0 lg:flex-col">
       <!-- Cliente -->
@@ -1140,7 +1140,7 @@
   let-go="go"
 >
   <section
-    class="space-y-4 border-t border-slate-200 bg-slate-50 p-5 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-l"
+    class="space-y-4 border-t border-slate-200 bg-slate-50 p-5 short:space-y-2.5 short:p-4 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-l"
     aria-label="Cobro"
   >
     <p class="flex items-baseline justify-between gap-3">
@@ -1151,7 +1151,7 @@
         }
       </span>
       <span
-        class="font-display text-[1.75rem] leading-none font-semibold text-slate-900 tabular-nums"
+        class="font-display text-[1.75rem] leading-none font-semibold text-slate-900 tabular-nums short:text-2xl"
         >{{ money(total) }}</span
       >
     </p>
@@ -1180,11 +1180,11 @@
     <app-payment-lines [form]="payments" [total]="total" [idPrefix]="prefix" [error]="payError()" />
   </section>
   <div
-    class="sticky bottom-0 z-10 border-t border-slate-200 bg-white px-5 py-4 lg:static lg:border-l"
+    class="sticky bottom-0 z-10 border-t border-slate-200 bg-white px-5 py-4 short:px-4 short:py-3 lg:static lg:border-l"
   >
     <button
       type="button"
-      class="btn btn-primary h-12 w-full text-base"
+      class="btn btn-primary h-12 w-full text-base short:h-11"
       [disabled]="saving() || !ready"
       aria-keyshortcuts="Control+Enter"
       (click)="go === 'sell' ? sell() : collect()"

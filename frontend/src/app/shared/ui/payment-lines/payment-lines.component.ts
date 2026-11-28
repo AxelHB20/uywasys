@@ -158,7 +158,7 @@ const METHOD_ICONS: Record<PaymentMethod, IconName> = {
               type="button"
               role="radio"
               [attr.aria-checked]="on"
-              class="flex h-16 flex-col items-center justify-center gap-1 rounded-xl px-1 text-xs font-medium transition-colors duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600"
+              class="flex h-16 flex-col items-center short:h-10 justify-center gap-1 short:gap-0.5 rounded-xl px-1 text-xs font-medium transition-colors duration-150 select-none pointer-coarse:h-16 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-anil-600"
               [class]="
                 on
                   ? 'bg-anil-50 text-anil-800 ring-2 ring-anil-600'
@@ -168,7 +168,7 @@ const METHOD_ICONS: Record<PaymentMethod, IconName> = {
             >
               <app-icon
                 [name]="icons[method]"
-                class="size-5"
+                class="size-5 short:size-4"
                 [class]="on ? 'text-anil-600' : 'text-slate-500'"
               />
               {{ labels[method] }}
@@ -176,7 +176,10 @@ const METHOD_ICONS: Record<PaymentMethod, IconName> = {
           }
         </div>
 
-        <div [formGroup]="g" class="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70">
+        <div
+          [formGroup]="g"
+          class="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70 short:mt-2 short:p-2.5"
+        >
           @if (m === 'CASH') {
             <div class="flex flex-wrap items-end gap-x-4 gap-y-2">
               <div class="min-w-0 flex-1 basis-44">
@@ -202,7 +205,7 @@ const METHOD_ICONS: Record<PaymentMethod, IconName> = {
                     @for (q of quick; track q.value) {
                       <button
                         type="button"
-                        class="h-9 rounded-lg bg-white px-3 pointer-coarse:h-11 text-sm font-medium text-slate-700 ring-1 ring-slate-300 transition-colors duration-150 hover:bg-anil-50 hover:text-anil-800 hover:ring-anil-300 focus-visible:outline-2 focus-visible:outline-anil-600 tabular-nums"
+                        class="h-9 rounded-lg bg-white px-3 short:h-8 pointer-coarse:h-11 text-sm font-medium text-slate-700 ring-1 ring-slate-300 transition-colors duration-150 hover:bg-anil-50 hover:text-anil-800 hover:ring-anil-300 focus-visible:outline-2 focus-visible:outline-anil-600 tabular-nums"
                         [class.!bg-anil-50]="isTendered(q.value)"
                         [class.!text-anil-800]="isTendered(q.value)"
                         [class.!ring-anil-600]="isTendered(q.value)"
@@ -251,7 +254,7 @@ const METHOD_ICONS: Record<PaymentMethod, IconName> = {
 
         <button
           type="button"
-          class="mt-3 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-anil-700 hover:text-anil-900 focus-visible:outline-2 focus-visible:outline-anil-600"
+          class="mt-3 inline-flex items-start text-left gap-1.5 short:mt-2 rounded-md text-sm font-medium text-anil-700 hover:text-anil-900 focus-visible:outline-2 focus-visible:outline-anil-600"
           (click)="split()"
         >
           <app-icon name="split" class="size-4" /> Paga con dos medios (ej.: efectivo + Yape)

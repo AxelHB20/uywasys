@@ -194,6 +194,7 @@ Algo nuevo se agrega en el grupo de quien lo usa; no se crean grupos de una sola
 - **Cómo paga:** «Paga con dos medios (ej.: efectivo + Yape)» paga todo con dos medios; «Paga solo una
   parte (abono)» deja saldo.
 - **Celular:** el nombre del cliente completo; el resumen se abre con «Ver resumen».
+- **Laptop:** el cobro entra completo en pantallas de 1366×768 y 1280×720 (sin bajar para llegar a «Cobrar»).
 - **Costo:** «El costo viene: Con IGV / Sin IGV» en Agregar producto, Cargar stock y Registrar compra;
   se guarda sin IGV. La unidad SUNAT solo la ve el administrador.
 

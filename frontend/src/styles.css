@@ -3,6 +3,9 @@
 @import '@fontsource-variable/sora';
 @import 'tailwindcss';
 
+/* Laptops de poca altura (1366×768, 1280×720): la caja se compacta para no tener que bajar */
+@custom-variant short (@media (min-width: 64rem) and (max-height: 51.25rem));
+
 /*
  * Identidad visual
  * Añil y maíz: los tintes de los tejidos andinos. El patrón escalonado (chakana)

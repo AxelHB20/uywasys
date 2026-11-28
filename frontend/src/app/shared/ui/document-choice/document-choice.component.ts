@@ -54,7 +54,7 @@ const DETAILS: Record<DocumentChoice, { icon: IconName; caption: string }> = {
                 [tabindex]="o.value === focusable() ? 0 : -1"
                 [title]="o.caption"
                 (click)="choose(o)"
-                class="h-10 min-w-0 flex-1 rounded-lg px-1 text-[13px] whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-anil-600 motion-reduce:transition-none pointer-coarse:h-11"
+                class="h-10 min-w-0 flex-1 rounded-lg px-1 text-[13px] short:h-9 whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-anil-600 motion-reduce:transition-none pointer-coarse:h-11"
                 [class]="
                   o.disabled
                     ? 'cursor-not-allowed text-slate-400'

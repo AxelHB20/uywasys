@@ -27,10 +27,14 @@ import { IconComponent } from '../icon/icon.component';
       [attr.aria-describedby]="description() ? descriptionId : null"
       [class.lg:max-w-4xl]="size() === 'lg'"
       [class.lg:max-w-[60rem]]="size() === 'pos'"
+      [class.short:max-w-[54rem]!]="size() === 'pos'"
       class="m-auto w-[calc(100%-2rem)] max-w-lg overflow-visible rounded-2xl bg-white p-0 text-slate-700 shadow-2xl shadow-anil-950/20
              backdrop:bg-anil-950/45 backdrop:backdrop-blur-[2px]"
     >
-      <div class="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+      <div
+        class="flex items-start gap-3 border-b border-slate-100 px-6"
+        [class]="size() === 'pos' ? 'py-5 short:py-3' : 'py-5'"
+      >
         <div class="min-w-0 flex-1">
           <h2 [id]="titleId" class="font-display text-lg font-semibold text-slate-900">
             {{ title() }}
@@ -52,7 +56,7 @@ import { IconComponent } from '../icon/icon.component';
       <div
         [class]="
           size() === 'pos'
-            ? 'h-[min(44rem,calc(100dvh-9rem))] overflow-hidden rounded-b-2xl'
+            ? 'flex h-[min(44rem,calc(100dvh-9rem))] flex-col overflow-hidden rounded-b-2xl short:h-[calc(100dvh-7rem)]'
             : 'max-h-[calc(100dvh-19rem)] overflow-y-auto px-6 py-5 sm:max-h-[70dvh]'
         "
       >
